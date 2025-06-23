@@ -1,0 +1,19 @@
+manifest:
+  remotes:
+    - name: zephyrproject
+      url-base: https://github.com/zephyrproject-rtos
+    - name: microros
+      url-base: https://github.com/micro-ROS
+  projects:
+    - name: zephyr
+      repo-path: zephyr
+      remote: zephyrproject
+      revision: v4.1.0
+      clone-depth: 1
+      import:
+        path-prefix: external
+
+    - name: micro_ros_zephyr_module
+      remote: microros
+      revision: jazzy
+      path: modules/lib/micro_ros_zephyr_module
