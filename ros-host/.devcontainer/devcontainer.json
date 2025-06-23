@@ -1,0 +1,16 @@
+{
+    "name": "micro-ROS Devcontainer",
+    "image": "osrf/ros:jazzy-desktop",
+    "extensions": [
+        "ms-vscode.cpptools",
+        "ms-python.python"
+    ],
+    "runArgs": [
+        "--privileged"
+    ],
+    "postCreateCommand": "apt update && apt install -y python3-pip python3-colcon-common-extensions && rosdep update && mkdir -p microros_ws/src && git clone -b $ROS_DISTRO https://github.com/micro-ROS/micro_ros_setup.git microros_ws/src/micro_ros_setup && cd microros_ws && rosdep install --from-paths src --ignore-src -y && colcon build && ros2 run micro_ros_setup create_agent_ws.sh && ros2 run micro_ros_setup build_agent.sh",
+    "remoteEnv": {
+        "ROS_DISTRO": "jazzy"
+    },
+    "postAttachCommand": "source /opt/ros/$ROS_DISTRO/setup.bash && source ~/microros_ws/install/local_setup.bash"
+}
