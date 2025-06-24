@@ -37,11 +37,18 @@
         rcl_ret_t _rc = (fn);                                        \
         if (_rc != RCL_RET_OK) {                                     \
             printf("rcl error %d at line %d\n", (int)_rc, __LINE__); \
-            return;                                                  \
+            goto cleanup;                                            \
         }                                                            \
     } while (0)
+#define RCSOFTCHECK(fn)                                                   \
+    do {                                                                  \
+        rcl_ret_t _rc = (fn);                                             \
+        if (_rc != RCL_RET_OK) {                                          \
+            printf("rcl soft error %d at line %d\n", (int)_rc, __LINE__); \
+        }                                                                 \
+    } while (0)
 
-#define PUBLISH_HZ 1U // Slow down to 10 Hz
+#define PUBLISH_HZ 1000U
 
 static rcl_publisher_t publisher;
 static std_msgs__msg__String msg;
@@ -81,10 +88,7 @@ static void timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
     msg.data.size = (size_t)n;
     msg.data.capacity = sizeof str;
 
-    rcl_ret_t rc = rcl_publish(&publisher, &msg, NULL);
-    if (rc != RCL_RET_OK) {
-        printf("Publish failed: %d\n", rc);
-    }
+    RCSOFTCHECK(rcl_publish(&publisher, &msg, NULL));
 
     // Simulate IMU
     imu_msg.header.stamp.sec = cnt;
@@ -122,19 +126,10 @@ static void timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
     // Publish all
     printf("Publishing all sensor messages, cnt=%lu\n", (unsigned long)cnt);
 
-    rcl_ret_t rc1 = rcl_publish(&pub_imu, &imu_msg, NULL);
-    rcl_ret_t rc2 = rcl_publish(&pub_gps, &gps_msg, NULL);
-    rcl_ret_t rc3 = rcl_publish(&pub_pose, &pose_msg, NULL);
-    rcl_ret_t rc4 = rcl_publish(&pub_batt, &batt_msg, NULL);
-
-    if (rc1 != RCL_RET_OK)
-        printf("Publish failed: IMU (rc=%d, msg=%s)\n", rc1, rcl_get_error_string().str);
-    if (rc2 != RCL_RET_OK)
-        printf("Publish failed: GPS (rc=%d, msg=%s)\n", rc2, rcl_get_error_string().str);
-    if (rc3 != RCL_RET_OK)
-        printf("Publish failed: Pose (rc=%d, msg=%s)\n", rc3, rcl_get_error_string().str);
-    if (rc4 != RCL_RET_OK)
-        printf("Publish failed: Battery (rc=%d, msg=%s)\n", rc4, rcl_get_error_string().str);
+    RCSOFTCHECK(rcl_publish(&pub_imu, &imu_msg, NULL));
+    RCSOFTCHECK(rcl_publish(&pub_gps, &gps_msg, NULL));
+    RCSOFTCHECK(rcl_publish(&pub_pose, &pose_msg, NULL));
+    RCSOFTCHECK(rcl_publish(&pub_batt, &batt_msg, NULL));
 
     rcl_reset_error();
 }
@@ -179,12 +174,15 @@ int main(void) {
 
         rcl_allocator_t allocator = rcl_get_default_allocator();
         rclc_support_t support;
+        rcl_node_t node;
+        rcl_timer_t timer;
+        rclc_executor_t executor;
+
         if (rclc_support_init(&support, 0, NULL, &allocator) != RCL_RET_OK) {
             k_sleep(K_MSEC(1000));
             continue;
         }
 
-        rcl_node_t node;
         if (rclc_node_init_default(&node, "zephyr_string_publisher", "", &support) != RCL_RET_OK) {
             rclc_support_fini(&support);
             k_sleep(K_MSEC(1000));
@@ -196,30 +194,60 @@ int main(void) {
         bool ok_string = false, ok_imu = false, ok_gps = false, ok_pose = false, ok_batt = false;
         rcl_ret_t rc_string = 0, rc_imu = 0, rc_gps = 0, rc_pose = 0, rc_batt = 0;
 
-        rc_imu = rclc_publisher_init_default(&pub_imu, &node,
-                                             ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu),
-                                             "imu/data");
-        ok_imu = (rc_imu == RCL_RET_OK);
+        // IMU publisher (Best Effort)
+        {
+            rcl_publisher_options_t pub_ops = rcl_publisher_get_default_options();
+            pub_ops.qos.reliability = RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT;
+            rc_imu = rcl_publisher_init(
+                &pub_imu, &node,
+                ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu),
+                "imu/data", &pub_ops);
+            ok_imu = (rc_imu == RCL_RET_OK);
+        }
 
-        rc_string = rclc_publisher_init_default(&publisher, &node,
-                                                ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
-                                                "zephyr_string_publisher");
-        ok_string = (rc_string == RCL_RET_OK);
+        // String publisher (Best Effort)
+        {
+            rcl_publisher_options_t pub_ops = rcl_publisher_get_default_options();
+            pub_ops.qos.reliability = RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT;
+            rc_string = rcl_publisher_init(
+                &publisher, &node,
+                ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
+                "zephyr_string_publisher", &pub_ops);
+            ok_string = (rc_string == RCL_RET_OK);
+        }
 
-        rc_gps = rclc_publisher_init_default(&pub_gps, &node,
-                                             ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, NavSatFix),
-                                             "gps/fix");
-        ok_gps = (rc_gps == RCL_RET_OK);
+        // GPS publisher (Best Effort)
+        {
+            rcl_publisher_options_t pub_ops = rcl_publisher_get_default_options();
+            pub_ops.qos.reliability = RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT;
+            rc_gps = rcl_publisher_init(
+                &pub_gps, &node,
+                ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, NavSatFix),
+                "gps/fix", &pub_ops);
+            ok_gps = (rc_gps == RCL_RET_OK);
+        }
 
-        rc_pose = rclc_publisher_init_default(&pub_pose, &node,
-                                              ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, PoseStamped),
-                                              "pose");
-        ok_pose = (rc_pose == RCL_RET_OK);
+        // Pose publisher (Best Effort)
+        {
+            rcl_publisher_options_t pub_ops = rcl_publisher_get_default_options();
+            pub_ops.qos.reliability = RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT;
+            rc_pose = rcl_publisher_init(
+                &pub_pose, &node,
+                ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, PoseStamped),
+                "pose", &pub_ops);
+            ok_pose = (rc_pose == RCL_RET_OK);
+        }
 
-        rc_batt = rclc_publisher_init_default(&pub_batt, &node,
-                                              ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, BatteryState),
-                                              "battery");
-        ok_batt = (rc_batt == RCL_RET_OK);
+        // Battery publisher (Best Effort)
+        {
+            rcl_publisher_options_t pub_ops = rcl_publisher_get_default_options();
+            pub_ops.qos.reliability = RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT;
+            rc_batt = rcl_publisher_init(
+                &pub_batt, &node,
+                ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, BatteryState),
+                "battery", &pub_ops);
+            ok_batt = (rc_batt == RCL_RET_OK);
+        }
 
         printf("Publisher initialization summary:\n");
         printf("  std_msgs/String:      %s (rc=%d)\n", ok_string ? "OK" : "FAILED", rc_string);
@@ -228,39 +256,20 @@ int main(void) {
         printf("  geometry_msgs/Pose:   %s (rc=%d)\n", ok_pose ? "OK" : "FAILED", rc_pose);
         printf("  sensor_msgs/Battery:  %s (rc=%d)\n", ok_batt ? "OK" : "FAILED", rc_batt);
 
-        // Optionally, abort if any critical publisher failed:
         if (!ok_string) {
             printf("Critical publisher (std_msgs/String) failed, aborting setup.\n");
-            rcl_node_fini(&node);
-            rclc_support_fini(&support);
-            k_sleep(K_MSEC(1000));
-            continue;
+            goto cleanup;
         }
         if (!ok_imu || !ok_gps || !ok_pose || !ok_batt) {
             printf("One or more sensor publishers failed, continuing with available publishers.\n");
         }
 
-        /* 1 kHz timer. */
+        /* Timer setup */
         const uint32_t period_ms = 1000U / PUBLISH_HZ;
-        rcl_timer_t timer;
-        if (rclc_timer_init_default(&timer, &support, RCL_MS_TO_NS(period_ms), timer_callback) != RCL_RET_OK) {
-            rcl_publisher_fini(&publisher, &node);
-            rcl_node_fini(&node);
-            rclc_support_fini(&support);
-            k_sleep(K_MSEC(1000));
-            continue;
-        }
+        RCCHECK(rclc_timer_init_default(&timer, &support, RCL_MS_TO_NS(period_ms), timer_callback));
 
-        rclc_executor_t executor;
-        if (rclc_executor_init(&executor, &support.context, 10, &allocator) != RCL_RET_OK ||
-            rclc_executor_add_timer(&executor, &timer) != RCL_RET_OK) {
-            rcl_timer_fini(&timer);
-            rcl_publisher_fini(&publisher, &node);
-            rcl_node_fini(&node);
-            rclc_support_fini(&support);
-            k_sleep(K_MSEC(1000));
-            continue;
-        }
+        RCCHECK(rclc_executor_init(&executor, &support.context, 10, &allocator));
+        RCCHECK(rclc_executor_add_timer(&executor, &timer));
 
         printf("micro‑ROS ready: publishing at %u Hz\n", PUBLISH_HZ);
 
@@ -268,11 +277,15 @@ int main(void) {
             /* run forever */
         }
 
-        /* Tear down on error and retry in 1 s. */
+    cleanup:
         printf("micro‑ROS error – restarting setup…\n");
         rclc_executor_fini(&executor);
         rcl_timer_fini(&timer);
         rcl_publisher_fini(&publisher, &node);
+        rcl_publisher_fini(&pub_imu, &node);
+        rcl_publisher_fini(&pub_gps, &node);
+        rcl_publisher_fini(&pub_pose, &node);
+        rcl_publisher_fini(&pub_batt, &node);
         rcl_node_fini(&node);
         rclc_support_fini(&support);
         k_sleep(K_MSEC(1000));

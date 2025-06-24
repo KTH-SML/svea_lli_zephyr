@@ -1,3 +1,7 @@
 &cdc_acm_uart0 {
     current-speed = <921600>;
 };
+
+&usart1 {
+    current-speed = <921600>;
+};
