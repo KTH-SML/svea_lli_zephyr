@@ -1,167 +1,150 @@
+/* Minimal, clean micro‑ROS string publisher for Zephyr.
+ * ‑ Uses the custom UART transport implemented in zephyr_transport_*.c
+ * ‑ Publishes a short diagnostic line at PUBLISH_HZ.              */
+
 #include <version.h>
 
 #if ZEPHYR_VERSION_CODE >= ZEPHYR_VERSION(3, 1, 0)
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
-#include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
 #include <zephyr/posix/time.h>
 #else
 #include <device.h>
 #include <devicetree.h>
-#include <drivers/gpio.h>
 #include <posix/time.h>
 #include <zephyr.h>
 #endif
 
-#include <rcl/error_handling.h>
-#include <rcl/rcl.h>
-#include <std_msgs/msg/string.h>
-
-#include <rclc/executor.h>
-#include <rclc/rclc.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include <microros_transports.h>
+#include <rcl/error_handling.h>
+#include <rcl/rcl.h>
+#include <rclc/executor.h>
+#include <rclc/rclc.h>
 #include <rmw_microros/rmw_microros.h>
+#include <std_msgs/msg/string.h>
 
-#define RCCHECK(fn)                                                                      \
-    {                                                                                    \
-        rcl_ret_t temp_rc = fn;                                                          \
-        if ((temp_rc != RCL_RET_OK)) {                                                   \
-            printf("Failed status on line %d: %d. Aborting.\n", __LINE__, (int)temp_rc); \
-            for (;;) {                                                                   \
-            };                                                                           \
-        }                                                                                \
+#define RCCHECK(fn)                                                  \
+    do {                                                             \
+        rcl_ret_t _rc = (fn);                                        \
+        if (_rc != RCL_RET_OK) {                                     \
+            printf("rcl error %d at line %d\n", (int)_rc, __LINE__); \
+            return;                                                  \
+        }                                                            \
+    } while (0)
+
+#define PUBLISH_HZ 1000U
+
+static rcl_publisher_t publisher;
+static std_msgs__msg__String msg;
+
+/* Ring‑buffer helper until Zephyr 3.3 provides ring_buf_size_get(). */
+static inline uint32_t ring_buf_used(const struct ring_buf *rb) {
+    return rb->size - ring_buf_space_get(rb);
+}
+
+static void timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
+    ARG_UNUSED(last_call_time);
+    static uint32_t cnt;
+    if (!timer) {
+        return;
     }
-#define RCSOFTCHECK(fn)                                                                    \
-    {                                                                                      \
-        rcl_ret_t temp_rc = fn;                                                            \
-        if ((temp_rc != RCL_RET_OK)) {                                                     \
-            printf("Failed status on line %d: %d. Continuing.\n", __LINE__, (int)temp_rc); \
-        }                                                                                  \
+
+    /* Build diagnostic string into a static buffer (msg points to it). */
+    static char str[96];
+    uint32_t uptime_ms = k_uptime_get_32();
+    extern struct ring_buf in_ringbuf;
+    uint32_t rb_used = ring_buf_used(&in_ringbuf);
+
+    int n = snprintf(str, sizeof str,
+                     "cnt=%lu | uptime=%lu ms | ring_used=%u",
+                     (unsigned long)cnt++, (unsigned long)uptime_ms, rb_used);
+    if (n < 0) {
+        return; /* encoding error */
     }
 
-rcl_publisher_t publisher;
-std_msgs__msg__String msg;
+    msg.data.data = str;
+    msg.data.size = (size_t)n;
+    msg.data.capacity = sizeof str;
 
-void timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
-    RCLC_UNUSED(last_call_time);
-    if (timer != NULL) {
-        static char str_data[] = "px4 is for simps";
-        msg.data.data = str_data;
-        msg.data.size = strlen(str_data);
-        msg.data.capacity = sizeof(str_data);
-        rcl_ret_t rc = rcl_publish(&publisher, &msg, NULL);
-        if (rc != RCL_RET_OK) {
-            printf("[timer_callback] Publish failed: %d\n", rc);
-        }
+    rcl_ret_t rc = rcl_publish(&publisher, &msg, NULL);
+    if (rc != RCL_RET_OK) {
+        printf("Publish failed: %d\n", rc);
     }
 }
 
 int main(void) {
-    while (1) {
-        rmw_uros_set_custom_transport(
-            MICRO_ROS_FRAMING_REQUIRED,
-            (void *)&default_params,
-            zephyr_transport_open,
-            zephyr_transport_close,
-            zephyr_transport_write,
-            zephyr_transport_read);
+    for (;;) {
+        /* Register custom UART transport. */
+        rmw_uros_set_custom_transport(MICRO_ROS_FRAMING_REQUIRED,
+                                      (void *)&default_params,
+                                      zephyr_transport_open,
+                                      zephyr_transport_close,
+                                      zephyr_transport_write,
+                                      zephyr_transport_read);
 
         rcl_allocator_t allocator = rcl_get_default_allocator();
         rclc_support_t support;
-        rcl_node_t node;
-        rcl_timer_t timer;
-        rclc_executor_t executor;
-        rcl_ret_t rc;
-        bool setup_ok = true;
-
-        // Try to set up micro-ROS entities
-        rc = rclc_support_init(&support, 0, NULL, &allocator);
-        if (rc != RCL_RET_OK) {
-            printf("Support init failed: %d\n", rc);
-            setup_ok = false;
-        }
-        if (setup_ok) {
-            rc = rclc_node_init_default(&node, "zephyr_string_publisher", "", &support);
-            if (rc != RCL_RET_OK) {
-                printf("Node init failed: %d\n", rc);
-                setup_ok = false;
-            }
-        }
-        if (setup_ok) {
-            rc = rclc_publisher_init_default(
-                &publisher,
-                &node,
-                ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
-                "zephyr_string_publisher");
-            if (rc != RCL_RET_OK) {
-                printf("Publisher init failed: %d\n", rc);
-                setup_ok = false;
-            }
-        }
-        if (setup_ok) {
-            const unsigned int timer_timeout = 1000;
-            rc = rclc_timer_init_default(
-                &timer,
-                &support,
-                RCL_MS_TO_NS(timer_timeout),
-                timer_callback);
-            if (rc != RCL_RET_OK) {
-                printf("Timer init failed: %d\n", rc);
-                setup_ok = false;
-            }
-        }
-        if (setup_ok) {
-            rc = rclc_executor_init(&executor, &support.context, 1, &allocator);
-            if (rc != RCL_RET_OK) {
-                printf("Executor init failed: %d\n", rc);
-                setup_ok = false;
-            }
-        }
-        if (setup_ok) {
-            rc = rclc_executor_add_timer(&executor, &timer);
-            if (rc != RCL_RET_OK) {
-                printf("Executor add timer failed: %d\n", rc);
-                setup_ok = false;
-            }
-        }
-
-        // Main publish loop: only spin executor, break if error
-        if (setup_ok) {
-            printf("micro-ROS setup complete, entering publish loop.\n");
-            while (1) {
-                rc = rclc_executor_spin_some(&executor, 100);
-                if (rc != RCL_RET_OK) {
-                    printf("Executor spin error: %d, will reset micro-ROS entities.\n", rc);
-                    break; // Exit to outer loop to reset everything
-                }
-                usleep(100000);
-            }
-        } else {
-            printf("micro-ROS setup failed, retrying in 1s...\n");
+        if (rclc_support_init(&support, 0, NULL, &allocator) != RCL_RET_OK) {
             k_sleep(K_MSEC(1000));
+            continue;
         }
 
-        // Clean up resources before retrying
-        rcl_ret_t fini_rc;
-        fini_rc = rcl_publisher_fini(&publisher, &node);
-        if (fini_rc != RCL_RET_OK)
-            printf("publisher fini failed: %d\n", fini_rc);
-        fini_rc = rcl_node_fini(&node);
-        if (fini_rc != RCL_RET_OK)
-            printf("node fini failed: %d\n", fini_rc);
-        fini_rc = rclc_executor_fini(&executor);
-        if (fini_rc != RCL_RET_OK)
-            printf("executor fini failed: %d\n", fini_rc);
-        fini_rc = rcl_timer_fini(&timer);
-        if (fini_rc != RCL_RET_OK)
-            printf("timer fini failed: %d\n", fini_rc);
-        fini_rc = rclc_support_fini(&support);
-        if (fini_rc != RCL_RET_OK)
-            printf("support fini failed: %d\n", fini_rc);
+        rcl_node_t node;
+        if (rclc_node_init_default(&node, "zephyr_string_publisher", "", &support) != RCL_RET_OK) {
+            rclc_support_fini(&support);
+            k_sleep(K_MSEC(1000));
+            continue;
+        }
 
-        printf("micro-ROS entities cleaned up, restarting setup...\n");
+        if (rclc_publisher_init_default(&publisher, &node,
+                                        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
+                                        "zephyr_string_publisher") != RCL_RET_OK) {
+            rcl_node_fini(&node);
+            rclc_support_fini(&support);
+            k_sleep(K_MSEC(1000));
+            continue;
+        }
+
+        /* 1 kHz timer. */
+        const uint32_t period_ms = 1000U / PUBLISH_HZ;
+        rcl_timer_t timer;
+        if (rclc_timer_init_default(&timer, &support, RCL_MS_TO_NS(period_ms), timer_callback) != RCL_RET_OK) {
+            rcl_publisher_fini(&publisher, &node);
+            rcl_node_fini(&node);
+            rclc_support_fini(&support);
+            k_sleep(K_MSEC(1000));
+            continue;
+        }
+
+        rclc_executor_t executor;
+        if (rclc_executor_init(&executor, &support.context, 1, &allocator) != RCL_RET_OK ||
+            rclc_executor_add_timer(&executor, &timer) != RCL_RET_OK) {
+            rcl_timer_fini(&timer);
+            rcl_publisher_fini(&publisher, &node);
+            rcl_node_fini(&node);
+            rclc_support_fini(&support);
+            k_sleep(K_MSEC(1000));
+            continue;
+        }
+
+        printf("micro‑ROS ready: publishing at %u Hz\n", PUBLISH_HZ);
+
+        while (rclc_executor_spin_some(&executor, 1) == RCL_RET_OK) {
+            /* run forever */
+        }
+
+        /* Tear down on error and retry in 1 s. */
+        printf("micro‑ROS error – restarting setup…\n");
+        rclc_executor_fini(&executor);
+        rcl_timer_fini(&timer);
+        rcl_publisher_fini(&publisher, &node);
+        rcl_node_fini(&node);
+        rclc_support_fini(&support);
         k_sleep(K_MSEC(1000));
     }
     return 0;

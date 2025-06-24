@@ -1,0 +1,3 @@
+&usb_serial {
+    current-speed = <921600>;
+};
