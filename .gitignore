@@ -1,1 +1,7 @@
-ros-host/microros_ws/build/.built_by
+.venv/
+external
+**/build*/
+.vscode/compile_commands.json
+./modules
+
+./external

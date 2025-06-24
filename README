@@ -2,6 +2,8 @@
 
 See the official tutorial: <https://micro.ros.org/docs/tutorials/core/first_application_linux/>
 
+---
+
 ## 1. Start the Docker Container
 ```sh
 docker run -it --net=host -v /dev:/dev --privileged ros:jazzy
@@ -51,6 +53,8 @@ source /opt/ros/$ROS_DISTRO/setup.bash
 source install/local_setup.bash
 ```
 
+> **Note:** Replace `<container_name>` with the actual name or ID of your running container.
+
 ## 9. Test micro-ROS Topics
 ```sh
 ros2 topic list
@@ -58,5 +62,19 @@ ros2 topic list
 
 ---
 
-Replace `<container_name>` with the actual name or ID of your running container.
+### Example: Configuring the Communication Port
 
+To change the UART node for your board (e.g., for ESP32-C3 SuperMini):
+
+1. Navigate to:
+   `/modules/lib/micro_ros_zephyr_module/modules/libmicroros/microros_transports/serial`
+2. Edit the file and change:
+   ```c
+   #define UART_NODE DT_NODELABEL(usart1)
+   ```
+   to, for example:
+   ```c
+   #define UART_NODE DT_NODELABEL(usb_serial)
+   ```
+   for ESP32-C3 SuperMini, as seen in:
+   `/external/zephyr/boards/others/esp32c3_supermini/esp32c3_supermini.dts`

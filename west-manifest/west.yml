@@ -12,7 +12,7 @@ manifest:
       clone-depth: 1
       import:
         path-prefix: external
-
+    # 2025 Jun 24
     - name: micro_ros_zephyr_module
       remote: microros
       revision: jazzy
