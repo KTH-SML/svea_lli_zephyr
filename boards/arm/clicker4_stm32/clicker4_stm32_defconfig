@@ -1,0 +1,32 @@
+# Enable MPU
+CONFIG_ARM_MPU=y
+
+# Enable GPIO
+CONFIG_GPIO=y
+
+# Enable Clocks
+CONFIG_CLOCK_CONTROL=y
+
+# Enable pin controller
+CONFIG_PINCTRL=y
+
+CONFIG_USB_DEVICE_INITIALIZE_AT_BOOT=y
+
+# Enable USB device stack and CDC ACM by default
+CONFIG_USB_CDC_ACM=y
+CONFIG_USB_DEVICE_STACK=y
+CONFIG_USB_DEVICE_INITIALIZE_AT_BOOT=y
+CONFIG_USB_DEVICE_PRODUCT="SVEA-LLI"
+CONFIG_USB_DEVICE_VID=0x0000
+CONFIG_USB_DEVICE_PID=0x0001
+
+# Enable serial and UART interrupt-driven support
+CONFIG_SERIAL=y
+CONFIG_UART_INTERRUPT_DRIVEN=y
+
+# Set the console to USB CDC ACM by default
+CONFIG_CONSOLE=y
+CONFIG_UART_CONSOLE=y
+
+# (Optional) Set default main stack size if needed
+CONFIG_MAIN_STACK_SIZE=4096

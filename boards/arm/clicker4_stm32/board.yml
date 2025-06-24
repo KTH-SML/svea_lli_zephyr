@@ -1,0 +1,5 @@
+board:
+  name: clicker4_stm32
+  vendor: mikroe
+  socs:
+    - name: stm32f767xx
