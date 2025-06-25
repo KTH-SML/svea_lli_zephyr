@@ -78,3 +78,10 @@ To change the UART node for your board (e.g., for ESP32-C3 SuperMini):
    ```
    for ESP32-C3 SuperMini, as seen in:
    `/external/zephyr/boards/others/esp32c3_supermini/esp32c3_supermini.dts`
+
+### Notes
+
+- Make venv (i use zephyr ide extension vscode)
+- Activate interpreter to venv in vscode
+- pip install colcon-common-extensions
+- pip install platformio
