@@ -6,12 +6,22 @@
 / {
 	model = "MikroElektronika Clicker 4 for STM32";
 	compatible = "mikroe,clicker4-stm32", "st,stm32f767";
-
+    aliases {
+        led0 = &led1;
+        led1 = &led2;
+        led2 = &led3;
+        led3 = &led4;
+        led4 = &led5;
+        led5 = &led6;
+        led6 = &led7;
+        led7 = &led8;
+    };
 	chosen {
 		zephyr,sram = &sram0;
 		zephyr,flash = &flash0;
 		zephyr,code-partition = &slot0_partition;
-		zephyr,console = &cdc_acm_uart0;
+		// zephyr,console = &cdc_acm_uart0; for usb port
+		zephyr,console = &usart1; // for MD2, connect logic analyzer
 	};
 
 	leds {
