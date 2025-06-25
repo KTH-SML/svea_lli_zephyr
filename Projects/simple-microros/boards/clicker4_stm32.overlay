@@ -1,7 +1,29 @@
-&cdc_acm_uart0 {
-    current-speed = <921600>;
+&cdc_acm_uart0 { // micro ros publishing port
+    current-speed = <115200>;
 };
 
-&usart1 {
-    current-speed = <921600>;
+&usart1 { // debug uart
+    current-speed = <115200>;
+};
+
+&i2c2 {
+    status = "okay"; // Enable I2C2
+    ism330dlc: ism330dlc@6b {
+        status = "okay";
+        compatible = "st,ism330dlc";
+        drdy-gpios = <&mb1 15 GPIO_ACTIVE_HIGH>, 
+                     <&mb1  1 GPIO_ACTIVE_HIGH>;
+        accel-odr   = <6>;      // 416Hz 
+        gyro-odr    = <6>;      // 416Hz
+        accel-range = <2>;      // 2g
+        gyro-range  = <125>;    // 125 dps
+        reg = <0x6b>;
+    };
+};
+
+/ {
+    chosen {
+        zephyr,console = &usart1;
+        zephyr,shell-uart = &usart1;
+    };
 };

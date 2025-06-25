@@ -3,6 +3,10 @@
     "C_Cpp.default.compileCommands": "${workspaceFolder}/.vscode/compile_commands.json",
     "cmake.configureOnOpen": false,
     "files.associations": {
-        "future": "c"
+        "future": "c",
+        "stdio.h": "c",
+        "string.h": "c",
+        "imu.h": "c",
+        "stdlib.h": "c"
     }
 }
