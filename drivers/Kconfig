@@ -1,0 +1,8 @@
+menu "SVEA Drivers"
+
+# IMU
+rsource "st_ism330dlc/Kconfig"
+
+
+
+endmenu

@@ -1,0 +1,1 @@
+add_subdirectory(st_ism330dlc)
