@@ -7,17 +7,13 @@
 };
 
 &i2c2 {
-    status = "okay"; // Enable I2C2
-    ism330dlc: ism330dlc@6b {
+    status = "okay";
+    bmi160: bmi160@69 {
+        compatible = "bosch,bmi160";
+        reg = <0x69>;
+        int-gpios = <&gpioa 4 GPIO_ACTIVE_HIGH>;
+        label = "BMI160";
         status = "okay";
-        compatible = "st,ism330dlc";
-        drdy-gpios = <&mb1 15 GPIO_ACTIVE_HIGH>, 
-                     <&mb1  1 GPIO_ACTIVE_HIGH>;
-        accel-odr   = <6>;      // 416Hz 
-        gyro-odr    = <6>;      // 416Hz
-        accel-range = <2>;      // 2g
-        gyro-range  = <125>;    // 125 dps
-        reg = <0x6b>;
     };
 };
 

@@ -3,6 +3,7 @@
 #include <rcl/rcl.h>
 #include <rclc/executor.h>
 #include <sensor_msgs/msg/imu.h>
+#include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
 
 #define IMU_THREAD_STACK_SIZE 2048
@@ -10,6 +11,7 @@
 #define IMU_PUBLISHER_NAME "imu_publisher"
 #define IMU_PUBLISHER_TOPIC "imu/data_raw"
 #define IMU_PUBLISH_HZ 1000U
+#define BMI160_NODE DT_NODELABEL(bmi160)
 
 extern sensor_msgs__msg__Imu imu_msg;
 extern struct k_thread imu_thread_data;
