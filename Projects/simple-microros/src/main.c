@@ -13,7 +13,7 @@
 
 #include "threads/diag/diag_publisher.h"
 #include "threads/imu/imu_publisher.h"
-#include "threads/servo/servo_sweeper.h"
+#include "threads/steering-servo/servo_subscriber.h"
 #include <microros_transports.h>
 #include <rcl/error_handling.h>
 #include <rcl/rcl.h>
@@ -65,6 +65,8 @@ int main(void) {
             k_sleep(K_MSEC(1000));
             continue;
         }
+        // Initialize executor BEFORE starting IMU or servo
+        rclc_executor_init(&executor, &support.context, 3, &allocator);
 
         // Start diagnostic publisher thread
         diag_publisher_init(&node);
@@ -72,15 +74,14 @@ int main(void) {
         // Start IMU publisher thread
         imu_publisher_init(&node, &executor);
 
-        // Start the servo sweeper thread
-        k_thread_create(&servo_sweeper_thread_data, servo_sweeper_stack, 1024,
-                        servo_sweeper_thread, NULL, NULL, NULL,
-                        5, 0, K_NO_WAIT);
+        // Start servo subscriber
+        steering_servo_subscriber_init(&node, &executor);
 
         printf("micro‑ROS ready\n");
 
         while (1) {
-            k_sleep(K_MSEC(1000));
+            rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10));
+            k_sleep(K_MSEC(5));
         }
 
     cleanup:

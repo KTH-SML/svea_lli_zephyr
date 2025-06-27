@@ -45,11 +45,11 @@
 
 /* 3. Servo driven by TIM14_CH1 */
  / {
-    servo: servo {
+    steeringservo: servo {
         compatible = "pwm-servo";
         pwms = <&pwm14 1 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
-        min-pulse = <PWM_USEC(700)>;
-        max-pulse = <PWM_USEC(2300)>;
+        min-pulse = <PWM_USEC(1000)>;
+        max-pulse = <PWM_USEC(2100)>;
     };
 };
 

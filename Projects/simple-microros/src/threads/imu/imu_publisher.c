@@ -90,7 +90,7 @@ void imu_publisher_init(rcl_node_t *node, rclc_executor_t *executor) {
                     imu_thread, NULL, NULL, NULL,
                     IMU_THREAD_PRIORITY, 0, K_NO_WAIT);
     printf("IMU thread started\n");
-    
+
     return;
 
 cleanup:
