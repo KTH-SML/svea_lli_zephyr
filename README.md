@@ -29,7 +29,7 @@ rosdep install --from-paths src --ignore-src -y
 
 ## 5. Install pip (if needed)
 ```sh
-sudo apt-get install python3-pip
+sudo apt-get install python3-pip -y
 ```
 
 ## 6. Build micro-ROS Tools and Source Them
@@ -49,7 +49,8 @@ ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyACM0 -b 921600
 ## 8. (Optional) Enter the Container from Another Terminal
 ```sh
 docker exec -it <container_name> bash
-source /opt/ros/$ROS_DISTRO/setup.bash
+source /opt/ros/jazzy/setup.bash
+cd microros_ws
 source install/local_setup.bash
 ```
 
