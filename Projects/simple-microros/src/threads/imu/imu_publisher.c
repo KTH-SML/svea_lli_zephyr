@@ -38,7 +38,7 @@ static const struct device *imu_dev = NULL;
 void imu_thread(void *arg1, void *arg2, void *arg3) {
     printk("IMU thread: entered\n");
 
-    imu_dev = DEVICE_DT_GET_ONE(st_ism330dlc);
+    imu_dev = DEVICE_DT_GET(BMI160_NODE);
     if (!device_is_ready(imu_dev)) {
         printk("IMU device not ready!\n");
         while (1) {
@@ -90,7 +90,7 @@ void imu_publisher_init(rcl_node_t *node, rclc_executor_t *executor) {
                     imu_thread, NULL, NULL, NULL,
                     IMU_THREAD_PRIORITY, 0, K_NO_WAIT);
     printf("IMU thread started\n");
-    
+
     return;
 
 cleanup:

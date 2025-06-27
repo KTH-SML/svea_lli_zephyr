@@ -4,5 +4,4 @@ menu "SVEA Drivers"
 rsource "st_ism330dlc/Kconfig"
 
 
-
 endmenu
