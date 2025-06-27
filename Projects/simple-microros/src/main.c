@@ -13,6 +13,7 @@
 
 #include "threads/diag/diag_publisher.h"
 #include "threads/imu/imu_publisher.h"
+#include "threads/servo/servo_sweeper.h"
 #include <microros_transports.h>
 #include <rcl/error_handling.h>
 #include <rcl/rcl.h>
@@ -70,6 +71,11 @@ int main(void) {
 
         // Start IMU publisher thread
         imu_publisher_init(&node, &executor);
+
+        // Start the servo sweeper thread
+        k_thread_create(&servo_sweeper_thread_data, servo_sweeper_stack, 1024,
+                        servo_sweeper_thread, NULL, NULL, NULL,
+                        5, 0, K_NO_WAIT);
 
         printf("micro‑ROS ready\n");
 

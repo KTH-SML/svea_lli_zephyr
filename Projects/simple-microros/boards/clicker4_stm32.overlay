@@ -8,7 +8,7 @@
 
 &i2c2 {
     status = "okay"; // Enable I2C2
-    ism330dlc: ism330dlc@6b {
+    ism330dlc: ism330dlc@6b { // Plugged in on 1
         status = "okay";
         compatible = "st,ism330dlc";
         drdy-gpios = <&mb1 15 GPIO_ACTIVE_HIGH>, 
@@ -21,9 +21,35 @@
     };
 };
 
+
 / {
     chosen {
         zephyr,console = &usart1;
         zephyr,shell-uart = &usart1;
     };
 };
+
+&timers14 {
+    status = "okay";
+    /* Divide 108 MHz timer clock by 1080 → 100 kHz:
+       20 ms → 2000 cycles fits in 16-bit ARR            */
+    st,prescaler = <1079>;          /* PSC register value */
+    
+    pwm14: pwm {
+        compatible = "st,stm32-pwm";
+        status = "okay";
+        pinctrl-0 = <&tim14_ch1_pf9>;
+        pinctrl-names = "default";
+    };
+};
+
+/* 3. Servo driven by TIM14_CH1 */
+ / {
+    servo: servo {
+        compatible = "pwm-servo";
+        pwms = <&pwm14 1 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+        min-pulse = <PWM_USEC(700)>;
+        max-pulse = <PWM_USEC(2300)>;
+    };
+};
+

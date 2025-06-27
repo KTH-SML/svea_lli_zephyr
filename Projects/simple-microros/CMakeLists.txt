@@ -18,6 +18,7 @@ target_sources(app PRIVATE
     src/main.c
 )
 
+# Includes all the .c in threads directory recursively
 file(GLOB THREADS_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/threads/**/*.c
 )

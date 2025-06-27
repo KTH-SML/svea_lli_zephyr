@@ -2,7 +2,6 @@
 #include <st/f7/stm32f767Xi.dtsi>
 #include <st/f7/stm32f767b(g-i)tx-pinctrl.dtsi>
 #include <zephyr/dt-bindings/input/input-event-codes.h>
-
 / {
 	model = "MikroElektronika Clicker 4 for STM32";
 	compatible = "mikroe,clicker4-stm32", "st,stm32f767";
