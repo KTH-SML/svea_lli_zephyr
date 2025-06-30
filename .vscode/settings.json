@@ -8,6 +8,7 @@
         "string.h": "c",
         "imu.h": "c",
         "stdlib.h": "c",
-        "pwm.h": "c"
+        "pwm.h": "c",
+        "regex": "c"
     }
 }

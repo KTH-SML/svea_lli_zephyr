@@ -1,0 +1,80 @@
+#include <zephyr/dt-bindings/pwm/pwm.h>
+
+&usart1 {
+    current-speed = <115200>;
+};
+
+&cdc_acm_uart0 {
+    current-speed = <115200>;
+};
+
+&i2c2 {
+    status = "okay";
+    ism330dlc: ism330dlc@6b {
+        status = "okay";
+        compatible = "st,ism330dlc";
+        drdy-gpios = <&mb1 15 GPIO_ACTIVE_HIGH>, 
+                     <&mb1  1 GPIO_ACTIVE_HIGH>;
+        accel-odr   = <6>;
+        gyro-odr    = <6>;
+        accel-range = <2>;
+        gyro-range  = <125>;
+        reg = <0x6b>;
+    };
+};
+
+/ {
+    chosen {
+        zephyr,console = &usart1;
+        zephyr,shell-uart = &usart1;
+    };
+
+};
+/* TIM2 on PA0..PA3 as four-channel capture input */
+&pinctrl {
+    tim2_ch1_pa0: tim2_ch1_pa0 {
+        pinmux = <STM32_PINMUX('A', 0, AF1)>;
+    };
+};
+
+&timers2 {
+    status = "okay";
+    pwm2: pwm {
+        status = "okay";
+        pinctrl-0 = <&tim2_ch4_pa3>;
+        pinctrl-names = "default";
+    };
+};
+
+&pinctrl {
+    tim1_ch2_pe11: tim1_ch2_pe11 {
+        pinmux = <STM32_PINMUX('E', 10, AF1)>;
+    };
+};
+
+&timers1 {
+    status = "okay";
+    st,prescaler = <1079>;
+
+    pwm1: pwm {
+        compatible = "st,stm32-pwm";
+        status = "okay";
+        pinctrl-0 = <&tim1_ch2_pe11>;
+        pinctrl-names = "default";
+    };
+};
+
+&pinctrl {
+    tim5_ch1_pa4: tim5_ch1_pa4 {
+        pinmux = <STM32_PINMUX('A', 4, AF2)>;
+    };
+};
+
+&timers5 {
+    status = "okay";
+    pwm5: pwm {
+        status = "okay";
+        pinctrl-0 = <&tim5_ch1_pa0>;
+        pinctrl-names = "default";
+    };
+};
