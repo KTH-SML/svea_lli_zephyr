@@ -28,12 +28,21 @@
         zephyr,shell-uart = &usart1;
     };
 };
+#include <zephyr/dt-bindings/pwm/pwm.h>
 
+&pinctrl {
+    tim1_ch1_pe9: tim1_ch1_pe9 { pinmux = <STM32_PINMUX('E', 9, AF1)>; };
+    tim2_ch3_pb10: tim2_ch3_pb10 { pinmux = <STM32_PINMUX('B', 10, AF1)>; };
+    tim2_ch4_pb11: tim2_ch4_pb11 { pinmux = <STM32_PINMUX('B', 11, AF1)>; };
+    tim12_ch1_ph6: tim12_ch1_ph6 { pinmux = <STM32_PINMUX('H', 6, AF9)>; };
+    tim3_ch2_pa7: tim3_ch2_pa7 { pinmux = <STM32_PINMUX('A', 7, AF2)>; };
+    tim4_ch3_pb8: tim4_ch3_pb8 { pinmux = <STM32_PINMUX('B', 8, AF2)>; };
+    tim4_ch4_pb9: tim4_ch4_pb9 { pinmux = <STM32_PINMUX('B', 9, AF2)>; };
+};
 
-// servo pin on p1
 &timers1 {
     status = "okay";
-    st,prescaler = <1079>; // For servo output
+    st,prescaler = <1079>;
     pwm1: pwm1 {
         compatible = "st,stm32-pwm";
         status = "okay";
@@ -45,28 +54,78 @@
 
 &timers2 {
     status = "okay";
-    st,prescaler = <107>; // For capture
-    pwm_in: pwm_in {
+    st,prescaler = <1079>;
+    pwm2: pwm2 {
         compatible = "st,stm32-pwm";
         status = "okay";
         #pwm-cells = <3>;
-        pinctrl-0 = <&tim2_ch2_pa1>;
+        pinctrl-0 = <&tim2_ch3_pb10 &tim2_ch4_pb11>;
         pinctrl-names = "default";
     };
 };
 
-&pinctrl {
-    tim1_ch1_pe9: tim1_ch1_pe9 { pinmux = <STM32_PINMUX('E', 9, AF1)>; };
-    tim2_ch2_pa1: tim2_ch2_pa1 { pinmux = <STM32_PINMUX('A', 1, AF1)>; };
+&timers12 {
+    status = "okay";
+    st,prescaler = <1079>;
+    pwm12: pwm12 {
+        compatible = "st,stm32-pwm";
+        status = "okay";
+        #pwm-cells = <3>;
+        pinctrl-0 = <&tim12_ch1_ph6>;
+        pinctrl-names = "default";
+    };
 };
 
+&timers3 {
+    status = "okay";
+    st,prescaler = <107>;
+    pwm_in: pwm_in {
+        compatible = "st,stm32-pwm";
+        status = "okay";
+        #pwm-cells = <3>;
+        pinctrl-0 = <&tim3_ch2_pa7>;
+        pinctrl-names = "default";
+    };
+};
 
+&timers4 {
+    status = "okay";
+    st,prescaler = <1079>;
+    pwm4: pwm4 {
+        compatible = "st,stm32-pwm";
+        status = "okay";
+        #pwm-cells = <3>;
+        pinctrl-0 = <&tim4_ch3_pb8 &tim4_ch4_pb9>;
+        pinctrl-names = "default";
+    };
+};
 
-/* Servo driven by TIM1_CH1 (PE9, P1 header) */
- / {
+// Servo nodes (for PWM output)
+/ {
     steeringservo: servo {
         compatible = "pwm-servo";
         pwms = <&pwm1 1 PWM_MSEC(10) PWM_POLARITY_NORMAL>;
+        min-pulse = <PWM_USEC(1000)>;
+        max-pulse = <PWM_USEC(2100)>;
+    };
+
+    diffservo: diff_servo {
+        compatible = "pwm-servo";
+        pwms = <&pwm4 3 PWM_MSEC(10) PWM_POLARITY_NORMAL>; // PB8, TIM4_CH3
+        min-pulse = <PWM_USEC(1000)>;
+        max-pulse = <PWM_USEC(2100)>;
+    };
+
+    gearservo: gear_servo {
+        compatible = "pwm-servo";
+        pwms = <&pwm2 3 PWM_MSEC(10) PWM_POLARITY_NORMAL>; // PB10, TIM2_CH3
+        min-pulse = <PWM_USEC(1000)>;
+        max-pulse = <PWM_USEC(2100)>;
+    };
+
+    throttleesc: throttle_esc {
+        compatible = "pwm-servo";
+        pwms = <&pwm12 1 PWM_MSEC(10) PWM_POLARITY_NORMAL>; // PH6, TIM12_CH1
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };

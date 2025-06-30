@@ -1,11 +1,9 @@
 #include "servo_subscriber.h"
 #include "../common/common.h"
 #include "../pwm_actuator/pwm_actuator.h"
-#include <std_msgs/msg/float32.h>
 #include <stdio.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/pwm.h>
-BUILD_ASSERT(DT_NODE_HAS_COMPAT(DT_NODELABEL(steeringservo), pwm_servo), "servo DT node wrong");
 
 static rcl_subscription_t sub;
 static SERVO_MSGTYPE msg;
@@ -28,7 +26,6 @@ static void ros_cb(const void *msg_in) {
     float norm = m->data;
 
     if (norm == prevNorm) {
-        // printf("servo_subscriber: Norm unchanged: %f\n", norm);
         return;
     }
     prevNorm = norm;
@@ -39,7 +36,7 @@ static void ros_cb(const void *msg_in) {
 
 void steering_servo_subscriber_init(rcl_node_t *node, rclc_executor_t *exec) {
     printf("servo_subscriber: Initializing steering servo subscriber...\n");
-    if (!pwm_is_ready_dt(&steering_pwm)) { // Use the shared struct
+    if (!pwm_is_ready_dt(&steering_pwm)) {
         printf("servo_subscriber: PWM device not ready\n");
         return;
     }

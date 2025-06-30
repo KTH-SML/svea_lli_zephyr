@@ -15,7 +15,7 @@ struct k_thread steering_pwm_thread_data;
 
 #define PWM_IN_NODE DT_NODELABEL(pwm_in)
 static const struct device *const pwm_dev = DEVICE_DT_GET(PWM_IN_NODE);
-#define PWM_CHANNEL 2 // or whatever channel your input is on
+#define PWM_CHANNEL 2 // TIM3_CH2 is channel 2
 
 static rcl_publisher_t steering_pwm_pub;
 static std_msgs__msg__Float32 norm_msg;
@@ -34,24 +34,26 @@ static void pwm_cb(const struct device *dev, uint32_t chan,
     pwm_cycles_to_usec(dev, chan, pul_cyc, &pulse);
     int32_t duty = (period) ? (pulse * 1000) / period : -1;
 
-    if (duty != last_duty && duty >= REMOTE_PWM_MIN && duty <= REMOTE_PWM_MAX) {
-        last_duty = duty;
-        float norm = 2.0f * (duty - REMOTE_PWM_MIN) / (REMOTE_PWM_MAX - REMOTE_PWM_MIN) - 1.0f;
-        remote_steering_norm_value = norm;
+    if (duty >= REMOTE_PWM_MIN && duty <= REMOTE_PWM_MAX) {
+        if (last_duty == -1 || abs(duty - last_duty) > 1) {
+            last_duty = duty;
+            float norm = 2.0f * (duty - REMOTE_PWM_MIN) / (REMOTE_PWM_MAX - REMOTE_PWM_MIN) - 1.0f;
+            remote_steering_norm_value = norm;
 
-        // Always actuate if override is active, regardless of ROS
-        if (override_mode) {
-            set_pwm_norm(&steering_pwm, norm, steering_pwm_min_ns, steering_pwm_max_ns);
-        }
+            // Always actuate if override is active, regardless of ROS
+            if (override_mode) {
+                set_pwm_norm(&steering_pwm, norm, steering_pwm_min_ns, steering_pwm_max_ns);
+            }
 
-        // Try to publish, but failure does not affect override
-        norm_msg.data = norm;
-        if (steering_pwm_pub.impl) { // Only publish if publisher is initialized
-            rcl_ret_t rc = rcl_publish(&steering_pwm_pub, &norm_msg, NULL);
-            if (rc != RCL_RET_OK) {
-                printf("PWM publish error: %d\n", rc);
-            } else {
-                printf("PWM callback: published norm %.2f\n", norm);
+            // Try to publish, but failure does not affect override
+            norm_msg.data = norm;
+            if (steering_pwm_pub.impl) {
+                rcl_ret_t rc = rcl_publish(&steering_pwm_pub, &norm_msg, NULL);
+                if (rc != RCL_RET_OK) {
+                    printf("PWM publish error: %d\n", rc);
+                } else {
+                    printf("PWM callback: published norm %.2f\n", norm);
+                }
             }
         }
     }
