@@ -13,7 +13,9 @@
 
 #include "threads/diag/diag_publisher.h"
 #include "threads/imu/imu_publisher.h"
+#include "threads/steering-remote/pwm_publisher.h"
 #include "threads/steering-servo/servo_subscriber.h"
+
 #include <microros_transports.h>
 #include <rcl/error_handling.h>
 #include <rcl/rcl.h>
@@ -76,6 +78,8 @@ int main(void) {
 
         // Start servo subscriber
         steering_servo_subscriber_init(&node, &executor);
+
+        steering_pwm_publisher_init(&node);
 
         printf("micro‑ROS ready\n");
 

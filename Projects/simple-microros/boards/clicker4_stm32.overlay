@@ -33,15 +33,34 @@
 // servo pin on p1
 &timers1 {
     status = "okay";
-    st,prescaler = <1079>;          /* PSC register value */
-
-    pwm1: pwm {
+    st,prescaler = <1079>; // For servo output
+    pwm1: pwm1 {
         compatible = "st,stm32-pwm";
         status = "okay";
+        #pwm-cells = <3>;
         pinctrl-0 = <&tim1_ch1_pe9>;
         pinctrl-names = "default";
     };
 };
+
+&timers2 {
+    status = "okay";
+    st,prescaler = <107>; // For capture
+    pwm_in: pwm_in {
+        compatible = "st,stm32-pwm";
+        status = "okay";
+        #pwm-cells = <3>;
+        pinctrl-0 = <&tim2_ch2_pa1>;
+        pinctrl-names = "default";
+    };
+};
+
+&pinctrl {
+    tim1_ch1_pe9: tim1_ch1_pe9 { pinmux = <STM32_PINMUX('E', 9, AF1)>; };
+    tim2_ch2_pa1: tim2_ch2_pa1 { pinmux = <STM32_PINMUX('A', 1, AF1)>; };
+};
+
+
 
 /* Servo driven by TIM1_CH1 (PE9, P1 header) */
  / {
@@ -52,4 +71,3 @@
         max-pulse = <PWM_USEC(2100)>;
     };
 };
-
