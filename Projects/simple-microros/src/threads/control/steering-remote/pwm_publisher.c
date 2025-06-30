@@ -1,32 +1,24 @@
 #include "pwm_publisher.h"
-#include <stdio.h>
-#include <string.h>
-#include <zephyr/device.h>
-#include <zephyr/drivers/pwm.h>
 #include <zephyr/kernel.h>
-#include <zephyr/sys/printk.h>
 
-#ifndef RCCHECK
-#define RCCHECK(fn)                                                  \
-    do {                                                             \
-        rcl_ret_t _rc = (fn);                                        \
-        if (_rc != RCL_RET_OK) {                                     \
-            printf("rcl error %d at line %d\n", (int)_rc, __LINE__); \
-            goto cleanup;                                            \
-        }                                                            \
-    } while (0)
-#endif
-
+// Define the thread stack and thread data
 K_THREAD_STACK_DEFINE(steering_pwm_stack, STEERING_PWM_THREAD_STACK_SIZE);
 struct k_thread steering_pwm_thread_data;
 
+#include "../common/common.h"
+#include "../pwm_actuator/pwm_actuator.h"
+#include <std_msgs/msg/float32.h>
+#include <stdio.h>
+#include <zephyr/device.h>
+#include <zephyr/drivers/pwm.h>
+#include <zephyr/kernel.h>
+
+#define PWM_IN_NODE DT_NODELABEL(pwm_in)
+static const struct device *const pwm_dev = DEVICE_DT_GET(PWM_IN_NODE);
+#define PWM_CHANNEL 2 // or whatever channel your input is on
+
 static rcl_publisher_t steering_pwm_pub;
-static std_msgs__msg__Int32 duty_msg;
-
-#define PWM_NODE DT_NODELABEL(pwm_in)
-#define PWM_CHANNEL 2
-
-static const struct device *const pwm_dev = DEVICE_DT_GET(PWM_NODE);
+static std_msgs__msg__Float32 norm_msg;
 
 static void pwm_cb(const struct device *dev, uint32_t chan,
                    uint32_t per_cyc, uint32_t pul_cyc,
@@ -42,15 +34,25 @@ static void pwm_cb(const struct device *dev, uint32_t chan,
     pwm_cycles_to_usec(dev, chan, pul_cyc, &pulse);
     int32_t duty = (period) ? (pulse * 1000) / period : -1;
 
-    if (duty != last_duty && duty >= 100 && duty <= 200) {
+    if (duty != last_duty && duty >= REMOTE_PWM_MIN && duty <= REMOTE_PWM_MAX) {
         last_duty = duty;
-        printf("PWM callback: duty changed and in range: %d, publishing to ROS\n", duty);
-        duty_msg.data = duty;
-        rcl_ret_t rc = rcl_publish(&steering_pwm_pub, &duty_msg, NULL);
-        if (rc != RCL_RET_OK) {
-            printf("PWM publish error: %d\n", rc);
-        } else {
-            printf("PWM callback: published duty %d\n", duty);
+        float norm = 2.0f * (duty - REMOTE_PWM_MIN) / (REMOTE_PWM_MAX - REMOTE_PWM_MIN) - 1.0f;
+        remote_steering_norm_value = norm;
+
+        // Always actuate if override is active, regardless of ROS
+        if (override_mode) {
+            set_pwm_norm(&steering_pwm, norm, steering_pwm_min_ns, steering_pwm_max_ns);
+        }
+
+        // Try to publish, but failure does not affect override
+        norm_msg.data = norm;
+        if (steering_pwm_pub.impl) { // Only publish if publisher is initialized
+            rcl_ret_t rc = rcl_publish(&steering_pwm_pub, &norm_msg, NULL);
+            if (rc != RCL_RET_OK) {
+                printf("PWM publish error: %d\n", rc);
+            } else {
+                printf("PWM callback: published norm %.2f\n", norm);
+            }
         }
     }
 }
@@ -94,7 +96,7 @@ void steering_pwm_publisher_init(rcl_node_t *node) {
     printf("Initializing steering PWM publisher...\n");
     rcl_ret_t rc = rclc_publisher_init_best_effort(
         &steering_pwm_pub, node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32), // Change to Float32
         STEERING_PWM_TOPIC);
     if (rc != RCL_RET_OK) {
         printf("PWM publisher init failed: %d\n", rc);

@@ -11,10 +11,10 @@
 #include <zephyr.h>
 #endif
 
-#include "threads/diag/diag_publisher.h"
-#include "threads/imu/imu_publisher.h"
-#include "threads/steering-remote/pwm_publisher.h"
-#include "threads/steering-servo/servo_subscriber.h"
+#include "threads/control/steering-remote/pwm_publisher.h"
+#include "threads/control/steering-servo/servo_subscriber.h"
+#include "threads/sensor/imu/imu_publisher.h"
+#include "threads/util/diag/diag_publisher.h"
 
 #include <microros_transports.h>
 #include <rcl/error_handling.h>
@@ -85,7 +85,7 @@ int main(void) {
 
         while (1) {
             rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10));
-            k_sleep(K_MSEC(5));
+            k_sleep(K_MSEC(1));
         }
 
     cleanup:

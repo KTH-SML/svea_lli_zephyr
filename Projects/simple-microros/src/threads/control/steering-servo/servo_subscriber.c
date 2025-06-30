@@ -1,20 +1,29 @@
 #include "servo_subscriber.h"
+#include "../common/common.h"
+#include "../pwm_actuator/pwm_actuator.h"
 #include <std_msgs/msg/float32.h>
 #include <stdio.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/pwm.h>
-BUILD_ASSERT(DT_NODE_HAS_COMPAT(SERVO_NODE, pwm_servo), "servo DT node wrong");
-
-static const struct pwm_dt_spec pwm = PWM_DT_SPEC_GET(SERVO_NODE);
-static const uint32_t min_ns = DT_PROP(SERVO_NODE, min_pulse);
-static const uint32_t max_ns = DT_PROP(SERVO_NODE, max_pulse);
+BUILD_ASSERT(DT_NODE_HAS_COMPAT(DT_NODELABEL(steeringservo), pwm_servo), "servo DT node wrong");
 
 static rcl_subscription_t sub;
 static SERVO_MSGTYPE msg;
 
 float prevNorm = 0.0f;
 
+// --- Actuation function ---
+static void steering_servo_set_norm(float norm) {
+    set_pwm_norm(&steering_pwm, norm, steering_pwm_min_ns, steering_pwm_max_ns);
+}
+
+// --- ROS callback ---
 static void ros_cb(const void *msg_in) {
+    if (override_mode == true) {
+        printf("servo_subscriber: Override mode active, ignoring incoming message.\n");
+        return;
+    }
+
     const SERVO_MSGTYPE *m = msg_in;
     float norm = m->data;
 
@@ -24,28 +33,13 @@ static void ros_cb(const void *msg_in) {
     }
     prevNorm = norm;
     printf("servo_subscriber: Received updated msg: %f\n", norm);
-    if (norm > 1.0f) {
-        norm = 1.0f;
-        printf("servo_subscriber: Clamped norm to 1.0\n");
-    }
-    if (norm < -1.0f) {
-        norm = -1.0f;
-        printf("servo_subscriber: Clamped norm to -1.0\n");
-    }
-    uint32_t pulse = (uint32_t)((norm + 1.f) * 0.5f * (max_ns - min_ns) + min_ns);
-    printf("servo_subscriber: Calculated pulse: %u ns (min: %u, max: %u)\n", pulse, min_ns, max_ns);
 
-    int ret = pwm_set_pulse_dt(&pwm, pulse);
-    if (ret) {
-        printf("servo_subscriber: PWM set failed: %d\n", ret);
-    } else {
-        printf("servo_subscriber: PWM set OK\n");
-    }
+    steering_servo_set_norm(norm);
 }
 
 void steering_servo_subscriber_init(rcl_node_t *node, rclc_executor_t *exec) {
     printf("servo_subscriber: Initializing steering servo subscriber...\n");
-    if (!pwm_is_ready_dt(&pwm)) {
+    if (!pwm_is_ready_dt(&steering_pwm)) { // Use the shared struct
         printf("servo_subscriber: PWM device not ready\n");
         return;
     }

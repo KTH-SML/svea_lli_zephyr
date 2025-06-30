@@ -66,7 +66,7 @@
  / {
     steeringservo: servo {
         compatible = "pwm-servo";
-        pwms = <&pwm1 1 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+        pwms = <&pwm1 1 PWM_MSEC(10) PWM_POLARITY_NORMAL>;
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };

@@ -6,7 +6,7 @@
 #include <zephyr/kernel.h>
 
 #define IMU_THREAD_STACK_SIZE 2048
-#define IMU_THREAD_PRIORITY 3
+#define IMU_THREAD_PRIORITY 5
 #define IMU_PUBLISHER_NAME "imu_publisher"
 #define IMU_PUBLISHER_TOPIC "imu/data_raw"
 #define IMU_PUBLISH_HZ 1000U
