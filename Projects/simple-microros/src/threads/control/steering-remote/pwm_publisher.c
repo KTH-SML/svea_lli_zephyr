@@ -15,7 +15,7 @@ struct k_thread steering_pwm_thread_data;
 
 #define PWM_IN_NODE DT_NODELABEL(pwm_in)
 static const struct device *const pwm_dev = DEVICE_DT_GET(PWM_IN_NODE);
-#define PWM_CHANNEL 2 // TIM3_CH2 is channel 2
+#define PWM_CHANNEL 1 // TIM3_CH2 is channel 2
 
 static rcl_publisher_t steering_pwm_pub;
 static std_msgs__msg__Float32 norm_msg;
