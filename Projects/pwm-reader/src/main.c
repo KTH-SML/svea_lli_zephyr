@@ -1,6 +1,6 @@
 /*
  * Single-channel PWM capture demo — Zephyr 4.x API
- * Capture pin: PA0 (TIM2_CH1)
+ * Capture pin: PE11 (TIM1_CH2)
  */
 
 #include <zephyr/device.h>
@@ -8,38 +8,41 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
-#define PWM_NODE DT_NODELABEL(pwm_in) /* sub-node defined above */
+#define PWM_NODE DT_NODELABEL(pwm_in)
 static const struct device *const pwm_dev = DEVICE_DT_GET(PWM_NODE);
-
-static volatile uint64_t period_us, pulse_us;
-static volatile uint32_t duty_permille;
-static K_SEM_DEFINE(done, 0, 1);
+#define PWM_CHANNEL 2 // TIM1_CH2 (PE11)
 
 static void cb(const struct device *dev, uint32_t chan,
                uint32_t per_cyc, uint32_t pul_cyc,
                int status, void *ud) {
+    static uint32_t last_duty = 0;
+
     if (status) {
         printk("capture error %d\n", status);
         return;
     }
 
-    pwm_cycles_to_usec(dev, chan, per_cyc, &period_us);
-    pwm_cycles_to_usec(dev, chan, pul_cyc, &pulse_us);
-    duty_permille = (period_us) ? (pulse_us * 1000) / period_us : 0;
+    uint64_t period, pulse;
+    pwm_cycles_to_usec(dev, chan, per_cyc, &period);
+    pwm_cycles_to_usec(dev, chan, pul_cyc, &pulse);
+    uint32_t duty = (period) ? (pulse * 1000) / period : 0;
 
-    k_sem_give(&done); /* wake the print loop */
+    // Only print if duty is in expected range and changed
+    if (duty != last_duty && duty >= 100 && duty <= 200) {
+        last_duty = duty;
+        printf("duty = %u/1000\n", duty);
+    }
 }
 
 int main(void) {
-    printk("TIM2 CH1 PWM capture example — input on PA0\n");
+    printk("TIM1 CH2 PWM capture example — input on PE11\n");
 
     if (!device_is_ready(pwm_dev)) {
         printk("device not ready\n");
         return 0;
     }
 
-    /* configure the channel once … */
-    int ret = pwm_configure_capture(pwm_dev, 2, /* channel 2 */
+    int ret = pwm_configure_capture(pwm_dev, PWM_CHANNEL,
                                     PWM_CAPTURE_TYPE_BOTH | PWM_CAPTURE_MODE_CONTINUOUS,
                                     cb, NULL);
     if (ret) {
@@ -47,16 +50,13 @@ int main(void) {
         return 0;
     }
 
-    /* … then enable it */
-    ret = pwm_enable_capture(pwm_dev, 2);
+    ret = pwm_enable_capture(pwm_dev, PWM_CHANNEL);
     if (ret) {
         printk("enable failed (%d)\n", ret);
         return 0;
     }
 
     while (1) {
-        k_sem_take(&done, K_FOREVER);
-        printk("pulse = %llu us  period = %llu us  duty = %u/1000\n",
-               pulse_us, period_us, duty_permille);
+        k_sleep(K_FOREVER); // Nothing to do, all work is in the callback
     }
 }
