@@ -30,51 +30,19 @@
     };
 
 };
-/* TIM2 on PA0..PA3 as four-channel capture input */
 &pinctrl {
-    tim2_ch1_pa0: tim2_ch1_pa0 {
-        pinmux = <STM32_PINMUX('A', 0, AF1)>;
-    };
+    tim1_ch2_in_pe11: tim1_ch2_in_pe11 { pinmux = <STM32_PINMUX('E', 11, AF1)>; };
 };
 
-&timers2 {
+&timers1 {                       /* label = tim1 */
     status = "okay";
-    pwm2: pwm {
-        status = "okay";
-        pinctrl-0 = <&tim2_ch4_pa3>;
-        pinctrl-names = "default";
-    };
-};
+    st,prescaler = <107>;        /* 1 MHz capture clock */
 
-&pinctrl {
-    tim1_ch2_pe11: tim1_ch2_pe11 {
-        pinmux = <STM32_PINMUX('E', 10, AF1)>;
-    };
-};
-
-&timers1 {
-    status = "okay";
-    st,prescaler = <1079>;
-
-    pwm1: pwm {
+    pwm_in: pwm_in {
         compatible = "st,stm32-pwm";
         status = "okay";
-        pinctrl-0 = <&tim1_ch2_pe11>;
-        pinctrl-names = "default";
-    };
-};
-
-&pinctrl {
-    tim5_ch1_pa4: tim5_ch1_pa4 {
-        pinmux = <STM32_PINMUX('A', 4, AF2)>;
-    };
-};
-
-&timers5 {
-    status = "okay";
-    pwm5: pwm {
-        status = "okay";
-        pinctrl-0 = <&tim5_ch1_pa0>;
+        #pwm-cells = <3>;
+        pinctrl-0 = <&tim1_ch2_in_pe11>;
         pinctrl-names = "default";
     };
 };

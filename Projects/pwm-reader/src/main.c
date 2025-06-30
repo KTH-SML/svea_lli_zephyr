@@ -1,66 +1,62 @@
 /*
- * SPDX-License-Identifier: Apache-2.0
- * Updated 2025-06-30 for Zephyr 4.x capture API
+ * Single-channel PWM capture demo — Zephyr 4.x API
+ * Capture pin: PA0 (TIM2_CH1)
  */
-#include <stdio.h>
+
 #include <zephyr/device.h>
-#include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/pwm.h>
 #include <zephyr/kernel.h>
+#include <zephyr/sys/printk.h>
 
-#define GPIO_PORT DT_NODELABEL(gpioe)
-#define GPIO_PIN 10
+#define PWM_NODE DT_NODELABEL(pwm_in) /* sub-node defined above */
+static const struct device *const pwm_dev = DEVICE_DT_GET(PWM_NODE);
 
-static const struct device *gpio_dev;
-static struct gpio_callback gpio_cb_data;
+static volatile uint64_t period_us, pulse_us;
+static volatile uint32_t duty_permille;
+static K_SEM_DEFINE(done, 0, 1);
 
-static volatile uint32_t last_rising = 0;
-static volatile uint32_t period = 0;
-static volatile uint32_t pulse = 0;
-
-void pwm_gpio_isr(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
-    uint32_t now = k_cycle_get_32();
-    int val = gpio_pin_get(dev, GPIO_PIN);
-
-    if (val) {
-        // Rising edge
-        period = now - last_rising;
-        last_rising = now;
-    } else {
-        // Falling edge
-        pulse = now - last_rising;
-    }
-}
-
-void main(void) {
-    gpio_dev = DEVICE_DT_GET(GPIO_PORT);
-    if (!device_is_ready(gpio_dev)) {
-        printf("GPIO device not ready!\n");
+static void cb(const struct device *dev, uint32_t chan,
+               uint32_t per_cyc, uint32_t pul_cyc,
+               int status, void *ud) {
+    if (status) {
+        printk("capture error %d\n", status);
         return;
     }
 
-    gpio_pin_configure(gpio_dev, GPIO_PIN, GPIO_INPUT | GPIO_PULL_DOWN);
-    gpio_pin_interrupt_configure(gpio_dev, GPIO_PIN, GPIO_INT_EDGE_BOTH);
+    pwm_cycles_to_usec(dev, chan, per_cyc, &period_us);
+    pwm_cycles_to_usec(dev, chan, pul_cyc, &pulse_us);
+    duty_permille = (period_us) ? (pulse_us * 1000) / period_us : 0;
 
-    gpio_init_callback(&gpio_cb_data, pwm_gpio_isr, BIT(GPIO_PIN));
-    gpio_add_callback(gpio_dev, &gpio_cb_data);
+    k_sem_give(&done); /* wake the print loop */
+}
 
-    printf("PWM edge capture on PE10 (pin %d)\n", GPIO_PIN);
+int main(void) {
+    printk("TIM2 CH1 PWM capture example — input on PA0\n");
+
+    if (!device_is_ready(pwm_dev)) {
+        printk("device not ready\n");
+        return 0;
+    }
+
+    /* configure the channel once … */
+    int ret = pwm_configure_capture(pwm_dev, 2, /* channel 2 */
+                                    PWM_CAPTURE_TYPE_BOTH | PWM_CAPTURE_MODE_CONTINUOUS,
+                                    cb, NULL);
+    if (ret) {
+        printk("config failed (%d)\n", ret);
+        return 0;
+    }
+
+    /* … then enable it */
+    ret = pwm_enable_capture(pwm_dev, 2);
+    if (ret) {
+        printk("enable failed (%d)\n", ret);
+        return 0;
+    }
 
     while (1) {
-        uint32_t local_period = period;
-        uint32_t local_pulse = pulse;
-        uint32_t freq = 0, duty = 0;
-        uint32_t us_period = 0, us_pulse = 0;
-
-        if (local_period > 0) {
-            freq = sys_clock_hw_cycles_per_sec() / local_period;
-            us_period = (local_period * 1000000U) / sys_clock_hw_cycles_per_sec();
-            us_pulse = (local_pulse * 1000000U) / sys_clock_hw_cycles_per_sec();
-            duty = (local_pulse * 1000U) / local_period;
-        }
-
-        printf("period: %u cyc (%u us), pulse: %u cyc (%u us), freq: %u Hz, duty: %u/1000\n",
-               local_period, us_period, local_pulse, us_pulse, freq, duty);
-        k_msleep(100);
+        k_sem_take(&done, K_FOREVER);
+        printk("pulse = %llu us  period = %llu us  duty = %u/1000\n",
+               pulse_us, period_us, duty_permille);
     }
 }
