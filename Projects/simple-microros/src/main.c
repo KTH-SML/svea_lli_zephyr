@@ -11,7 +11,7 @@
 #include <zephyr.h>
 #endif
 
-#include "threads/control/steering-remote/pwm_publisher.h"
+#include "threads/control/pwm_in/pwm_publisher.h"
 #include "threads/control/steering-servo/servo_subscriber.h"
 #include "threads/sensor/imu/imu_publisher.h"
 #include "threads/util/diag/diag_publisher.h"
@@ -79,7 +79,7 @@ int main(void) {
         // Start servo subscriber
         steering_servo_subscriber_init(&node, &executor);
 
-        steering_pwm_publisher_init(&node);
+        pwm_in_publishers_init(&node);
 
         printf("micro‑ROS ready\n");
 

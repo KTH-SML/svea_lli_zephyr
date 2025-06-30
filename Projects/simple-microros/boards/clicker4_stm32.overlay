@@ -39,6 +39,9 @@
     tim3_ch2_pa7: tim3_ch2_pa7 { pinmux = <STM32_PINMUX('A', 7, AF2)>; };
     tim4_ch3_pb8: tim4_ch3_pb8 { pinmux = <STM32_PINMUX('B', 8, AF2)>; };
     tim4_ch4_pb9: tim4_ch4_pb9 { pinmux = <STM32_PINMUX('B', 9, AF2)>; };
+    tim5_ch1_ph10: tim5_ch1_ph10 { pinmux = <STM32_PINMUX('H', 10, AF2)>; };
+    tim15_ch1_pe4: tim15_ch1_pe4 { pinmux = <STM32_PINMUX('E', 4,  AF2)>; };
+    tim9_ch1_pa2: tim9_ch1_pa2 { pinmux = <STM32_PINMUX('A', 2, AF3)>; };
 };
 
 &timers1 {
@@ -76,30 +79,6 @@
         pinctrl-names = "default";
     };
 };
-// reading pwm
-&timers3 {
-    status = "okay";
-    st,prescaler = <107>;
-    pwm_in: pwm_in {
-        compatible = "st,stm32-pwm";
-        status = "okay";
-        #pwm-cells = <3>;
-        pinctrl-0 = <&tim3_ch1_pa6 &tim3_ch2_pa7>;
-        pinctrl-names = "default";
-    };
-};
-
-&timers4 {
-    status = "okay";
-    st,prescaler = <1079>;
-    pwm4: pwm4 {
-        compatible = "st,stm32-pwm";
-        status = "okay";
-        #pwm-cells = <3>;
-        pinctrl-0 = <&tim4_ch3_pb8 &tim4_ch4_pb9>;
-        pinctrl-names = "default";
-    };
-};
 
 // Servo nodes (for PWM output)
 / {
@@ -112,14 +91,14 @@
 
     diffservo: diff_servo {
         compatible = "pwm-servo";
-        pwms = <&pwm4 3 PWM_MSEC(10) PWM_POLARITY_NORMAL>; // PB8, TIM4_CH3
+        pwms = <&pwm2 3 PWM_MSEC(10) PWM_POLARITY_NORMAL>; // PB8, TIM4_CH3
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
 
     gearservo: gear_servo {
         compatible = "pwm-servo";
-        pwms = <&pwm2 3 PWM_MSEC(10) PWM_POLARITY_NORMAL>; // PB10, TIM2_CH3
+        pwms = <&pwm2 4 PWM_MSEC(10) PWM_POLARITY_NORMAL>; // PB10, TIM2_CH3
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
@@ -131,3 +110,66 @@
         max-pulse = <PWM_USEC(2100)>;
     };
 };
+
+// reading pwm
+
+
+
+
+// steering servo on SDI1 pa6
+&timers3 {
+    status = "okay";
+    st,prescaler = <107>;
+    
+    pwm3_in: pwm_in {
+        four-channel-capture-support;
+        compatible = "st,stm32-pwm";
+        status = "okay";
+        #pwm-cells = <3>;
+        pinctrl-0 = <&tim3_ch1_pa6>;
+        pinctrl-names = "default";
+    };
+};
+
+
+// gear servo on TX2 pa2
+&timers9 {
+    status = "okay";
+    st,prescaler = <107>;                 /* same tick rate as your other timers */
+    pwm9_in: pwm9_in {
+        compatible = "st,stm32-pwm";
+        #pwm-cells = <3>;
+        pinctrl-0 = <&tim9_ch1_pa2>;
+        pinctrl-names = "default";
+    };
+};
+
+
+// diff servo on SCL1 pb8
+&timers4 {
+    status = "okay";
+    st,prescaler = <107>;
+    
+    pwm4_in: pwm4_in {
+        four-channel-capture-support;
+        compatible = "st,stm32-pwm";
+        status = "okay";
+        #pwm-cells = <3>;
+        pinctrl-0 = <&tim4_ch3_pb8>;
+        pinctrl-names = "default";
+    };
+};
+
+// esc pwm on ph10 P5
+&timers5 {
+    status = "okay";
+    st,prescaler = <107>;
+    pwm5_in: pwm5_in {
+        compatible = "st,stm32-pwm";
+        #pwm-cells = <3>;
+        pinctrl-0 = <&tim5_ch1_ph10>;
+        pinctrl-names = "default";
+    };
+};
+
+

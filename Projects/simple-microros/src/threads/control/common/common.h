@@ -15,5 +15,25 @@ extern bool override_mode;
 extern const struct pwm_dt_spec steering_pwm;
 extern const uint32_t steering_pwm_min_ns;
 extern const uint32_t steering_pwm_max_ns;
-
 extern float remote_steering_norm_value;
+
+// Differential PWM
+extern const struct pwm_dt_spec diff_pwm;
+extern const uint32_t diff_pwm_min_ns;
+extern const uint32_t diff_pwm_max_ns;
+extern float remote_diff_norm_value;
+
+// Gear PWM
+extern const struct pwm_dt_spec gear_pwm;
+
+// Throttle PWM
+extern const struct pwm_dt_spec throttle_pwm;
+
+// Thread priority for PWM input thread
+#define REMOTE_PWM_THREAD_PRIORITY 4
+
+#define REMOTE_PWM_MIN_US 50
+#define REMOTE_PWM_MAX_US 250
+
+extern float remote_gear_norm_value;
+extern float remote_esc_norm_value;
