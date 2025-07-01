@@ -1,22 +1,22 @@
-&cdc_acm_uart0 { // micro ros publishing port
+&cdc_acm_uart0 {// micro ros publishing port
     current-speed = <115200>;
 };
 
-&usart1 { // debug uart
+&usart1 {// debug uart
     current-speed = <115200>;
 };
 
 &i2c2 {
     status = "okay"; // Enable I2C2
-    ism330dlc: ism330dlc@6b { // Plugged in on 1
+    ism330dlc: ism330dlc@6b {// Plugged in on 1
         status = "okay";
         compatible = "st,ism330dlc";
-        drdy-gpios = <&mb1 15 GPIO_ACTIVE_HIGH>, 
+        drdy-gpios = <&mb1 15 GPIO_ACTIVE_HIGH>,
                      <&mb1  1 GPIO_ACTIVE_HIGH>;
-        accel-odr   = <6>;      // 416Hz 
-        gyro-odr    = <6>;      // 416Hz
+        accel-odr = <6>;      // 416Hz
+        gyro-odr = <6>;      // 416Hz
         accel-range = <2>;      // 2g
-        gyro-range  = <125>;    // 125 dps
+        gyro-range = <125>;    // 125 dps
         reg = <0x6b>;
     };
 };
@@ -119,8 +119,8 @@
 // steering servo on SDI1 pa6
 &timers3 {
     status = "okay";
-    st,prescaler = <107>;
-    
+    st,prescaler = <50>;
+
     pwm3_in: pwm_in {
         four-channel-capture-support;
         compatible = "st,stm32-pwm";
@@ -135,7 +135,7 @@
 // gear servo on TX2 pa2
 &timers9 {
     status = "okay";
-    st,prescaler = <107>;                 /* same tick rate as your other timers */
+    st,prescaler = <50>;                 /* same tick rate as your other timers */
     pwm9_in: pwm9_in {
         compatible = "st,stm32-pwm";
         #pwm-cells = <3>;
@@ -148,8 +148,8 @@
 // diff servo on SCL1 pb8
 &timers4 {
     status = "okay";
-    st,prescaler = <107>;
-    
+    st,prescaler = <50>;
+
     pwm4_in: pwm4_in {
         four-channel-capture-support;
         compatible = "st,stm32-pwm";
@@ -163,7 +163,7 @@
 // esc pwm on ph10 P5
 &timers5 {
     status = "okay";
-    st,prescaler = <107>;
+    st,prescaler = <50>;
     pwm5_in: pwm5_in {
         compatible = "st,stm32-pwm";
         #pwm-cells = <3>;

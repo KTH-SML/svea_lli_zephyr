@@ -11,8 +11,7 @@
 #include <zephyr.h>
 #endif
 
-#include "threads/control/pwm_in/pwm_publisher.h"
-#include "threads/control/steering-servo/servo_subscriber.h"
+#include "threads/control/pwm/pwm.h"
 #include "threads/sensor/imu/imu_publisher.h"
 #include "threads/util/diag/diag_publisher.h"
 
@@ -44,7 +43,7 @@
 
 int main(void) {
     printf("micro‑ROS Zephyr base node\n");
-
+    pwm_in_init();
     for (;;) {
         rmw_uros_set_custom_transport(MICRO_ROS_FRAMING_REQUIRED,
                                       (void *)&default_params,

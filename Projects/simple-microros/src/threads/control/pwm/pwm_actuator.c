@@ -1,4 +1,4 @@
-#include "pwm_actuator.h"
+#include "pwm.h"
 #include <stdio.h>
 
 void set_pwm_norm(const struct pwm_dt_spec *pwm, float norm, uint32_t min_ns, uint32_t max_ns) {
