@@ -7,7 +7,11 @@
 
 // --- Global Variables Definitions ---
 struct pwm_in_channel pwm_inputs[PWM_INPUTS_MAX];
-bool override_mode = true; // Set to true for testing RC relay
+bool override_mode = false; // Start with robotics control by default
+
+// --- Override Control Settings ---
+#define OVERRIDE_THRESHOLD_US 150 // Threshold for override mode switching
+static bool last_override_state = false;
 
 // --- Remote control values ---
 float remote_steering_norm_value = 0.0f;
@@ -41,7 +45,7 @@ static bool is_duty_valid(int32_t duty_us) {
 }
 
 static bool duty_changed_significantly(int32_t new_duty, int32_t last_duty) {
-    return (last_duty == -1 || abs(new_duty - last_duty) > 2); // Increase threshold to reduce noise
+    return (last_duty == -1 || abs(new_duty - last_duty) > 2);
 }
 
 static void get_output_pwm_limits(const struct pwm_dt_spec *out_pwm,
@@ -64,25 +68,35 @@ static void get_output_pwm_limits(const struct pwm_dt_spec *out_pwm,
     }
 }
 
+static void update_override_mode(int32_t diff_duty_us) {
+    bool new_override_state = (diff_duty_us >= OVERRIDE_THRESHOLD_US);
+
+    // Only update if the state has changed (with hysteresis)
+    if (new_override_state != last_override_state) {
+        override_mode = new_override_state;
+        last_override_state = new_override_state;
+
+        printf("pwm_relay: Override mode %s (diff duty: %d us)\n",
+               override_mode ? "ENABLED (RC Control)" : "DISABLED (Robotics Control)",
+               diff_duty_us);
+    }
+}
+
 static void handle_pwm_relay(struct pwm_in_channel *input, float norm_value) {
     if (!input->out_pwm) {
         return;
     }
 
-    // Only relay when override_mode is TRUE (RC control active)
     if (!override_mode) {
-        printf("pwm_relay: Override mode disabled, not relaying RC signal\n");
+        // Robotics control is active, don't relay RC signals
         return;
     }
 
-    uint32_t min_ns, max_ns;
-    get_output_pwm_limits(input->out_pwm, &min_ns, &max_ns);
-
     printf("pwm_relay: Relaying RC %s: norm=%.2f (limits: %u-%u)\n",
-           input->topic, norm_value, min_ns, max_ns);
+           input->topic, norm_value, input->out_min_ns, input->out_max_ns);
 
-    // Use the PWM actuator function for relay
-    set_pwm_norm(input->out_pwm, norm_value, min_ns, max_ns);
+    // Direct access to pre-computed limits - no lookup needed!
+    set_pwm_norm(input->out_pwm, norm_value, input->out_min_ns, input->out_max_ns);
 }
 
 // --- PWM Capture Callback ---
@@ -95,7 +109,6 @@ static void pwm_capture_callback(const struct device *dev, uint32_t chan,
 
     // Handle errors
     if (status != 0) {
-        // Only log errors occasionally to reduce spam
         static uint32_t error_count = 0;
         if ((error_count++ % 100) == 0) {
             printf("pwm_relay: Capture errors on dev=%p chan=%u (count: %u)\n", dev, chan, error_count);
@@ -113,9 +126,12 @@ static void pwm_capture_callback(const struct device *dev, uint32_t chan,
 
     // Validate duty cycle range - silently discard invalid readings
     if (!is_duty_valid(duty_us)) {
-        return; // Remove the printf spam here
+        return;
     }
-
+    // Special handling for DIFF channel - use it to control override mode
+    if (channel_index == PWM_CH_DIFF) {
+        update_override_mode(duty_us);
+    }
     // Check if duty changed significantly
     if (!duty_changed_significantly(duty_us, last_duty[channel_index])) {
         return;
@@ -135,10 +151,10 @@ static void pwm_capture_callback(const struct device *dev, uint32_t chan,
         *(input->norm_value_ptr) = norm_value;
     }
 
-    // Handle PWM relay (RC passthrough mode)
+    // Handle PWM relay (RC passthrough mode) - only if override is enabled
     handle_pwm_relay(input, norm_value);
 
-    // Publish RC message (delegate to publisher)
+    // Always publish RC message for monitoring
     publish_rc_message(input, norm_value);
 }
 
@@ -198,34 +214,42 @@ static void pwm_input_thread(void *arg1, void *arg2, void *arg3) {
 
 // --- Initialization Functions ---
 void pwm_in_init(void) {
-    // Initialize PWM input channel configurations
+    // Initialize PWM input channel configurations with compile-time limits
     pwm_inputs[PWM_CH_STEERING] = (struct pwm_in_channel){
         .dev = pwm3_dev,
         .channel = 1,
-        .topic = "/steering/duty",
+        .topic = "/lli/remote/steering/norm",
         .norm_value_ptr = &remote_steering_norm_value,
-        .out_pwm = &steering_pwm};
+        .out_pwm = &steering_pwm,
+        .out_min_ns = DT_PROP(DT_NODELABEL(steeringservo), min_pulse),
+        .out_max_ns = DT_PROP(DT_NODELABEL(steeringservo), max_pulse)};
 
     pwm_inputs[PWM_CH_GEAR] = (struct pwm_in_channel){
         .dev = pwm9_dev,
         .channel = 1,
-        .topic = "/gear/duty",
+        .topic = "/lli/remote/gear/norm",
         .norm_value_ptr = &remote_gear_norm_value,
-        .out_pwm = &gear_pwm};
+        .out_pwm = &gear_pwm,
+        .out_min_ns = DT_PROP(DT_NODELABEL(gearservo), min_pulse),
+        .out_max_ns = DT_PROP(DT_NODELABEL(gearservo), max_pulse)};
 
     pwm_inputs[PWM_CH_DIFF] = (struct pwm_in_channel){
         .dev = pwm4_dev,
         .channel = 3,
-        .topic = "/diff/duty",
+        .topic = "/lli/remote/diff/norm",
         .norm_value_ptr = &remote_diff_norm_value,
-        .out_pwm = &diff_pwm};
+        .out_pwm = &diff_pwm,
+        .out_min_ns = DT_PROP(DT_NODELABEL(diffservo), min_pulse),
+        .out_max_ns = DT_PROP(DT_NODELABEL(diffservo), max_pulse)};
 
     pwm_inputs[PWM_CH_ESC] = (struct pwm_in_channel){
         .dev = pwm5_dev,
         .channel = 1,
-        .topic = "/esc/duty",
+        .topic = "/lli/remote/esc/norm",
         .norm_value_ptr = &remote_esc_norm_value,
-        .out_pwm = &throttle_pwm};
+        .out_pwm = &throttle_pwm,
+        .out_min_ns = DT_PROP(DT_NODELABEL(throttleesc), min_pulse),
+        .out_max_ns = DT_PROP(DT_NODELABEL(throttleesc), max_pulse)};
 
     // Create and start the PWM input thread
     k_thread_create(

@@ -75,8 +75,7 @@ int main(void) {
         // Start IMU publisher thread
         imu_publisher_init(&node, &executor);
 
-        // Start servo subscriber
-        steering_servo_subscriber_init(&node, &executor);
+        servo_subscribers_init(&node, &executor);
 
         pwm_in_publishers_init(&node);
 
