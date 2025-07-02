@@ -41,13 +41,13 @@ struct pwm_in_channel {
 
 // --- Servo Output Channel Structure ---
 struct servo_channel {
-    const char *topic;                 // ROS topic name for control
-    rcl_subscription_t sub;            // ROS subscription
-    std_msgs__msg__Float32 msg;        // ROS message
-    const struct pwm_dt_spec *pwm;     // Output PWM spec
-    uint32_t min_ns;                   // PWM min limit (compile-time)
-    uint32_t max_ns;                   // PWM max limit (compile-time)
-    float prev_norm;                   // Previous normalized value
+    const char *topic;             // ROS topic name for control
+    rcl_subscription_t sub;        // ROS subscription
+    std_msgs__msg__Float32 msg;    // ROS message
+    const struct pwm_dt_spec *pwm; // Output PWM spec
+    uint32_t min_ns;               // PWM min limit (compile-time)
+    uint32_t max_ns;               // PWM max limit (compile-time)
+    float prev_norm;               // Previous normalized value
 };
 
 // --- Global Variables ---
@@ -88,10 +88,10 @@ void pwm_in_publishers_init(rcl_node_t *node);
 void publish_rc_message(struct pwm_in_channel *input, float norm_value);
 
 // --- Servo Control Topics ---
-#define SERVO_TOPIC_STEERING "/lli/servo/steering"
-#define SERVO_TOPIC_GEAR     "/lli/servo/gear"
-#define SERVO_TOPIC_DIFF     "/lli/servo/diff"
-#define SERVO_TOPIC_THROTTLE "/lli/servo/throttle"
+#define SERVO_TOPIC_STEERING "/lli/ctrl/steering"
+#define SERVO_TOPIC_GEAR "/lli/ctrl/gear"
+#define SERVO_TOPIC_DIFF "/lli/ctrl/diff"
+#define SERVO_TOPIC_THROTTLE "/lli/ctrl/throttle"
 
 #define SERVO_MSGTYPE std_msgs__msg__Float32
 
