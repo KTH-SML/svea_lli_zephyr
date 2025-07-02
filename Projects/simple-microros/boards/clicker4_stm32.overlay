@@ -7,16 +7,17 @@
 };
 
 &i2c2 {
-    status = "okay"; // Enable I2C2
-    ism330dlc: ism330dlc@6b {// Plugged in on 1
+    status = "okay";
+    clock-frequency = <I2C_BITRATE_FAST>; // 400 kHz or try FAST_PLUS for 1 MHz
+    ism330dlc: ism330dlc@6b {
         status = "okay";
         compatible = "st,ism330dlc";
         drdy-gpios = <&mb1 15 GPIO_ACTIVE_HIGH>,
                      <&mb1  1 GPIO_ACTIVE_HIGH>;
-        accel-odr = <6>;      // 416Hz
-        gyro-odr = <6>;      // 416Hz
-        accel-range = <2>;      // 2g
-        gyro-range = <125>;    // 125 dps
+        accel-odr = <8>;      // 1660Hz
+        gyro-odr = <8>;       // 1660Hz
+        accel-range = <2>;
+        gyro-range = <125>;
         reg = <0x6b>;
     };
 };
@@ -122,10 +123,7 @@
 // steering servo on SDI1 pa6 (TIM3, 16-bit)
 &timers3 {
     status = "okay";
-    // Prescaler chosen so timer does not overflow during a full PWM period (e.g. 20ms)
-    // 108MHz / 5400 = 20kHz (tick = 50us), 65536 ticks = 3.28s
-    st,prescaler = <5399>;
-
+    st,prescaler = <107>; // 108MHz / (107+1) = 1MHz (1µs per tick)
     pwm3_in: pwm_in {
         four-channel-capture-support;
         compatible = "st,stm32-pwm";
@@ -136,25 +134,10 @@
     };
 };
 
-// gear servo on TX2 pa2 (TIM9, 16-bit)
-&timers9 {
-    status = "okay";
-    // Same logic as above for 16-bit timer
-    st,prescaler = <5399>;
-
-    pwm9_in: pwm9_in {
-        compatible = "st,stm32-pwm";
-        #pwm-cells = <3>;
-        pinctrl-0 = <&tim9_ch1_pa2>;
-        pinctrl-names = "default";
-    };
-};
-
 // diff servo on SCL1 pb8 (TIM4, 16-bit)
 &timers4 {
     status = "okay";
-    st,prescaler = <5399>;
-
+    st,prescaler = <107>;
     pwm4_in: pwm4_in {
         four-channel-capture-support;
         compatible = "st,stm32-pwm";
@@ -165,11 +148,23 @@
     };
 };
 
+// gear servo on TX2 pa2 (TIM9, 16-bit)
+&timers9 {
+    status = "okay";
+    st,prescaler = <107>;
+    pwm9_in: pwm9_in {
+        compatible = "st,stm32-pwm";
+        #pwm-cells = <3>;
+        pinctrl-0 = <&tim9_ch1_pa2>;
+        pinctrl-names = "default";
+    };
+};
+
 // esc pwm on ph10 P5 (TIM5, 32-bit)
 &timers5 {
     status = "okay";
     // 32-bit timer: use lowest prescaler for highest resolution
-    st,prescaler = <1>;
+    st,prescaler = <107>;
 
     pwm5_in: pwm5_in {
         compatible = "st,stm32-pwm";
