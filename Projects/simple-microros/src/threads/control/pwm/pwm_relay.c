@@ -76,7 +76,7 @@ static void pwm_capture_cb(const struct device *dev, uint32_t chan,
 
     if (status) {
         static uint32_t err_cnt = 0;
-        if (idx == PWM_CH_GEAR && (++err_cnt % 100) == 0)
+        if (idx == PWM_CH_GEAR && (++err_cnt % 2) == 0)
             rc_remote_disconnected = true;
         return;
     }
