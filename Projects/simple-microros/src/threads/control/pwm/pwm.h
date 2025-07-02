@@ -60,7 +60,7 @@ extern bool override_mode;
 #define REMOTE_PWM_MAX_US 200      // for norm
 #define REMOTE_PWM_CLIP_MIN_NS 50  // 100 ms in nanoseconds
 #define REMOTE_PWM_CLIP_MAX_NS 250 // 200 ms in nanoseconds
-#define REMOTE_PWM_THREAD_PRIORITY 5
+#define REMOTE_PWM_THREAD_PRIORITY 4
 
 // --- Device References ---
 #define PWM3_NODE DT_NODELABEL(pwm3_in)
@@ -101,3 +101,5 @@ void publish_rc_message(struct pwm_in_channel *input, float norm_value);
 void servo_subscribers_init(rcl_node_t *node, rclc_executor_t *exec);
 
 void set_pwm_norm(const struct pwm_dt_spec *pwm, float norm, uint32_t min_ns, uint32_t max_ns);
+
+extern bool rc_remote_disconnected; // Signified by error reading pwm signal on gear norm, maybe because it ends up floating or something?
