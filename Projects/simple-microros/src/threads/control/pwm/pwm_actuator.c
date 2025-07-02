@@ -28,6 +28,7 @@ void set_pwm_norm(const struct pwm_dt_spec *pwm,
 
 /* Pass‑through helper used by RC override -------------------------------- */
 void set_pwm_pulse_us(const struct pwm_dt_spec *pwm, uint32_t pulse_us) {
+    // TODO MAKE IT DISABLE ALL OF EM
     if (rc_remote_disconnected) {
         printf("pwm_actuator: RC remote disconnected — setting null PWM signal\n");
         int ret = pwm_set_pulse_dt(pwm, 0);
