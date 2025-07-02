@@ -11,7 +11,7 @@ struct servo_channel servo_outputs[SERVO_OUTPUTS_MAX];
 // --- ROS callback for robotics control ---
 static void servo_callback(const void *msg_in, void *context) {
     struct servo_channel *servo = (struct servo_channel *)context;
-    
+
     // Only accept robotics commands when override_mode is FALSE (robotics control active)
     if (override_mode == true) {
         printf("servo_subscriber: Override mode active, ignoring command for %s\n", servo->topic);
@@ -25,13 +25,15 @@ static void servo_callback(const void *msg_in, void *context) {
     if (fabsf(norm - servo->prev_norm) < 0.01f) {
         return;
     }
-    
+
     servo->prev_norm = norm;
     printf("servo_subscriber: Received command %.2f for %s\n", (double)norm, servo->topic);
 
     // Clamp norm value to valid range
-    if (norm > 1.0f) norm = 1.0f;
-    if (norm < -1.0f) norm = -1.0f;
+    if (norm > 1.0f)
+        norm = 1.0f;
+    if (norm < -1.0f)
+        norm = -1.0f;
 
     // Direct actuation for robotics control
     set_pwm_norm(servo->pwm, norm, servo->min_ns, servo->max_ns);
@@ -51,32 +53,28 @@ void servo_subscribers_init(rcl_node_t *node, rclc_executor_t *exec) {
         .pwm = &steering_pwm,
         .min_ns = DT_PROP(DT_NODELABEL(steeringservo), min_pulse),
         .max_ns = DT_PROP(DT_NODELABEL(steeringservo), max_pulse),
-        .prev_norm = 0.0f
-    };
+        .prev_norm = 0.0f};
 
     servo_outputs[SERVO_CH_GEAR] = (struct servo_channel){
         .topic = SERVO_TOPIC_GEAR,
         .pwm = &gear_pwm,
         .min_ns = DT_PROP(DT_NODELABEL(gearservo), min_pulse),
         .max_ns = DT_PROP(DT_NODELABEL(gearservo), max_pulse),
-        .prev_norm = 0.0f
-    };
+        .prev_norm = 0.0f};
 
     servo_outputs[SERVO_CH_DIFF] = (struct servo_channel){
         .topic = SERVO_TOPIC_DIFF,
         .pwm = &diff_pwm,
         .min_ns = DT_PROP(DT_NODELABEL(diffservo), min_pulse),
         .max_ns = DT_PROP(DT_NODELABEL(diffservo), max_pulse),
-        .prev_norm = 0.0f
-    };
+        .prev_norm = 0.0f};
 
     servo_outputs[SERVO_CH_THROTTLE] = (struct servo_channel){
         .topic = SERVO_TOPIC_THROTTLE,
         .pwm = &throttle_pwm,
         .min_ns = DT_PROP(DT_NODELABEL(throttleesc), min_pulse),
         .max_ns = DT_PROP(DT_NODELABEL(throttleesc), max_pulse),
-        .prev_norm = 0.0f
-    };
+        .prev_norm = 0.0f};
 
     // Initialize subscriptions for each servo channel
     for (servo_channel_t ch = 0; ch < SERVO_OUTPUTS_MAX; ++ch) {
@@ -109,7 +107,7 @@ void servo_subscribers_init(rcl_node_t *node, rclc_executor_t *exec) {
 
         if (rc != RCL_RET_OK) {
             printf("servo_subscriber: Failed to add subscription to executor for %s: %d\n", servo->topic, rc);
-            
+
             // Clean up the subscription on failure
             rcl_ret_t cleanup_rc = rcl_subscription_fini(&servo->sub, node);
             if (cleanup_rc != RCL_RET_OK) {
