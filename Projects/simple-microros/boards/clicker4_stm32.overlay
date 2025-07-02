@@ -84,28 +84,28 @@
 / {
     steeringservo: servo {
         compatible = "pwm-servo";
-        pwms = <&pwm1 1 PWM_MSEC(10) PWM_POLARITY_NORMAL>;
+        pwms = <&pwm1 1 PWM_MSEC(10) PWM_POLARITY_NORMAL>; // 10ms = 100Hz
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
 
     diffservo: diff_servo {
         compatible = "pwm-servo";
-        pwms = <&pwm2 3 PWM_MSEC(10) PWM_POLARITY_NORMAL>; // PB8, TIM4_CH3
+        pwms = <&pwm2 3 PWM_MSEC(10) PWM_POLARITY_NORMAL>; // 10ms = 100Hz, PB8, TIM4_CH3
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
 
     gearservo: gear_servo {
         compatible = "pwm-servo";
-        pwms = <&pwm2 4 PWM_MSEC(10) PWM_POLARITY_NORMAL>; // PB10, TIM2_CH3
+        pwms = <&pwm2 4 PWM_MSEC(10) PWM_POLARITY_NORMAL>; // 10ms = 100Hz, PB10, TIM2_CH3
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
 
     throttleesc: throttle_esc {
         compatible = "pwm-servo";
-        pwms = <&pwm12 1 PWM_MSEC(10) PWM_POLARITY_NORMAL>; // PH6, TIM12_CH1
+        pwms = <&pwm12 1 PWM_MSEC(10) PWM_POLARITY_NORMAL>; // 10ms = 100Hz, PH6, TIM12_CH1
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
@@ -116,10 +116,15 @@
 
 
 
-// steering servo on SDI1 pa6
+// --- PWM Input Capture Configuration ---
+// Use lowest prescaler for 32-bit timers (TIM5), higher for 16-bit to avoid overflow
+
+// steering servo on SDI1 pa6 (TIM3, 16-bit)
 &timers3 {
     status = "okay";
-    st,prescaler = <50>;
+    // Prescaler chosen so timer does not overflow during a full PWM period (e.g. 20ms)
+    // 108MHz / 5400 = 20kHz (tick = 50us), 65536 ticks = 3.28s
+    st,prescaler = <5399>;
 
     pwm3_in: pwm_in {
         four-channel-capture-support;
@@ -131,11 +136,12 @@
     };
 };
 
-
-// gear servo on TX2 pa2
+// gear servo on TX2 pa2 (TIM9, 16-bit)
 &timers9 {
     status = "okay";
-    st,prescaler = <50>;                 /* same tick rate as your other timers */
+    // Same logic as above for 16-bit timer
+    st,prescaler = <5399>;
+
     pwm9_in: pwm9_in {
         compatible = "st,stm32-pwm";
         #pwm-cells = <3>;
@@ -144,11 +150,10 @@
     };
 };
 
-
-// diff servo on SCL1 pb8
+// diff servo on SCL1 pb8 (TIM4, 16-bit)
 &timers4 {
     status = "okay";
-    st,prescaler = <50>;
+    st,prescaler = <5399>;
 
     pwm4_in: pwm4_in {
         four-channel-capture-support;
@@ -160,10 +165,12 @@
     };
 };
 
-// esc pwm on ph10 P5
+// esc pwm on ph10 P5 (TIM5, 32-bit)
 &timers5 {
     status = "okay";
-    st,prescaler = <50>;
+    // 32-bit timer: use lowest prescaler for highest resolution
+    st,prescaler = <1>;
+
     pwm5_in: pwm5_in {
         compatible = "st,stm32-pwm";
         #pwm-cells = <3>;
