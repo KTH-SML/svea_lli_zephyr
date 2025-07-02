@@ -2,6 +2,10 @@
 #include <stdio.h>
 
 void set_pwm_norm(const struct pwm_dt_spec *pwm, float norm, uint32_t min_ns, uint32_t max_ns) {
+    if (rc_remote_disconnected) {
+        printf("pwm_actuator: RC remote disconnected, skipping PWM set\n");
+        return; // Skip setting PWM if remote is disconnected
+    }
     if (norm > 1.0f)
         norm = 1.0f;
     if (norm < -1.0f)

@@ -7,7 +7,8 @@
 
 // --- Global Variables Definitions ---
 struct pwm_in_channel pwm_inputs[PWM_INPUTS_MAX];
-bool override_mode = false; // Start with robotics control by default
+bool override_mode = false;          // Start with robotics control by default
+bool rc_remote_disconnected = false; // Track if any RC channel has errored
 
 // --- Override Control Settings ---
 #define OVERRIDE_THRESHOLD_US 150 // Threshold for override mode switching
@@ -110,12 +111,18 @@ static void pwm_capture_callback(const struct device *dev, uint32_t chan,
     // Handle errors
     if (status != 0) {
         static uint32_t error_count = 0;
-        if ((error_count++ % 100) == 0) {
-            printf("pwm_relay: Capture errors on dev=%p chan=%u (count: %u)\n", dev, chan, error_count);
+        // printf("pwm_relay: Capture errors on dev=%p chan=%u topic=%s (count: %u)\n", dev, chan, input->topic, error_count);
+        if (channel_index != PWM_CH_GEAR)
+            return;
+        if (error_count++ % 100) {
+            rc_remote_disconnected = true; // Mark as disconnected after 100 errors
         }
         return;
     }
 
+    if (channel_index == PWM_CH_GEAR) {
+        rc_remote_disconnected = false; // Reset disconnected state
+    }
     // Convert cycles to microseconds
     uint64_t period_us = 0, pulse_us = 0;
     pwm_cycles_to_usec(dev, chan, period_cycles, &period_us);
