@@ -46,15 +46,15 @@ void pwm_in_publishers_init(rcl_node_t *node) {
 
 void publish_rc_message(struct pwm_in_channel *input, float norm_value) {
     input->msg.data = norm_value;
-    
+
     if (!input->pub.impl) {
-        return;  // Publisher not initialized
+        return; // Publisher not initialized
     }
-    
+
     rcl_ret_t rc = rcl_publish(&input->pub, &input->msg, NULL);
     if (rc != RCL_RET_OK) {
         printf("pwm_publisher: Publish failed for %s: error %d\n", input->topic, rc);
     } else {
-        printf("pwm_publisher: Published RC %.2f to %s\n", norm_value, input->topic);
+        // printf("pwm_publisher: Published RC %.2f to %s\n", norm_value, input->topic);
     }
 }
