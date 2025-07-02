@@ -250,6 +250,19 @@ void pwm_in_init(void) {
         .out_pwm = &throttle_pwm,
         .out_min_ns = DT_PROP(DT_NODELABEL(throttleesc), min_pulse),
         .out_max_ns = DT_PROP(DT_NODELABEL(throttleesc), max_pulse)};
+    // --- Set initial PWM outputs for servos ---
+    set_pwm_norm(&steering_pwm, remote_steering_norm_value,
+                 DT_PROP(DT_NODELABEL(steeringservo), min_pulse),
+                 DT_PROP(DT_NODELABEL(steeringservo), max_pulse));
+    set_pwm_norm(&gear_pwm, remote_gear_norm_value,
+                 DT_PROP(DT_NODELABEL(gearservo), min_pulse),
+                 DT_PROP(DT_NODELABEL(gearservo), max_pulse));
+    set_pwm_norm(&diff_pwm, remote_diff_norm_value,
+                 DT_PROP(DT_NODELABEL(diffservo), min_pulse),
+                 DT_PROP(DT_NODELABEL(diffservo), max_pulse));
+    set_pwm_norm(&throttle_pwm, remote_esc_norm_value,
+                 DT_PROP(DT_NODELABEL(throttleesc), min_pulse),
+                 DT_PROP(DT_NODELABEL(throttleesc), max_pulse));
 
     // Create and start the PWM input thread
     k_thread_create(
