@@ -9,7 +9,7 @@
 #define IMU_THREAD_PRIORITY 5
 #define IMU_PUBLISHER_NAME "imu_publisher"
 #define IMU_PUBLISHER_TOPIC "lli/sensor/imu/data_raw"
-#define IMU_PUBLISH_HZ 200U
+#define IMU_PUBLISH_HZ 10000U
 
 extern sensor_msgs__msg__Imu imu_msg;
 extern struct k_thread imu_thread_data;
