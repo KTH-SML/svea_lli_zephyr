@@ -6,7 +6,7 @@
 #include <zephyr/kernel.h>
 
 #define DIAG_THREAD_STACK_SIZE 2048
-#define DIAG_THREAD_PRIORITY 3
+#define DIAG_THREAD_PRIORITY 1
 #define DIAG_PUBLISHER_TOPIC "zephyr_diag"
 #define DIAG_PUBLISH_HZ 1U
 
