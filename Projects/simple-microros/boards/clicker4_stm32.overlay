@@ -24,8 +24,8 @@
 
 / {
     chosen {
-        zephyr,console = &usart1;
-        zephyr,shell-uart = &usart1;
+        zephyr,console = &usart3;
+        zephyr,shell-uart = &usart3;
     };
 };
 #include <zephyr/dt-bindings/pwm/pwm.h>
