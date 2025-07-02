@@ -37,7 +37,7 @@ static const struct device *imu_dev = NULL;
 
 void imu_thread(void *arg1, void *arg2, void *arg3) {
     printk("IMU thread: entered\n");
-
+    k_sleep(K_MSEC(1000));
     imu_dev = DEVICE_DT_GET_ONE(st_ism330dlc);
     if (!device_is_ready(imu_dev)) {
         printk("IMU device not ready!\n");
