@@ -56,8 +56,10 @@ extern struct servo_channel servo_outputs[SERVO_OUTPUTS_MAX];
 extern bool override_mode;
 
 // --- PWM Signal Limits (microseconds) ---
-#define REMOTE_PWM_MIN_US 50
-#define REMOTE_PWM_MAX_US 250
+#define REMOTE_PWM_MIN_US 100      // for norm
+#define REMOTE_PWM_MAX_US 200      // for norm
+#define REMOTE_PWM_CLIP_MIN_NS 50  // 100 ms in nanoseconds
+#define REMOTE_PWM_CLIP_MAX_NS 250 // 200 ms in nanoseconds
 #define REMOTE_PWM_THREAD_PRIORITY 5
 
 // --- Device References ---

@@ -41,7 +41,7 @@ static float calculate_normalized_value(int32_t duty_us) {
 }
 
 static bool is_duty_valid(int32_t duty_us) {
-    return (duty_us >= REMOTE_PWM_MIN_US && duty_us <= REMOTE_PWM_MAX_US);
+    return (duty_us >= REMOTE_PWM_CLIP_MIN_NS && duty_us <= REMOTE_PWM_CLIP_MAX_NS);
 }
 
 static bool duty_changed_significantly(int32_t new_duty, int32_t last_duty) {
@@ -127,6 +127,13 @@ static void pwm_capture_callback(const struct device *dev, uint32_t chan,
     // Validate duty cycle range - silently discard invalid readings
     if (!is_duty_valid(duty_us)) {
         return;
+    }
+
+    // Clip duty_us between 100 and 200
+    if (duty_us < 115) {
+        duty_us = REMOTE_PWM_MIN_US;
+    } else if (duty_us > 185) {
+        duty_us = REMOTE_PWM_MAX_US;
     }
     // Special handling for DIFF channel - use it to control override mode
     if (channel_index == PWM_CH_DIFF) {
