@@ -119,3 +119,19 @@ void set_pwm_pulse_us(const struct pwm_dt_spec *pwm,
 #define SERVO_TOPIC_DIFF "/lli/ctrl/diff"
 #define SERVO_TOPIC_THROTTLE "/lli/ctrl/throttle"
 #define SERVO_MSGTYPE std_msgs__msg__Float32
+
+/* LED control for debug indicators */
+typedef bool (*led_condition_fn)(void *data);
+
+struct led_control {
+    const struct gpio_dt_spec *led; // LED GPIO spec
+    led_condition_fn condition;     // Function that returns whether LED should be on/blinking
+    void *condition_data;           // Data passed to condition function
+    bool blink;                     // Whether to blink or stay solid when condition is true
+    uint32_t blink_on_ms;           // Time LED stays on during blink
+    uint32_t blink_off_ms;          // Time LED stays off during blink
+    bool current_state;             // Current LED state (internal use)
+};
+
+void led_control_init(void);
+void led_register(struct led_control *ctrl);

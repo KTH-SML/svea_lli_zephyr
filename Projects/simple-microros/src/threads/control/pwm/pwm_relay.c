@@ -3,7 +3,24 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <zephyr/devicetree.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
+
+/* LED control for debugging */
+static const struct gpio_dt_spec led_override_gpio = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
+static const struct gpio_dt_spec led_remote_gpio = GPIO_DT_SPEC_GET(DT_ALIAS(led2), gpios);
+
+static struct led_control led_override_ctrl;
+static struct led_control led_remote_ctrl;
+
+/* Condition functions for LEDs */
+static bool is_override_active(void *data) {
+    return override_mode;
+}
+
+static bool is_remote_disconnected(void *data) {
+    return rc_remote_disconnected;
+}
 
 /* --------------------
  *  Globals & settings
@@ -12,7 +29,7 @@ struct pwm_in_channel pwm_inputs[PWM_INPUTS_MAX];
 bool override_mode = false; /* Robotics control by default */
 bool rc_remote_disconnected = false;
 
-#define OVERRIDE_THRESHOLD_US 1500u /* diff‑channel pulse ≥1.5 ms ⇒ RC override */
+#define OVERRIDE_THRESHOLD_US 1500u /* diff‑channel pulse ≥1.5 ms ⇒ RC override */
 static bool last_override_state = false;
 
 /* Direct pointers to current RC values */
@@ -46,7 +63,7 @@ static inline bool duty_valid(int32_t pulse_us) {
 }
 
 static inline bool duty_changed(int32_t new_us, int32_t prev_us) {
-    return (prev_us == -1 || abs(new_us - prev_us) > 3); /* 3 µs hysteresis */
+    return (prev_us == -1 || abs(new_us - prev_us) > 3); /* 3 µs hysteresis */
 }
 
 static inline void update_override_mode(int32_t diff_us);
@@ -86,7 +103,7 @@ static void pwm_capture_cb(const struct device *dev, uint32_t chan,
 
     if (!duty_changed(p_us, last_capture_us[idx]))
         return; /* debounced */
-    
+
     // Save the last valid capture for immediate use in override mode
     last_capture_us[idx] = p_us;
 
@@ -103,16 +120,17 @@ static void update_override_mode(int32_t diff_us) {
     if (new_state != last_override_state) {
         override_mode = new_state;
         last_override_state = new_state;
+
         printf("pwm_relay: override %s (diff %d µs)\n",
                override_mode ? "ENABLED — RC" : "DISABLED — robot", diff_us);
-        
+
         if (override_mode) {
             /* When switching to override mode, relay the latest captured values */
             for (pwm_channel_t ch = 0; ch < PWM_INPUTS_MAX; ++ch) {
                 if (pwm_inputs[ch].out_pwm && last_capture_us[ch] != -1) {
                     // Use the actual captured pulse width directly
                     set_pwm_pulse_us(pwm_inputs[ch].out_pwm, (uint32_t)last_capture_us[ch]);
-                    printf("pwm_relay: Applied override value %d µs to channel %d\n", 
+                    printf("pwm_relay: Applied override value %d µs to channel %d\n",
                            last_capture_us[ch], ch);
                 }
             }
@@ -157,6 +175,33 @@ static void pwm_input_thread(void *a, void *b, void *c) {
 
 /* -------------------- init ------------------------------------------- */
 void pwm_in_init(void) {
+    // Initialize LED control system
+    led_control_init();
+    
+    // Configure the override mode LED (solid when in override mode)
+    led_override_ctrl = (struct led_control){
+        .led = &led_override_gpio,
+        .condition = is_override_active,
+        .condition_data = NULL,
+        .blink = false,
+        .blink_on_ms = 0,
+        .blink_off_ms = 0
+    };
+    
+    // Configure the remote disconnect LED (blink when remote disconnected)
+    led_remote_ctrl = (struct led_control){
+        .led = &led_remote_gpio,
+        .condition = is_remote_disconnected,
+        .condition_data = NULL,
+        .blink = true,
+        .blink_on_ms = 200,
+        .blink_off_ms = 200
+    };
+    
+    // Register the LEDs with the control system
+    led_register(&led_override_ctrl);
+    led_register(&led_remote_ctrl);
+
     pwm_inputs[PWM_CH_STEERING] = (struct pwm_in_channel){
         .dev = pwm3_dev, .channel = 1, .topic = "/lli/remote/steering/norm", .norm_value_ptr = &remote_steering_norm_value, .out_pwm = &steering_pwm, .out_min_ns = DT_PROP(DT_NODELABEL(steeringservo), min_pulse), .out_max_ns = DT_PROP(DT_NODELABEL(steeringservo), max_pulse)};
 
