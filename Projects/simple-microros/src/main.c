@@ -25,22 +25,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define RCCHECK(fn)                                                  \
-    do {                                                             \
-        rcl_ret_t _rc = (fn);                                        \
-        if (_rc != RCL_RET_OK) {                                     \
-            printf("rcl error %d at line %d\n", (int)_rc, __LINE__); \
-            goto cleanup;                                            \
-        }                                                            \
-    } while (0)
-#define RCSOFTCHECK(fn)                                                   \
-    do {                                                                  \
-        rcl_ret_t _rc = (fn);                                             \
-        if (_rc != RCL_RET_OK) {                                          \
-            printf("rcl soft error %d at line %d\n", (int)_rc, __LINE__); \
-        }                                                                 \
-    } while (0)
-
 int main(void) {
     printf("micro‑ROS Zephyr base node\n");
     pwm_in_init();
