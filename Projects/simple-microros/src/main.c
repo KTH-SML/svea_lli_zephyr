@@ -53,7 +53,7 @@ int main(void) {
         }
 
         // Initialize executor BEFORE starting IMU or servo
-        rclc_executor_init(&executor, &support.context, NUM_PUBLISHERS + NUM_SUBSCRIBERS, &allocator);
+        rclc_executor_init(&executor, &support.context, atoi(CONFIG_MICROROS_PUBLISHERS) + atoi(CONFIG_MICROROS_SUBSCRIBERS), &allocator);
 
         // Start diagnostic publisher thread
         diag_publisher_init(&node);
