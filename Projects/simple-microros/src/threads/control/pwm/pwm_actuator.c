@@ -1,15 +1,22 @@
 #include "pwm.h"
 #include <stdio.h>
 
+bool rc_remote_disconnect() {
+    if (rc_remote_disconnected) {
+        printf("pwm_actuator: RC remote disconnected — setting null PWM signal\n");
+        for (pwm_channel_t ch = 0; ch < PWM_INPUTS_MAX; ++ch) {
+            // Use the actual captured pulse width directly
+            pwm_set_pulse_dt(pwm_inputs[ch].out_pwm, 0);
+        }
+        return true;
+    }
+    return false;
+}
 void set_pwm_norm(const struct pwm_dt_spec *pwm,
                   float norm,
                   uint32_t min_ns,
                   uint32_t max_ns) {
-    if (rc_remote_disconnected) {
-        printf("pwm_actuator: RC remote disconnected — setting null PWM signal\n");
-        int ret = pwm_set_pulse_dt(pwm, 0);
-        if (ret)
-            printf("pwm_actuator: Failed to set null PWM: %d\n", ret);
+    if (rc_remote_disconnect()) {
         return;
     }
 
@@ -29,11 +36,7 @@ void set_pwm_norm(const struct pwm_dt_spec *pwm,
 /* Pass‑through helper used by RC override -------------------------------- */
 void set_pwm_pulse_us(const struct pwm_dt_spec *pwm, uint32_t pulse_us) {
     // TODO MAKE IT DISABLE ALL OF EM
-    if (rc_remote_disconnected) {
-        printf("pwm_actuator: RC remote disconnected — setting null PWM signal\n");
-        int ret = pwm_set_pulse_dt(pwm, 0);
-        if (ret)
-            printf("pwm_actuator: Failed to set null PWM: %d\n", ret);
+    if (rc_remote_disconnect()) {
         return;
     }
 
