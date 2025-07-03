@@ -51,9 +51,6 @@ int main(void) {
             continue;
         }
 
-#define NUM_PUBLISHERS (atoi(CONFIG_MICROROS_PUBLISHERS))
-#define NUM_SUBSCRIBERS (atoi(CONFIG_MICROROS_SUBSCRIBERS))
-
         // Initialize executor BEFORE starting IMU or servo
         rclc_executor_init(&executor, &support.context, NUM_PUBLISHERS + NUM_SUBSCRIBERS, &allocator);
 
