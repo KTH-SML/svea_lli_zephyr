@@ -10,7 +10,8 @@
         "stdlib.h": "c",
         "pwm.h": "c",
         "regex": "c",
-        "pwm_actuator.h": "c"
+        "pwm_actuator.h": "c",
+        "rclc.h": "c"
     },
     "terminal.integrated.defaultProfile.osx": "Zephyr IDE Terminal"
 }
