@@ -1,0 +1,170 @@
+&cdc_acm_uart0 {// micro ros publishing port
+    current-speed = <115200>;
+};
+
+&usart1 {// debug uart
+    current-speed = <115200>;
+};
+
+&i2c2 {
+    status = "okay";
+    clock-frequency = <I2C_BITRATE_FAST>; // 400 kHz or try FAST_PLUS for 1 MHz
+    ism330dlc: ism330dlc@6b {
+        status = "okay";
+        compatible = "st,ism330dlc";
+        drdy-gpios = <&mb1 15 GPIO_ACTIVE_HIGH>,
+                     <&mb1  1 GPIO_ACTIVE_HIGH>;
+        accel-odr = <8>;      // 1660Hz
+        gyro-odr = <8>;       // 1660Hz
+        accel-range = <2>;
+        gyro-range = <125>;
+        reg = <0x6b>;
+    };
+};
+
+
+/ {
+    chosen {
+        zephyr,console = &usart3;
+        zephyr,shell-uart = &usart3;
+    };
+};
+/* =================================================== */
+/* === 1.  PWM-CAPTURE TIMER INSTANCES (RC receiver) == */
+/* =================================================== */
+
+/* TIM3_CH1  → steering -------------------------------- */
+&timers3 {
+    status = "okay";
+    st,prescaler = <107>;              /* 108 MHz / (107+1) = 1 MHz */
+
+    pwm3_in: pwm3_in {                 /* label used later → &pwm3_in */
+        four-channel-capture-support;
+        compatible = "st,stm32-pwm";
+        status = "okay";
+        #pwm-cells = <3>;
+        pinctrl-0 = <&tim3_ch1_pa6>;   /* PA6 */
+        pinctrl-names = "default";
+    };
+};
+
+/* TIM9_CH1  → gear ------------------------------------ */
+&timers9 {
+    status = "okay";
+    st,prescaler = <107>;
+
+    pwm9_in: pwm9_in {
+        compatible = "st,stm32-pwm";
+        status = "okay";
+        #pwm-cells = <3>;
+        pinctrl-0 = <&tim9_ch1_pa2>;   /* PA2 */
+        pinctrl-names = "default";
+    };
+};
+
+/* TIM5_CH1  → throttle (32-bit timer) ----------------- */
+&timers5 {
+    status = "okay";
+    st,prescaler = <107>;
+
+    pwm5_in: pwm5_in {
+        compatible = "st,stm32-pwm";
+        status = "okay";
+        #pwm-cells = <3>;
+        pinctrl-0 = <&tim5_ch1_ph10>;  /* PH10 */
+        pinctrl-names = "default";
+    };
+};
+
+/* TIM4_CH3  → override -------------------------------- */
+&timers4 {
+    status = "okay";
+    st,prescaler = <107>;
+
+    pwm4_in: pwm4_in {
+        four-channel-capture-support;
+        compatible = "st,stm32-pwm";
+        status = "okay";
+        #pwm-cells = <3>;
+        pinctrl-0 = <&tim4_ch3_pb8>;   /* PB8 */
+        pinctrl-names = "default";
+    };
+};
+
+/* =================================================== */
+/* === 2.  PWM-OUTPUT TIMER INSTANCES (servos / ESC)  == */
+/* =================================================== */
+
+&pinctrl {
+    tim1_ch1_pe9: tim1_ch1_pe9  { pinmux = <STM32_PINMUX('E',  9, AF1)>; };
+    tim2_ch3_pb10: tim2_ch3_pb10 { pinmux = <STM32_PINMUX('B', 10, AF1)>; };
+    tim2_ch4_pb11: tim2_ch4_pb11 { pinmux = <STM32_PINMUX('B', 11, AF1)>; };
+    tim12_ch1_ph6: tim12_ch1_ph6 { pinmux = <STM32_PINMUX('H',  6, AF9)>; };
+    /* If you want rear diff on its own pin, add one here */
+};
+
+&timers1 {status = "okay"; st,prescaler = <1079>;
+    pwm1: pwm1 { compatible = "st,stm32-pwm"; status = "okay"; #pwm-cells = <3>;
+        pinctrl-0 = <&tim1_ch1_pe9>;
+    pinctrl-names = "default"; };
+};
+
+&timers2 {status = "okay"; st,prescaler = <1079>;
+    pwm2: pwm2 { compatible = "st,stm32-pwm"; status = "okay"; #pwm-cells = <3>;
+        pinctrl-0 = <&tim2_ch3_pb10 &tim2_ch4_pb11>;
+    pinctrl-names = "default"; };
+};
+
+&timers12 {status = "okay"; st,prescaler = <1079>;
+    pwm12: pwm12 { compatible = "st,stm32-pwm"; status = "okay"; #pwm-cells = <3>;
+        pinctrl-0 = <&tim12_ch1_ph6>;
+    pinctrl-names = "default"; };
+};
+
+/* =================================================== */
+/* === 3.  Logical PWM devices – inputs & outputs    == */
+/* =================================================== */
+
+&{/} {
+    /* ---- RC-receiver logical “pwm-input” nodes -------------- */
+    steering_rc: steering_rc  { compatible = "pwm-input"; pwms = <&pwm3_in 1 0 0>; };
+    gear_rc: gear_rc      { compatible = "pwm-input"; pwms = <&pwm9_in 1 0 0>; };
+    throttle_rc: throttle_rc  { compatible = "pwm-input"; pwms = <&pwm5_in 1 0 0>; };
+    override_rc: override_rc  { compatible = "pwm-input"; pwms = <&pwm4_in 3 0 0>; };
+
+    /* ---- Servo / ESC outputs -------------------------------- */
+    steeringservo: servo0 { compatible = "pwm-servo";
+        pwms = <&pwm1 1 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+    min-pulse = <PWM_USEC(1000)>; max-pulse = <PWM_USEC(2100)>; };
+
+    gearservo: servo1 { compatible = "pwm-servo";
+        pwms = <&pwm2 3 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+    min-pulse = <PWM_USEC(1000)>; max-pulse = <PWM_USEC(2100)>; };
+
+    throttleservo: servo2 { compatible = "pwm-servo";
+        pwms = <&pwm2 4 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+    min-pulse = <PWM_USEC(1000)>; max-pulse = <PWM_USEC(2100)>; };
+
+    difffrontservo: servo3 { compatible = "pwm-servo";
+        pwms = <&pwm12 1 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+    min-pulse = <PWM_USEC(1000)>; max-pulse = <PWM_USEC(2100)>; };
+
+    diffrearservo: servo4 { compatible = "pwm-servo";
+        /* Same timer/pin mirrored for demo — change if you have another pin */
+        pwms = <&pwm1 1 PWM_MSEC(20) PWM_POLARITY_INVERTED>;
+    min-pulse = <PWM_USEC(1000)>; max-pulse = <PWM_USEC(2100)>; };
+
+    /* ---- Stable short names for C code ----------------------- */
+    aliases {
+        rc-steer    = &steering_rc;
+        rc-gear     = &gear_rc;
+        rc-throttle = &throttle_rc;
+        rc-override = &override_rc;
+
+        servo0 = &steeringservo;
+        servo1 = &gearservo;
+        servo2 = &throttleservo;
+        servo3 = &difffrontservo;
+        servo4 = &diffrearservo;
+    };
+};
