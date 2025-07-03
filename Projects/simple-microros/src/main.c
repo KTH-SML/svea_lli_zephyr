@@ -28,6 +28,7 @@
 int main(void) {
     printf("micro‑ROS Zephyr base node\n");
     pwm_in_init();
+
     for (;;) {
         rmw_uros_set_custom_transport(MICRO_ROS_FRAMING_REQUIRED,
                                       (void *)&default_params,
@@ -42,12 +43,12 @@ int main(void) {
         rclc_executor_t executor;
 
         if (rclc_support_init(&support, 0, NULL, &allocator) != RCL_RET_OK) {
-            k_sleep(K_MSEC(1000));
+            k_sleep(K_MSEC(100));
             continue;
         }
         if (rclc_node_init_default(&node, "zephyr_base_node", "", &support) != RCL_RET_OK) {
             rclc_support_fini(&support);
-            k_sleep(K_MSEC(1000));
+            k_sleep(K_MSEC(100));
             continue;
         }
 
@@ -67,7 +68,7 @@ int main(void) {
         printf("micro‑ROS ready\n");
 
         while (1) {
-            rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10));
+            rclc_executor_spin_some(&executor, 0);
             k_sleep(K_MSEC(1));
         }
 
@@ -76,7 +77,7 @@ int main(void) {
         rclc_executor_fini(&executor);
         rcl_node_fini(&node);
         rclc_support_fini(&support);
-        k_sleep(K_MSEC(1000));
+        k_sleep(K_MSEC(100));
     }
     return 0;
 }
