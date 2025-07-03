@@ -1,4 +1,5 @@
 #include "pwm.h"
+#include <math.h>
 #include <rcl/rcl.h>
 #include <rclc/executor.h>
 #include <rclc/rclc.h>
