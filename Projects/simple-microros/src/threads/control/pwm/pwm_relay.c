@@ -49,29 +49,16 @@ static inline bool duty_changed(int32_t new_us, int32_t prev_us) {
     return (prev_us == -1 || abs(new_us - prev_us) > 3); /* 3 µs hysteresis */
 }
 
-static void update_override_mode(int32_t diff_us) {
-    bool new_state = (diff_us >= OVERRIDE_THRESHOLD_US);
-    if (new_state != last_override_state) {
-        override_mode = new_state;
-        last_override_state = new_state;
-        printf("pwm_relay: override %s (diff %d µs)\n",
-               override_mode ? "ENABLED — RC" : "DISABLED — robot", diff_us);
-    }
-}
+static inline void update_override_mode(int32_t diff_us);
+static void relay_rc(struct pwm_in_channel *in, int32_t pulse_us);
 
-static void relay_rc(struct pwm_in_channel *in, int32_t pulse_us) {
-    if (!override_mode || !in->out_pwm)
-        return; /* robotics or no mapping */
-
-    set_pwm_pulse_us(in->out_pwm, (uint32_t)pulse_us);
-}
+static int32_t last_capture_us[PWM_INPUTS_MAX] = {-1, -1, -1, -1};
 
 /* -------------------- capture callback -------------------------------- */
 static void pwm_capture_cb(const struct device *dev, uint32_t chan,
                            uint32_t period_cycles, uint32_t pulse_cycles,
                            int status, void *user_data) {
     struct pwm_in_channel *in = (struct pwm_in_channel *)user_data;
-    static int32_t last_us[PWM_INPUTS_MAX] = {-1, -1, -1, -1};
     const int idx = in - pwm_inputs;
 
     if (status) {
@@ -97,9 +84,11 @@ static void pwm_capture_cb(const struct device *dev, uint32_t chan,
     if (idx == PWM_CH_DIFF)
         update_override_mode(p_us);
 
-    if (!duty_changed(p_us, last_us[idx]))
+    if (!duty_changed(p_us, last_capture_us[idx]))
         return; /* debounced */
-    last_us[idx] = p_us;
+    
+    // Save the last valid capture for immediate use in override mode
+    last_capture_us[idx] = p_us;
 
     float norm = norm_from_us(p_us);
     if (in->norm_value_ptr)
@@ -107,6 +96,35 @@ static void pwm_capture_cb(const struct device *dev, uint32_t chan,
 
     relay_rc(in, p_us);
     publish_rc_message(in, norm);
+}
+
+static void update_override_mode(int32_t diff_us) {
+    bool new_state = (diff_us >= OVERRIDE_THRESHOLD_US);
+    if (new_state != last_override_state) {
+        override_mode = new_state;
+        last_override_state = new_state;
+        printf("pwm_relay: override %s (diff %d µs)\n",
+               override_mode ? "ENABLED — RC" : "DISABLED — robot", diff_us);
+        
+        if (override_mode) {
+            /* When switching to override mode, relay the latest captured values */
+            for (pwm_channel_t ch = 0; ch < PWM_INPUTS_MAX; ++ch) {
+                if (pwm_inputs[ch].out_pwm && last_capture_us[ch] != -1) {
+                    // Use the actual captured pulse width directly
+                    set_pwm_pulse_us(pwm_inputs[ch].out_pwm, (uint32_t)last_capture_us[ch]);
+                    printf("pwm_relay: Applied override value %d µs to channel %d\n", 
+                           last_capture_us[ch], ch);
+                }
+            }
+        }
+    }
+}
+
+static void relay_rc(struct pwm_in_channel *in, int32_t pulse_us) {
+    if (!override_mode || !in->out_pwm)
+        return; /* robotics or no mapping */
+
+    set_pwm_pulse_us(in->out_pwm, (uint32_t)pulse_us);
 }
 
 /* -------------------- input thread ----------------------------------- */
