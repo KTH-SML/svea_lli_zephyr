@@ -8,7 +8,7 @@ LOG_MODULE_REGISTER(remote, LOG_LEVEL_INF);
 
 static RemoteState cur, prev;
 static atomic_t alive_mask;
-bool rc_valid = false;
+static atomic_t rc_valid_atomic;
 
 // Fixed: K_MSGQ_DEFINE now requires 4 arguments in Zephyr 4.1 (name, msg_size, max_msgs, align)
 K_MSGQ_DEFINE(rc_q, sizeof(RemoteState), 4, 4);
@@ -28,7 +28,7 @@ void remote_report(int ch, uint32_t us) {
         return;
 
     atomic_set_bit(&alive_mask, ch);
-    rc_valid = true;
+    atomic_set(&rc_valid_atomic, 1);
     cur.fields[ch] = us;
 
     // Update named fields for convenience
@@ -65,7 +65,7 @@ void remote_link_lost(int ch) {
     LOG_WRN("RC channel %d link lost", ch);
 
     if (atomic_get(&alive_mask) == 0) {
-        rc_valid = false;
+        atomic_set(&rc_valid_atomic, 0);
         LOG_WRN("All RC channels lost");
         k_msgq_put(&rc_q, &prev, K_NO_WAIT); // Wake arbiter
     }
@@ -77,4 +77,9 @@ void remote_init(void) {
     memset(&prev, 0, sizeof(prev));
 
     LOG_INF("Remote control initialized");
+}
+
+// Add getter function in remote.h
+bool remote_is_valid(void) {
+    return atomic_get(&rc_valid_atomic) != 0;
 }

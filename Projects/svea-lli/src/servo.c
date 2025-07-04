@@ -38,12 +38,25 @@ static void apply_servo(struct k_work *work) {
 }
 
 void servo_request(int id, uint32_t us) {
-    if (id >= SERVO_COUNT)
+    if (id >= SERVO_COUNT || id < 0) {
+        LOG_ERR("Invalid servo ID: %d", id);
         return;
+    }
+
+    // Bound check the PWM value to prevent hardware damage
+    if (us < 1000) {
+        LOG_WRN("Servo %d: Limiting low pulse width from %u to 1000us", id, us);
+        us = 1000;
+    } else if (us > 2100) {
+        LOG_WRN("Servo %d: Limiting high pulse width from %u to 2100us", id, us);
+        us = 2100;
+    }
 
     if (us != atomic_get(&srv[id].target)) {
         atomic_set(&srv[id].target, us);
-        k_work_submit(&srv[id].work);
+        if (k_work_submit(&srv[id].work) < 0) {
+            LOG_ERR("Failed to submit work for servo %d", id);
+        }
     }
 }
 

@@ -22,6 +22,10 @@
     };
 };
 
+&iwdg {
+    status = "okay";
+};
+
 / {
     chosen {
         zephyr,console = &usart3;
@@ -40,6 +44,9 @@
         servo1 = &gearservo;
         servo2 = &throttleesc;
         servo3 = &diffservo;
+
+        /* Add this to your existing aliases */
+        watchdog0 = &iwdg;
     };
 };
 

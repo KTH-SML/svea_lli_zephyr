@@ -273,15 +273,41 @@ void ros_iface_thread(void *p1, void *p2, void *p3) {
         k_sleep(K_SECONDS(1));
     }
 
+    int consecutive_failures = 0;
+
     while (1) {
         // Spin the executor to handle callbacks
         rcl_ret_t ret = rclc_executor_spin_some(&ros_ctx.executor, RCL_MS_TO_NS(10));
+
         if (ret != RCL_RET_OK && ret != RCL_RET_TIMEOUT) {
             LOG_WRN("Executor spin failed: %d", ret);
+            consecutive_failures++;
+
+            if (consecutive_failures > 10) {
+                LOG_ERR("Too many consecutive ROS failures, attempting recovery");
+                // Try to reinitialize
+                ros_ctx.initialized = false;
+                // Clean up existing resources if needed
+                // ...
+                if (rclc_support_init_ok()) {
+                    // Reinitialize subscribers and publishers
+                    init_servo_subscribers();
+                    init_rc_publishers();
+                    LOG_INF("ROS interface recovery complete");
+                }
+                consecutive_failures = 0;
+                k_sleep(K_MSEC(100)); // Longer sleep after recovery attempt
+            }
+        } else {
+            consecutive_failures = 0;
         }
 
-        // Small delay to prevent CPU hogging
-        k_sleep(K_MSEC(10));
+        // Adaptive sleep - sleep longer if we're having issues
+        if (consecutive_failures > 0) {
+            k_sleep(K_MSEC(50)); // Sleep longer when having issues
+        } else {
+            k_sleep(K_MSEC(20)); // Normal operation sleep
+        }
     }
 }
 

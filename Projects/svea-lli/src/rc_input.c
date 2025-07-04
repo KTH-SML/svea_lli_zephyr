@@ -44,6 +44,9 @@ static struct rc_input_channel rc_channels[] = {
 #endif
 };
 
+// Add array to track initialized channels
+static bool rc_channel_initialized[NUM_RC_CHANNELS] = {false};
+
 uint32_t ticks_to_us(uint32_t ticks) {
     // Convert timer ticks to microseconds
     // With prescaler 107, timer frequency is ~1MHz (1 tick ≈ 1 µs)
@@ -74,6 +77,8 @@ void common_cb(const struct device *dev, uint32_t channel,
 void rc_input_init(void) {
     LOG_INF("Initializing RC input capture");
 
+    int success_count = 0;
+
     for (int i = 0; i < ARRAY_SIZE(rc_channels); i++) {
         const struct rc_input_channel *ch = &rc_channels[i];
 
@@ -89,15 +94,27 @@ void rc_input_init(void) {
                                         (void *)(uintptr_t)ch->rc_ch_id);
         if (ret < 0) {
             LOG_ERR("Failed to configure PWM capture for %s: %d", ch->name, ret);
+            rc_channel_initialized[ch->rc_ch_id] = false;
             continue;
         }
 
         ret = pwm_enable_capture(ch->dev, ch->channel);
         if (ret < 0) {
             LOG_ERR("Failed to enable PWM capture for %s: %d", ch->name, ret);
+            rc_channel_initialized[ch->rc_ch_id] = false;
             continue;
         }
 
+        rc_channel_initialized[ch->rc_ch_id] = true;
+        success_count++;
+
         LOG_INF("RC input %s initialized on channel %d", ch->name, ch->channel);
+    }
+
+    LOG_INF("RC input initialization complete: %d/%d channels ready",
+            success_count, ARRAY_SIZE(rc_channels));
+
+    if (success_count == 0) {
+        LOG_ERR("No RC channels initialized! System may not respond to RC input.");
     }
 }

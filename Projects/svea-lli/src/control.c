@@ -7,6 +7,11 @@
 
 LOG_MODULE_REGISTER(control, LOG_LEVEL_INF);
 
+// Add mutex for ros command timestamp
+static K_MUTEX_DEFINE(ros_cmd_mutex);
+static int64_t last_ros_cmd = 0;
+static atomic_t ros_cmd_valid_atomic; // Replace global variable with atomic
+
 void center_all_servos(void) {
     LOG_INF("Centering all servos (failsafe)");
     servo_request(0, 1500); // Steering
@@ -21,6 +26,7 @@ void control_thread(void *p1, void *p2, void *p3) {
     ARG_UNUSED(p3);
 
     RemoteState rc_frame = {0};
+    int64_t last_ros_cmd = k_uptime_get(); // Initialize at thread start
 
     LOG_INF("Control thread started (priority 0)");
 
@@ -44,7 +50,7 @@ void control_thread(void *p1, void *p2, void *p3) {
         // Control logic
         bool override_active = (rc_frame.override_us > 1700);
 
-        if (override_active && rc_valid) {
+        if (override_active && remote_is_valid()) {
             // Use RC inputs - manual override
             LOG_DBG("Using RC control (override active)");
             servo_request(0, rc_frame.steer);
@@ -59,20 +65,20 @@ void control_thread(void *p1, void *p2, void *p3) {
             LOG_DBG("Using ROS control");
             // Commands are handled automatically by ROS callbacks
             // Just reset the flag after some time to detect timeouts
-            static int64_t last_ros_cmd = 0;
             int64_t now = k_uptime_get();
-
+            k_mutex_lock(&ros_cmd_mutex, K_FOREVER);
             if (last_ros_cmd == 0) {
                 last_ros_cmd = now;
             }
 
             // If no new ROS commands for 500ms, consider it timeout
             if (now - last_ros_cmd > 500) {
-                ros_cmd_valid = false;
+                atomic_set(&ros_cmd_valid_atomic, 0);
                 LOG_WRN("ROS command timeout, switching to failsafe");
-            } else if (ros_cmd_valid) {
+            } else if (atomic_get(&ros_cmd_valid_atomic)) {
                 last_ros_cmd = now;
             }
+            k_mutex_unlock(&ros_cmd_mutex);
         } else {
             // Failsafe: center all servos
             LOG_DBG("Failsafe mode - centering servos");
@@ -86,6 +92,19 @@ void control_thread(void *p1, void *p2, void *p3) {
 
 void control_start(void) {
     LOG_INF("Starting control system");
+}
+
+// Update in ros_iface.c
+static void servo_callback(const void *msg_in, void *context) {
+    // ...existing code...
+
+    // Set ROS command valid
+    atomic_set(&ros_cmd_valid_atomic, 1);
+
+    // Update timestamp with mutex protection
+    k_mutex_lock(&ros_cmd_mutex, K_FOREVER);
+    last_ros_cmd = k_uptime_get();
+    k_mutex_unlock(&ros_cmd_mutex);
 }
 
 K_THREAD_DEFINE(control_tid, 4096, control_thread, NULL, NULL, NULL, 0, 0, 0);

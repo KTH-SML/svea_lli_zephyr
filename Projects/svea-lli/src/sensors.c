@@ -9,6 +9,10 @@ LOG_MODULE_REGISTER(sensors, LOG_LEVEL_INF);
 static const struct device *imu_dev;
 
 void sensors_init(void) {
+    LOG_INF("Unused for now");
+}
+
+void imu_sensor_thread(void *p1, void *p2, void *p3) {
     LOG_INF("Initializing sensors");
 
     imu_dev = DEVICE_DT_GET(DT_NODELABEL(ism330dlc));
@@ -19,9 +23,6 @@ void sensors_init(void) {
     }
 
     LOG_INF("IMU device ready");
-}
-
-void sensors_thread(void *p1, void *p2, void *p3) {
     ARG_UNUSED(p1);
     ARG_UNUSED(p2);
     ARG_UNUSED(p3);
@@ -52,4 +53,4 @@ void sensors_thread(void *p1, void *p2, void *p3) {
     }
 }
 
-K_THREAD_DEFINE(sensors_tid, 2048, sensors_thread, NULL, NULL, NULL, 4, 0, 0);
+K_THREAD_DEFINE(sensors_tid, 2048, imu_sensor_thread, NULL, NULL, NULL, 4, 0, 0);
