@@ -59,8 +59,8 @@ void control_thread(void *p1, void *p2, void *p3) {
             servo_request(3, 1500); // Center diff during RC control
 
             // Reset ROS command validity to prevent interference
-            ros_cmd_valid = false;
-        } else if (ros_cmd_valid) {
+            atomic_set(&ros_cmd_valid_atomic, 0);
+        } else if (atomic_get(&ros_cmd_valid_atomic)) {
             // ROS commands are being processed by servo callbacks
             LOG_DBG("Using ROS control");
             // Commands are handled automatically by ROS callbacks
@@ -94,17 +94,4 @@ void control_start(void) {
     LOG_INF("Starting control system");
 }
 
-// Update in ros_iface.c
-static void servo_callback(const void *msg_in, void *context) {
-    // ...existing code...
-
-    // Set ROS command valid
-    atomic_set(&ros_cmd_valid_atomic, 1);
-
-    // Update timestamp with mutex protection
-    k_mutex_lock(&ros_cmd_mutex, K_FOREVER);
-    last_ros_cmd = k_uptime_get();
-    k_mutex_unlock(&ros_cmd_mutex);
-}
-
-K_THREAD_DEFINE(control_tid, 4096, control_thread, NULL, NULL, NULL, 0, 0, 0);
+// K_THREAD_DEFINE(control_tid, 4096, control_thread, NULL, NULL, NULL, 0, 0, 0);
