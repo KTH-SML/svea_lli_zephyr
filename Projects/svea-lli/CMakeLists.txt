@@ -8,18 +8,18 @@ list(APPEND ZEPHYR_EXTRA_MODULES
 )
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
-project(svea-lli)
+project(svea_lli_control C CXX)
 
-# Public headers for every source file in this application
-target_include_directories(app PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+# Include directories
+target_include_directories(app PRIVATE include)
 
-# List every .c (or .cpp) file to be built into the final firmware
+# Source files
 target_sources(app PRIVATE
-  src/rc_input.c
-  src/remote.c
-  src/servo.c
-  src/ros_iface.c
-  src/control.c
-  src/sensor_imu.c
-  src/main.c
+    src/main.c
+    src/control.c
+    src/rc_input.c
+    src/remote.c
+    src/servo.c
+    src/sensors.c
+    src/ros_iface.c
 )

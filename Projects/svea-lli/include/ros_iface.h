@@ -1,10 +1,16 @@
-#pragma once
+#ifndef ROS_IFACE_H
+#define ROS_IFACE_H
+
 #include "remote.h"
 #include <zephyr/kernel.h>
 
-int ros_iface_start(void);
-void ros_publish_rc(const struct RcFrame *f);
+// External variables
+extern bool ros_cmd_valid;
 
-extern struct k_poll_signal ros_sig; /* raised on new /lli/ctrl msg */
-extern volatile bool ros_cmd_ready;
-extern uint8_t ros_cmd_duty[4]; /* diff, steer, gear, throttle */
+// Function declarations
+void ros_iface_init(void);
+void ros_iface_thread(void *p1, void *p2, void *p3);
+bool rclc_support_init_ok(void);
+void ros_publish_rc(const RemoteState *rc_frame);
+
+#endif // ROS_IFACE_H

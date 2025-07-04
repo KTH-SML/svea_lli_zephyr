@@ -1,34 +1,103 @@
+#include "rc_input.h"
 #include "remote.h"
 #include <zephyr/device.h>
+#include <zephyr/devicetree.h>
 #include <zephyr/drivers/pwm.h>
+#include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
 
-/* ---- DT helpers: zero literals ------------------------------------ */
-#define RC_NODE(n) DT_ALIAS(rc_##n)
-#define RC_DEV(n) DEVICE_DT_GET(DT_PWMS_CTLR(RC_NODE(n)))
-#define RC_CH(n) DT_PWMS_CHANNEL_BY_IDX(RC_NODE(n), 0)
+LOG_MODULE_REGISTER(rc_input, LOG_LEVEL_INF);
 
-BUILD_ASSERT(DT_NODE_HAS_STATUS(RC_NODE(steer), okay), "overlay missing");
+// Structure to hold PWM input channel info
+struct rc_input_channel {
+    const struct device *dev;
+    uint32_t channel;
+    const char *name;
+    int rc_ch_id;
+};
 
-static void cb(const struct device *d, uint32_t chan,
-               uint32_t per, uint32_t pulse, int status, void *ud) {
-    enum rc_chan idx = (enum rc_chan)(uintptr_t)ud;
-    bool ov = status & PWM_CAPTURE_CB_OVERFLOW;
-    uint16_t us = pwm_ticks_to_ns(d, pulse) / 1000;
-    rc_report(idx, us, ov);
+// Define RC input channels using direct PWM controller references
+static struct rc_input_channel rc_channels[] = {
+#if DT_NODE_EXISTS(DT_ALIAS(rc_steer))
+    {.dev = DEVICE_DT_GET(DT_ALIAS(rc_steer)),
+     .channel = 1, // TIM3_CH1
+     .name = "rc-steer",
+     .rc_ch_id = RC_STEER},
+#endif
+#if DT_NODE_EXISTS(DT_ALIAS(rc_gear))
+    {.dev = DEVICE_DT_GET(DT_ALIAS(rc_gear)),
+     .channel = 1, // TIM9_CH1
+     .name = "rc-gear",
+     .rc_ch_id = RC_GEAR},
+#endif
+#if DT_NODE_EXISTS(DT_ALIAS(rc_throttle))
+    {.dev = DEVICE_DT_GET(DT_ALIAS(rc_throttle)),
+     .channel = 1, // TIM5_CH1
+     .name = "rc-throttle",
+     .rc_ch_id = RC_THROTTLE},
+#endif
+#if DT_NODE_EXISTS(DT_ALIAS(rc_override))
+    {.dev = DEVICE_DT_GET(DT_ALIAS(rc_override)),
+     .channel = 3, // TIM4_CH3
+     .name = "rc-override",
+     .rc_ch_id = RC_OVERRIDE},
+#endif
+};
+
+uint32_t ticks_to_us(uint32_t ticks) {
+    // Convert timer ticks to microseconds
+    // With prescaler 107, timer frequency is ~1MHz (1 tick ≈ 1 µs)
+    return ticks;
 }
 
-static int init_one(const struct device *dev, uint32_t ch, enum rc_chan idx) {
-    struct pwm_capture_cfg c = {
-        .flags = PWM_CAPTURE_TYPE_BOTH | PWM_CAPTURE_MODE_CONTINUOUS,
-        .callback = cb,
-        .user_data = (void *)(uintptr_t)idx,
-    };
-    return pwm_capture_enable(dev, ch, &c);
+void common_cb(const struct device *dev, uint32_t channel,
+               uint32_t period, uint32_t pulse, int status, void *user_data) {
+    int ch = (int)(uintptr_t)user_data;
+
+    // Check for capture errors
+    if (status != 0) {
+        LOG_WRN("PWM capture error on channel %d, status: %d", ch, status);
+        remote_link_lost(ch);
+        return;
+    }
+
+    // Check for reasonable pulse width (0.5ms to 2.5ms for RC signals)
+    if (pulse < 500 || pulse > 2500) {
+        LOG_WRN("PWM pulse out of range on channel %d: %d us", ch, pulse);
+        return;
+    }
+
+    uint32_t us = ticks_to_us(pulse);
+    remote_report(ch, us);
 }
 
-int rc_input_init(void) {
-    return init_one(RC_DEV(steer), RC_CH(steer), RC_STEER) ||
-           init_one(RC_DEV(gear), RC_CH(gear), RC_GEAR) ||
-           init_one(RC_DEV(throttle), RC_CH(throttle), RC_THROTTLE) ||
-           init_one(RC_DEV(override), RC_CH(override), RC_OVERRIDE);
+void rc_input_init(void) {
+    LOG_INF("Initializing RC input capture");
+
+    for (int i = 0; i < ARRAY_SIZE(rc_channels); i++) {
+        const struct rc_input_channel *ch = &rc_channels[i];
+
+        if (!device_is_ready(ch->dev)) {
+            LOG_ERR("PWM device %s not ready", ch->dev->name);
+            continue;
+        }
+
+        // Use the correct Zephyr 4.1 PWM capture API
+        int ret = pwm_configure_capture(ch->dev, ch->channel,
+                                        PWM_CAPTURE_TYPE_PULSE,
+                                        common_cb,
+                                        (void *)(uintptr_t)ch->rc_ch_id);
+        if (ret < 0) {
+            LOG_ERR("Failed to configure PWM capture for %s: %d", ch->name, ret);
+            continue;
+        }
+
+        ret = pwm_enable_capture(ch->dev, ch->channel);
+        if (ret < 0) {
+            LOG_ERR("Failed to enable PWM capture for %s: %d", ch->name, ret);
+            continue;
+        }
+
+        LOG_INF("RC input %s initialized on channel %d", ch->name, ch->channel);
+    }
 }

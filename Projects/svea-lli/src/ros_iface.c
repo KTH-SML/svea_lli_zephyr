@@ -1,74 +1,289 @@
 #include "ros_iface.h"
-#include <microros_transports/serial_transport.h>
+#include "servo.h"
 #include <rcl/rcl.h>
+#include <rclc/executor.h>
 #include <rclc/rclc.h>
+#include <rcutils/allocator.h>
+#include <std_msgs/msg/u_int8.h>
+#include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
 
-struct k_poll_signal ros_sig = K_POLL_SIGNAL_INITIALIZER(ros_sig);
-volatile bool ros_cmd_ready = false;
-uint8_t ros_cmd_duty[4]; /* diff, steer, gear, throttle */
+LOG_MODULE_REGISTER(ros_iface, LOG_LEVEL_INF);
 
-static rcl_publisher_t pub;
-static rcl_subscription_t sub;
-static rclc_executor_t exec;
+// ROS Topics
+#define ROS_TOPIC_STEERING "/servo/steering"
+#define ROS_TOPIC_GEAR "/servo/gear"
+#define ROS_TOPIC_THROTTLE "/servo/throttle"
+#define ROS_TOPIC_DIFF "/servo/diff"
 
-static void sub_cb(const void *msg_in) {
-    const std_msgs__msg__UInt8MultiArray *m = msg_in;
-    if (m->data.size >= 4) {
-        ros_cmd_duty[0] = m->data.data[0];
-        ros_cmd_duty[1] = m->data.data[1];
-        ros_cmd_duty[2] = m->data.data[2];
-        ros_cmd_duty[3] = m->data.data[3];
-        ros_cmd_ready = true;
-        k_poll_signal_raise(&ros_sig, 0);
-    }
+#define ROS_TOPIC_RC_STEERING "/rc/steering"
+#define ROS_TOPIC_RC_GEAR "/rc/gear"
+#define ROS_TOPIC_RC_THROTTLE "/rc/throttle"
+#define ROS_TOPIC_RC_OVERRIDE "/rc/override"
+
+// Servo channel structure for ROS control
+struct servo_ros_channel {
+    rcl_subscription_t sub;
+    std_msgs__msg__UInt8 msg;
+    const char *topic;
+    int servo_id;
+    uint8_t prev_value;
+};
+
+// RC publisher structure
+struct rc_publisher {
+    rcl_publisher_t pub;
+    std_msgs__msg__UInt8 msg;
+    const char *topic;
+    int rc_channel;
+};
+
+// ROS interface context
+static struct {
+    rcl_context_t context;
+    rcl_node_t node;
+    rclc_executor_t executor;
+    rclc_support_t support;
+
+    struct servo_ros_channel servo_channels[4];
+    struct rc_publisher rc_publishers[4];
+
+    bool initialized;
+} ros_ctx = {0};
+
+bool ros_cmd_valid = false;
+
+// Convert uint8 (0-255) to microseconds (1000-2000)
+static uint32_t uint8_to_us(uint8_t value) {
+    return 1000 + ((uint32_t)value * 1000) / 255;
 }
 
-static void spin_fn(void *a, void *b, void *c) {
-    while (1) {
-        if (rmw_uros_ping_agent(50, 2) != RMW_RET_OK) {
-            k_sleep(K_SECONDS(1));
+// Convert microseconds (1000-2000) to uint8 (0-255)
+static uint8_t us_to_uint8(uint32_t us) {
+    if (us < 1000)
+        us = 1000;
+    if (us > 2000)
+        us = 2000;
+    return (uint8_t)(((us - 1000) * 255) / 1000);
+}
+
+// Servo command callback
+static void servo_callback(const void *msg_in, void *context) {
+    struct servo_ros_channel *channel = (struct servo_ros_channel *)context;
+    const std_msgs__msg__UInt8 *msg = (const std_msgs__msg__UInt8 *)msg_in;
+
+    LOG_DBG("ROS servo command received for %s: %d", channel->topic, msg->data);
+
+    // Skip if value hasn't changed
+    if (msg->data == channel->prev_value) {
+        return;
+    }
+
+    channel->prev_value = msg->data;
+
+    // Convert uint8 to microseconds and send to servo
+    uint32_t us = uint8_to_us(msg->data);
+    servo_request(channel->servo_id, us);
+
+    ros_cmd_valid = true;
+}
+
+bool rclc_support_init_ok(void) {
+    if (ros_ctx.initialized) {
+        return true;
+    }
+
+    // Get default allocator
+    rcl_allocator_t allocator = rcl_get_default_allocator();
+
+    // Initialize micro-ROS support with correct parameters
+    rcl_ret_t ret = rclc_support_init(&ros_ctx.support, 0, NULL, &allocator);
+    if (ret != RCL_RET_OK) {
+        LOG_ERR("Failed to initialize rclc support: %d", ret);
+        return false;
+    }
+
+    // Create node
+    ret = rclc_node_init_default(&ros_ctx.node, "svea_lli_node", "", &ros_ctx.support);
+    if (ret != RCL_RET_OK) {
+        LOG_ERR("Failed to create node: %d", ret);
+        return false;
+    }
+
+    // Create executor
+    ret = rclc_executor_init(&ros_ctx.executor, &ros_ctx.support.context, 8, &allocator);
+    if (ret != RCL_RET_OK) {
+        LOG_ERR("Failed to create executor: %d", ret);
+        return false;
+    }
+
+    LOG_INF("Micro-ROS support initialized successfully");
+    ros_ctx.initialized = true;
+    return true;
+}
+
+static void init_servo_subscribers(void) {
+    LOG_INF("Initializing servo subscribers");
+
+    // Initialize servo channel configurations
+    ros_ctx.servo_channels[0] = (struct servo_ros_channel){
+        .topic = ROS_TOPIC_STEERING,
+        .servo_id = 0,
+        .prev_value = 127 // Center value
+    };
+
+    ros_ctx.servo_channels[1] = (struct servo_ros_channel){
+        .topic = ROS_TOPIC_GEAR,
+        .servo_id = 1,
+        .prev_value = 127};
+
+    ros_ctx.servo_channels[2] = (struct servo_ros_channel){
+        .topic = ROS_TOPIC_THROTTLE,
+        .servo_id = 2,
+        .prev_value = 127};
+
+    ros_ctx.servo_channels[3] = (struct servo_ros_channel){
+        .topic = ROS_TOPIC_DIFF,
+        .servo_id = 3,
+        .prev_value = 127};
+
+    // Initialize subscriptions
+    for (int i = 0; i < 4; i++) {
+        struct servo_ros_channel *channel = &ros_ctx.servo_channels[i];
+
+        rcl_ret_t ret = rclc_subscription_init_default(
+            &channel->sub,
+            &ros_ctx.node,
+            ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, UInt8),
+            channel->topic);
+
+        if (ret != RCL_RET_OK) {
+            LOG_ERR("Failed to init subscription for %s: %d", channel->topic, ret);
             continue;
         }
 
-        /* --- rebuild entities each reconnect ----------------------- */
-        rcl_allocator_t alloc = rcl_get_default_allocator();
-        rcl_node_t node;
-        rclc_node_init_default(&node, "zephyr", "", &alloc);
-        rclc_publisher_init_best_effort(
-            &pub, &node,
-            ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, UInt8MultiArray),
-            "/lli/remote/frame");
+        ret = rclc_executor_add_subscription_with_context(
+            &ros_ctx.executor,
+            &channel->sub,
+            &channel->msg,
+            servo_callback,
+            channel,
+            ON_NEW_DATA);
 
-        rclc_subscription_init_default(
-            &sub, &node,
-            ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, UInt8MultiArray),
-            "/lli/ctrl/servo");
+        if (ret != RCL_RET_OK) {
+            LOG_ERR("Failed to add subscription to executor for %s: %d", channel->topic, ret);
+            continue;
+        }
 
-        rclc_executor_init(&exec, &node, 1, &alloc);
-        rclc_executor_add_subscription(&exec, &sub, NULL, sub_cb, ON_NEW_DATA);
-
-        while (rclc_executor_spin_some(&exec, RCL_MS_TO_NS(10)) == RCL_RET_OK)
-            ;
-
-        rclc_executor_fini(&exec);
-        rcl_subscription_fini(&sub, &node);
-        rcl_publisher_fini(&pub, &node);
-        rcl_node_fini(&node);
+        LOG_INF("Servo subscriber initialized for %s", channel->topic);
     }
 }
 
-int ros_iface_start(void) {
-    microros_transport_serial_init("/dev/ttyACM0", 115200);
-    static uint8_t st[2048];
-    k_thread_create(&(struct k_thread){}, st, sizeof st,
-                    spin_fn, NULL, NULL, NULL, 3, 0, K_NO_WAIT);
-    return 0;
+static void init_rc_publishers(void) {
+    LOG_INF("Initializing RC publishers");
+
+    // Initialize RC publisher configurations
+    ros_ctx.rc_publishers[0] = (struct rc_publisher){
+        .topic = ROS_TOPIC_RC_STEERING,
+        .rc_channel = RC_STEER};
+
+    ros_ctx.rc_publishers[1] = (struct rc_publisher){
+        .topic = ROS_TOPIC_RC_GEAR,
+        .rc_channel = RC_GEAR};
+
+    ros_ctx.rc_publishers[2] = (struct rc_publisher){
+        .topic = ROS_TOPIC_RC_THROTTLE,
+        .rc_channel = RC_THROTTLE};
+
+    ros_ctx.rc_publishers[3] = (struct rc_publisher){
+        .topic = ROS_TOPIC_RC_OVERRIDE,
+        .rc_channel = RC_OVERRIDE};
+
+    // Initialize publishers
+    for (int i = 0; i < 4; i++) {
+        struct rc_publisher *pub = &ros_ctx.rc_publishers[i];
+
+        rcl_ret_t ret = rclc_publisher_init_best_effort(
+            &pub->pub,
+            &ros_ctx.node,
+            ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, UInt8),
+            pub->topic);
+
+        if (ret != RCL_RET_OK) {
+            LOG_ERR("Failed to init publisher for %s: %d", pub->topic, ret);
+            continue;
+        }
+
+        LOG_INF("RC publisher initialized for %s", pub->topic);
+    }
 }
 
-void ros_publish_rc(const struct RcFrame *f) {
-    uint8_t data[4] = {f->steer, f->gear, f->throttle, f->override_raw};
-    std_msgs__msg__UInt8MultiArray m = {0};
-    m.data.data = data;
-    m.data.size = m.data.capacity = 4;
-    (void)rcl_publish(&pub, &m, NULL);
+void ros_publish_rc(const RemoteState *rc_frame) {
+    if (!ros_ctx.initialized) {
+        return;
+    }
+
+    // Publish each RC channel as uint8 value
+    for (int i = 0; i < 4; i++) {
+        struct rc_publisher *pub = &ros_ctx.rc_publishers[i];
+
+        if (!pub->pub.impl) {
+            continue; // Publisher not initialized
+        }
+
+        uint32_t us_value = rc_frame->fields[i];
+        uint8_t uint8_value = us_to_uint8(us_value);
+
+        pub->msg.data = uint8_value;
+
+        rcl_ret_t ret = rcl_publish(&pub->pub, &pub->msg, NULL);
+        if (ret != RCL_RET_OK) {
+            LOG_WRN("Failed to publish RC data for %s: %d", pub->topic, ret);
+        }
+    }
 }
+
+void ros_iface_init(void) {
+    LOG_INF("Initializing ROS interface");
+
+    // Wait for micro-ROS agent
+    while (!rclc_support_init_ok()) {
+        LOG_INF("Waiting for micro-ROS agent...");
+        k_sleep(K_SECONDS(1));
+    }
+
+    LOG_INF("Micro-ROS agent connected");
+
+    // Initialize subscribers and publishers
+    init_servo_subscribers();
+    init_rc_publishers();
+
+    LOG_INF("ROS interface initialization complete");
+}
+
+void ros_iface_thread(void *p1, void *p2, void *p3) {
+    ARG_UNUSED(p1);
+    ARG_UNUSED(p2);
+    ARG_UNUSED(p3);
+
+    LOG_INF("ROS interface thread started");
+
+    while (!ros_ctx.initialized) {
+        LOG_WRN("ROS interface not initialized, waiting...");
+        k_sleep(K_SECONDS(1));
+    }
+
+    while (1) {
+        // Spin the executor to handle callbacks
+        rcl_ret_t ret = rclc_executor_spin_some(&ros_ctx.executor, RCL_MS_TO_NS(10));
+        if (ret != RCL_RET_OK && ret != RCL_RET_TIMEOUT) {
+            LOG_WRN("Executor spin failed: %d", ret);
+        }
+
+        // Small delay to prevent CPU hogging
+        k_sleep(K_MSEC(10));
+    }
+}
+
+// Start ROS interface thread
+K_THREAD_DEFINE(ros_tid, 4096, ros_iface_thread, NULL, NULL, NULL, 2, 0, 0);

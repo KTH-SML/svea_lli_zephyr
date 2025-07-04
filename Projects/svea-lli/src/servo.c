@@ -1,45 +1,120 @@
 #include "servo.h"
 #include <zephyr/device.h>
+#include <zephyr/devicetree.h>
 #include <zephyr/drivers/pwm.h>
+#include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/sys/atomic.h>
 
-/* ---- pull everything from overlay aliases ------------------------- */
-#define SERVO_NODE(i) DT_ALIAS(servo##i)
-#define SERVO_DEV(i) DEVICE_DT_GET(DT_PWMS_CTLR(SERVO_NODE(i)))
-#define SERVO_CH(i) DT_PWMS_CHANNEL_BY_IDX(SERVO_NODE(i), 0)
-#define SERVO_PER(i) DT_PWMS_PERIOD_BY_IDX(SERVO_NODE(i), 0)
+LOG_MODULE_REGISTER(servo, LOG_LEVEL_INF);
 
-static struct {
+struct servo_data {
     const struct device *dev;
-    uint32_t ch, per;
-    atomic_t duty; /* 100-200               */
+    uint32_t channel;
+    uint32_t period_cycles;
+    atomic_t target;
     struct k_work work;
-} s[SERVO_CNT];
+    int id;
+};
 
-static void apply(struct k_work *w) {
-    int i = (int)w->user_data;
-    uint32_t us = u8_to_us(atomic_get(&s[i].duty));
-    pwm_set_cycles(s[i].dev, s[i].ch, s[i].per,
-                   pwm_us_to_cycles(s[i].dev, us), 0);
+static struct servo_data srv[SERVO_COUNT];
+
+uint32_t us_to_cycles(uint32_t us, uint32_t period_cycles) {
+    // Convert microseconds to PWM cycles
+    // period_cycles corresponds to 20ms period
+    return (us * period_cycles) / 20000;
 }
 
-int servo_init(void) {
-    for (int i = 0; i < SERVO_CNT; ++i) {
-        s[i].dev = SERVO_DEV(i);
-        s[i].ch = SERVO_CH(i);
-        s[i].per = SERVO_PER(i);
-        k_work_init(&s[i].work, apply);
-        s[i].work.user_data = (void *)i;
-        atomic_set(&s[i].duty, 150); /* centre */
+static void apply_servo(struct k_work *work) {
+    struct servo_data *servo = CONTAINER_OF(work, struct servo_data, work);
+    uint32_t us = atomic_get(&servo->target);
+    uint32_t cycles = us_to_cycles(us, servo->period_cycles);
+
+    // Use the correct Zephyr 4.1 API with flags parameter
+    int ret = pwm_set_cycles(servo->dev, servo->channel, servo->period_cycles, cycles, 0);
+    if (ret < 0) {
+        LOG_ERR("Failed to set PWM for servo %d: %d", servo->id, ret);
     }
-    return 0;
 }
 
-void servo_set(enum servo_id id, uint8_t duty) {
-    atomic_set(&s[id].duty, duty);
-    k_work_submit(&s[id].work);
+void servo_request(int id, uint32_t us) {
+    if (id >= SERVO_COUNT)
+        return;
+
+    if (us != atomic_get(&srv[id].target)) {
+        atomic_set(&srv[id].target, us);
+        k_work_submit(&srv[id].work);
+    }
 }
 
-void servo_safe_centre(void) {
-    for (int i = 0; i < SERVO_CNT; ++i)
-        servo_set(i, 150);
+void servo_init(void) {
+    LOG_INF("Initializing servo control");
+
+    // Servo 0: Steering
+#if DT_NODE_EXISTS(DT_ALIAS(servo0))
+    srv[0].dev = DEVICE_DT_GET(DT_PWMS_CTLR(DT_ALIAS(servo0)));
+    srv[0].channel = DT_PWMS_CHANNEL(DT_ALIAS(servo0));
+    srv[0].period_cycles = DT_PWMS_PERIOD(DT_ALIAS(servo0));
+    srv[0].id = 0;
+
+    if (device_is_ready(srv[0].dev)) {
+        atomic_set(&srv[0].target, 1500);
+        k_work_init(&srv[0].work, apply_servo);
+        servo_request(0, 1500);
+        LOG_INF("Servo 0 (steering) initialized on channel %d", srv[0].channel);
+    } else {
+        LOG_ERR("PWM device for servo 0 not ready");
+    }
+#endif
+
+    // Servo 1: Gear
+#if DT_NODE_EXISTS(DT_ALIAS(servo1))
+    srv[1].dev = DEVICE_DT_GET(DT_PWMS_CTLR(DT_ALIAS(servo1)));
+    srv[1].channel = DT_PWMS_CHANNEL(DT_ALIAS(servo1));
+    srv[1].period_cycles = DT_PWMS_PERIOD(DT_ALIAS(servo1));
+    srv[1].id = 1;
+
+    if (device_is_ready(srv[1].dev)) {
+        atomic_set(&srv[1].target, 1500);
+        k_work_init(&srv[1].work, apply_servo);
+        servo_request(1, 1500);
+        LOG_INF("Servo 1 (gear) initialized on channel %d", srv[1].channel);
+    } else {
+        LOG_ERR("PWM device for servo 1 not ready");
+    }
+#endif
+
+    // Servo 2: Throttle
+#if DT_NODE_EXISTS(DT_ALIAS(servo2))
+    srv[2].dev = DEVICE_DT_GET(DT_PWMS_CTLR(DT_ALIAS(servo2)));
+    srv[2].channel = DT_PWMS_CHANNEL(DT_ALIAS(servo2));
+    srv[2].period_cycles = DT_PWMS_PERIOD(DT_ALIAS(servo2));
+    srv[2].id = 2;
+
+    if (device_is_ready(srv[2].dev)) {
+        atomic_set(&srv[2].target, 1500);
+        k_work_init(&srv[2].work, apply_servo);
+        servo_request(2, 1500);
+        LOG_INF("Servo 2 (throttle) initialized on channel %d", srv[2].channel);
+    } else {
+        LOG_ERR("PWM device for servo 2 not ready");
+    }
+#endif
+
+    // Servo 3: Diff
+#if DT_NODE_EXISTS(DT_ALIAS(servo3))
+    srv[3].dev = DEVICE_DT_GET(DT_PWMS_CTLR(DT_ALIAS(servo3)));
+    srv[3].channel = DT_PWMS_CHANNEL(DT_ALIAS(servo3));
+    srv[3].period_cycles = DT_PWMS_PERIOD(DT_ALIAS(servo3));
+    srv[3].id = 3;
+
+    if (device_is_ready(srv[3].dev)) {
+        atomic_set(&srv[3].target, 1500);
+        k_work_init(&srv[3].work, apply_servo);
+        servo_request(3, 1500);
+        LOG_INF("Servo 3 (diff) initialized on channel %d", srv[3].channel);
+    } else {
+        LOG_ERR("PWM device for servo 3 not ready");
+    }
+#endif
 }

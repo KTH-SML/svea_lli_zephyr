@@ -1,18 +1,33 @@
+#include "control.h"
+#include "rc_input.h"
 #include "remote.h"
 #include "ros_iface.h"
+#include "sensors.h"
 #include "servo.h"
+#include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
 
-extern int rc_input_init(void);
-extern int control_start(void);
-extern int sensor_imu_init(rcl_node_t *);
+LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
-void main(void) {
-    rc_input_init();   /* capture first           */
-    servo_init();      /* outputs                 */
-    ros_iface_start(); /* starts executor thread  */
-    control_start();   /* arbiter thread (prio 0) */
+int main(void) {
+    LOG_INF("Starting SVEA LLI Control System");
 
-    /* main idle forever – everything else in threads / callbacks     */
-    for (;;)
+    // Initialize all subsystems
+    remote_init();
+    servo_init();
+    rc_input_init();
+    sensors_init();
+    ros_iface_init();
+
+    // Start control system
+    control_start();
+
+    LOG_INF("All systems initialized, entering main loop");
+
+    // Main thread can sleep forever - control happens in other threads
+    while (1) {
         k_sleep(K_FOREVER);
+    }
+
+    return 0;
 }

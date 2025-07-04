@@ -1,7 +1,12 @@
-#pragma once
-#include "remote.h"
+#ifndef SERVO_H
+#define SERVO_H
+
 #include <zephyr/kernel.h>
 
-int servo_init(void);
-void servo_set(enum servo_id id, uint8_t duty); /* 100-200 */
-void servo_safe_centre(void);
+#define SERVO_COUNT 4
+
+void servo_init(void);
+void servo_request(int id, uint32_t us);
+uint32_t us_to_cycles(uint32_t us, uint32_t period_cycles);
+
+#endif // SERVO_H

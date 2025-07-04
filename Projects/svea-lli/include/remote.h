@@ -1,31 +1,35 @@
-#pragma once
+#ifndef REMOTE_H
+#define REMOTE_H
+
 #include <zephyr/kernel.h>
+#include <zephyr/sys/atomic.h>
 
-/* ---------- logical indices ----------------------------------------- */
-enum rc_chan { RC_STEER,
-               RC_GEAR,
-               RC_THROTTLE,
-               RC_OVERRIDE,
-               RC_CNT };
-enum servo_id { SERVO_STEER,
-                SERVO_GEAR,
-                SERVO_THROTTLE,
-                SERVO_DIFF_FRONT,
-                SERVO_DIFF_REAR,
-                SERVO_CNT };
+#define NUM_RC_CHANNELS 4
 
-/* UInt8 duty: 100-200 ±10  (raw PWM 1000-2000 µs) -------------------- */
-static inline uint8_t us_to_u8(uint16_t us) { return (us - 1000) / 10; }
-static inline uint16_t u8_to_us(uint8_t d) { return 1000 + (uint16_t)d * 10; }
+typedef enum {
+    RC_STEER = 0,
+    RC_GEAR = 1,
+    RC_THROTTLE = 2,
+    RC_OVERRIDE = 3
+} rc_channel_t;
 
-struct RcFrame {
-    uint8_t steer, gear, throttle;
-    uint8_t override_raw; /* still uint8; >150 ⇒ TRUE */
-};
+typedef struct {
+    union {
+        struct {
+            uint32_t steer;
+            uint32_t gear;
+            uint32_t throttle;
+            uint32_t override_us;
+        };
+        uint32_t fields[NUM_RC_CHANNELS];
+    };
+} RemoteState;
 
-/* API used by lower / upper layers ----------------------------------- */
-void rc_report(enum rc_chan ch, uint16_t pulse_us, bool overflow);
-bool rc_wait(struct RcFrame *dst, k_timeout_t t);
+extern bool rc_valid;
+extern struct k_msgq rc_q;
 
-extern volatile bool rc_valid;        /* whole link health */
-extern volatile bool override_active; /* current override flag */
+void remote_init(void);
+void remote_report(int ch, uint32_t us);
+void remote_link_lost(int ch);
+
+#endif // REMOTE_H
