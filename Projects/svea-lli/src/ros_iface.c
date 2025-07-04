@@ -5,6 +5,7 @@
 #include <rclc/executor.h>
 #include <rclc/rclc.h>
 #include <rcutils/allocator.h>
+#include <std_msgs/msg/bool.h>
 #include <std_msgs/msg/u_int8.h>
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
@@ -23,15 +24,16 @@ static inline void ros_transport_init(void) {
 }
 
 // ROS Topics
-#define ROS_TOPIC_STEERING "/servo/steering"
-#define ROS_TOPIC_GEAR "/servo/gear"
-#define ROS_TOPIC_THROTTLE "/servo/throttle"
-#define ROS_TOPIC_DIFF "/servo/diff"
+#define ROS_TOPIC_STEERING "/lli/ctrl/steering" // uint8
+#define ROS_TOPIC_GEAR "/lli/ctrl/gear"         // bool
+#define ROS_TOPIC_THROTTLE "/lli/ctrl/throttle" // uint8
+#define ROS_TOPIC_DIFF "/lli/ctrl/diff"         // bool
 
-#define ROS_TOPIC_RC_STEERING "/rc/steering"
-#define ROS_TOPIC_RC_GEAR "/rc/gear"
-#define ROS_TOPIC_RC_THROTTLE "/rc/throttle"
-#define ROS_TOPIC_RC_OVERRIDE "/rc/override"
+#define ROS_TOPIC_RC_STEERING "/lli/remote/steering"   // uint8
+#define ROS_TOPIC_RC_GEAR "/lli/remote/high_gear"      // bool
+#define ROS_TOPIC_RC_THROTTLE "/lli/remote/throttle"   // uint8
+#define ROS_TOPIC_RC_OVERRIDE "/lli/remote/override"   // bool
+#define ROS_TOPIC_RC_CONNECTED "/lli/remote/connected" // bool
 
 // Servo channel structure for ROS control
 struct servo_ros_channel {
@@ -79,9 +81,21 @@ static uint8_t us_to_uint8(uint32_t us) {
     return (uint8_t)(((us - 1000) * 255) / 1000);
 }
 
+static bool us_to_bool(uint32_t us) {
+    return us > 1500;
+}
+
 // Servo command callback
 static void servo_callback(const void *msg_in, void *context) {
     struct servo_ros_channel *channel = (struct servo_ros_channel *)context;
+
+    if (strcmp(channel->topic, ROS_TOPIC_DIFF) == 0) {
+        const std_msgs__msg__Bool *msg = (const std_msgs__msg__Bool *)msg_in;
+        set_diff_state(msg->data);
+        ros_cmd_valid = true;
+        return;
+    }
+
     const std_msgs__msg__UInt8 *msg = (const std_msgs__msg__UInt8 *)msg_in;
 
     LOG_DBG("ROS servo command received for %s: %d", channel->topic, msg->data);

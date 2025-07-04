@@ -44,7 +44,7 @@
         servo1 = &gearservo;      // P3
         servo2 = &throttleesc;    // P4
         servo3 = &diffservo;      // P2
-        servo4 = &diffservorear;  // SDA1
+        servo4 = &diffservorear;  // SCK1
 
         watchdog0 = &iwdg;
     };
@@ -66,6 +66,7 @@
     tim15_ch1_pe4: tim15_ch1_pe4   { pinmux = <STM32_PINMUX('E', 4,  AF2)>; };
     tim9_ch1_pa2: tim9_ch1_pa2    { pinmux = <STM32_PINMUX('A', 2, AF3)>;  }; // TX1 (silkscreen), TX2 (datasheet)
     tim11_ch1_pb9: tim11_ch1_pb9   { pinmux = <STM32_PINMUX('B', 9, AF1)>;  }; // SDA1
+    tim2_ch1_pa5: tim2_ch1_pa5 { pinmux = <STM32_PINMUX('A', 5, AF1)>; }; // P11 (PA5, TIM2_CH1, SCK1)
 };
 
 /* PWM Output timers - silkscreen label in comments */
@@ -88,7 +89,7 @@
         compatible = "st,stm32-pwm";
         status = "okay";
         #pwm-cells = <3>;
-        pinctrl-0 = <&tim2_ch3_pb10 &tim2_ch4_pb11>; // P2, P3
+        pinctrl-0 = <&tim2_ch3_pb10 &tim2_ch4_pb11 &tim2_ch1_pa5>; // P2, P3, P11
         pinctrl-names = "default";
     };
 };
@@ -176,13 +177,6 @@
         max-pulse = <PWM_USEC(2100)>;
     };
 
-    diffservo: diff_servo {
-        compatible = "pwm-servo";
-        pwms = <&pwm2 3 PWM_MSEC(10) PWM_POLARITY_NORMAL>; // P2
-        min-pulse = <PWM_USEC(1000)>;
-        max-pulse = <PWM_USEC(2100)>;
-    };
-
     gearservo: gear_servo {
         compatible = "pwm-servo";
         pwms = <&pwm2 4 PWM_MSEC(10) PWM_POLARITY_NORMAL>; // P3
@@ -196,10 +190,15 @@
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
-
+    diffservo: diff_servo {
+        compatible = "pwm-servo";
+        pwms = <&pwm2 3 PWM_MSEC(10) PWM_POLARITY_NORMAL>; // P2
+        min-pulse = <PWM_USEC(1000)>;
+        max-pulse = <PWM_USEC(2100)>;
+    };
     diffservorear: diff_servo_rear {
         compatible = "pwm-servo";
-        pwms = <&pwm11 1 PWM_MSEC(10) PWM_POLARITY_NORMAL>; // SDA1
+        pwms = <&pwm2 1 PWM_MSEC(10) PWM_POLARITY_NORMAL>; // P11 (PA5, TIM2_CH1, SCK1)
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };

@@ -142,6 +142,23 @@ void servo_init(void) {
         LOG_INF("servo3 ready on %s ch%u", srv[3].spec.dev->name, srv[3].spec.channel);
     }
 #endif
+
+#if DT_NODE_EXISTS(DT_ALIAS(servo4))
+    srv[4] = (struct servo_data){
+        .spec = PWM_DT_SPEC_GET(DT_ALIAS(servo4)),
+        .id = 4,
+    };
+    if (!ready(&srv[4])) {
+        LOG_ERR("servo4 PWM device not ready");
+    } else {
+        k_work_init(&srv[4].work, apply_servo);
+        atomic_set(&srv[4].target_us, 1500);
+        k_work_submit(&srv[4].work);
+        LOG_INF("servo4 ready on %s ch%u", srv[4].spec.dev->name, srv[4].spec.channel);
+    }
+#endif
+
+    set_diff_state(true); // Set default diff state to activated at startup
 }
 
 /* --------------------------------------------------------------------- */

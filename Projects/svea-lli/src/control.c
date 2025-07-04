@@ -12,12 +12,23 @@ static K_MUTEX_DEFINE(ros_cmd_mutex);
 static int64_t last_ros_cmd = 0;
 static atomic_t ros_cmd_valid_atomic; // Replace global variable with atomic
 
+static bool diff_state = true; // Default to true at startup
+
+void set_diff_state(bool activated) {
+    diff_state = activated;
+    uint32_t front_us = activated ? 2000 : 1000;
+    uint32_t rear_us = activated ? 1000 : 2000;
+    servo_request(3, front_us); // diff front
+    servo_request(4, rear_us);  // diff rear
+}
+
 void center_all_servos(void) {
     LOG_DBG("Centering all servos (failsafe)");
     servo_request(0, 0); // Steering
     servo_request(1, 0); // Gear
     servo_request(2, 0); // Throttle
-    servo_request(3, 0); // Diff
+    // Center diffs, then restore last known state
+    set_diff_state(diff_state);
 }
 
 void control_thread(void *p1, void *p2, void *p3) {
@@ -56,7 +67,7 @@ void control_thread(void *p1, void *p2, void *p3) {
             servo_request(0, rc_frame.steer);
             servo_request(1, rc_frame.gear);
             servo_request(2, rc_frame.throttle);
-            servo_request(3, 1500); // Center diff during RC control
+            // set_diff_state(true); // or false, depending on your logic
 
             // Reset ROS command validity to prevent interference
             atomic_set(&ros_cmd_valid_atomic, 0);

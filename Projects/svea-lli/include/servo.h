@@ -3,7 +3,7 @@
 
 #include <zephyr/kernel.h>
 
-#define SERVO_COUNT 4
+#define SERVO_COUNT 5
 
 void servo_init(void);
 void servo_request(int id, uint32_t us);

@@ -47,31 +47,50 @@ static struct rc_input_channel rc_channels[] = {
 // Add array to track initialized channels
 static bool rc_channel_initialized[NUM_RC_CHANNELS] = {false};
 
+// Add this mapping for channel names
+static const char *rc_channel_names[NUM_RC_CHANNELS] = {
+    [RC_STEER] = "steer",
+    [RC_GEAR] = "gear",
+    [RC_THROTTLE] = "throttle",
+    [RC_OVERRIDE] = "override",
+};
+
 uint32_t ticks_to_us(uint32_t ticks) {
     // Convert timer ticks to microseconds
     // With prescaler 107, timer frequency is ~1MHz (1 tick ≈ 1 µs)
     return ticks;
 }
 
+// Track last pulse for each channel
+static uint32_t last_pulse_us[NUM_RC_CHANNELS] = {0};
+
 void common_cb(const struct device *dev, uint32_t channel,
                uint32_t period, uint32_t pulse, int status, void *user_data) {
     int ch = (int)(uintptr_t)user_data;
-    LOG_DBG("PWM capture on channel %d: period %d us, pulse %d us",
-            ch, ticks_to_us(period), ticks_to_us(pulse));
+    const char *ch_name = (ch >= 0 && ch < NUM_RC_CHANNELS) ? rc_channel_names[ch] : "unknown";
+    uint32_t us = ticks_to_us(pulse);
+
+    // Only log if pulse changes significantly (more than 5 us)
+    if (ch >= 0 && ch < NUM_RC_CHANNELS) {
+        if (last_pulse_us[ch] == 0 || (us > last_pulse_us[ch] + 50) || (us + 50 < last_pulse_us[ch])) {
+            LOG_INF("PWM capture on %s (ch %d): period %d us, pulse %d us",
+                    ch_name, ch, ticks_to_us(period), us);
+            last_pulse_us[ch] = us;
+        }
+    }
+
     // Check for capture errors
     if (status != 0) {
-        LOG_WRN("PWM capture error on channel %d, status: %d", ch, status);
+        LOG_WRN("PWM capture error on %s (ch %d), status: %d", ch_name, ch, status);
         remote_link_lost(ch);
         return;
     }
 
     // Check for reasonable pulse width (0.5ms to 2.5ms for RC signals)
     if (pulse < 500 || pulse > 2500) {
-        LOG_WRN("PWM pulse out of range on channel %d: %d us", ch, pulse);
-        return;
+        LOG_DBG("PWM pulse very large/small on %s (ch %d): %d us", ch_name, ch, pulse);
     }
 
-    uint32_t us = ticks_to_us(pulse);
     remote_report(ch, us);
 }
 
