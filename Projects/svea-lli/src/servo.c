@@ -1,4 +1,5 @@
-#include "servo.h"
+/* servo.c – PWM output driver for four RC servos  ---------------------- */
+
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/pwm.h>
@@ -6,128 +7,141 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
 
+#include "servo.h" /* your public header – IDs, SERVO_COUNT */
+
 LOG_MODULE_REGISTER(servo, LOG_LEVEL_INF);
 
+/* --------------------------------------------------------------------- */
+/* per-servo runtime data                                                */
+
 struct servo_data {
-    const struct device *dev;
-    uint32_t channel;
-    uint32_t period_cycles;
-    atomic_t target;
+    struct pwm_dt_spec spec; /* dev, channel and period taken from DTS */
+    atomic_t target_us;
     struct k_work work;
-    int id;
+    uint8_t id;
 };
 
 static struct servo_data srv[SERVO_COUNT];
 
-uint32_t us_to_cycles(uint32_t us, uint32_t period_cycles) {
-    // Convert microseconds to PWM cycles
-    // period_cycles corresponds to 20ms period
-    return (us * period_cycles) / 20000;
+/* --------------------------------------------------------------------- */
+/* helpers                                                               */
+
+static inline bool ready(const struct servo_data *s) {
+    return device_is_ready(s->spec.dev);
 }
 
 static void apply_servo(struct k_work *work) {
-    struct servo_data *servo = CONTAINER_OF(work, struct servo_data, work);
-    uint32_t us = atomic_get(&servo->target);
-    uint32_t cycles = us_to_cycles(us, servo->period_cycles);
+    struct servo_data *s = CONTAINER_OF(work, struct servo_data, work);
+    uint32_t us = atomic_get(&s->target_us);
 
-    // Use the correct Zephyr 4.1 API with flags parameter
-    int ret = pwm_set_cycles(servo->dev, servo->channel, servo->period_cycles, cycles, 0);
-    if (ret < 0) {
-        LOG_ERR("Failed to set PWM for servo %d: %d", servo->id, ret);
+    /* convert µs → ns with the stock helper macro */
+    int ret = pwm_set_pulse_dt(&s->spec, PWM_USEC(us));
+    if (ret) {
+        LOG_ERR("servo %u: pwm_set_pulse_dt() -> %d", s->id, ret);
     }
 }
 
-void servo_request(int id, uint32_t us) {
-    if (id >= SERVO_COUNT || id < 0) {
-        LOG_ERR("Invalid servo ID: %d", id);
+/* --------------------------------------------------------------------- */
+/* public API                                                            */
+
+void servo_request(int id, uint32_t pulse_us) {
+    if (id < 0 || id >= SERVO_COUNT) {
+        LOG_ERR("servo_request: bad id %d", id);
         return;
     }
 
-    // Bound check the PWM value to prevent hardware damage
-    if (us < 1000) {
-        LOG_WRN("Servo %d: Limiting low pulse width from %u to 1000us", id, us);
-        us = 1000;
-    } else if (us > 2100) {
-        LOG_WRN("Servo %d: Limiting high pulse width from %u to 2100us", id, us);
-        us = 2100;
-    }
+    /* clamp for safety */
+    if (pulse_us < 1000)
+        pulse_us = 1000;
+    if (pulse_us > 2100)
+        pulse_us = 2100;
 
-    if (us != atomic_get(&srv[id].target)) {
-        atomic_set(&srv[id].target, us);
-        if (k_work_submit(&srv[id].work) < 0) {
-            LOG_ERR("Failed to submit work for servo %d", id);
-        }
+    if (pulse_us != atomic_get(&srv[id].target_us)) {
+        atomic_set(&srv[id].target_us, pulse_us);
+        k_work_submit(&srv[id].work);
     }
 }
+
+/* --------------------------------------------------------------------- */
+/* initialisation                                                        */
+
+#define SERVO_INIT(idx, alias_node)                              \
+    do {                                                         \
+        srv[idx].spec = PWM_DT_SPEC_GET(DT_ALIAS(alias_node));   \
+        srv[idx].id = idx;                                       \
+        if (!ready(&srv[idx])) {                                 \
+            LOG_ERR(#alias_node " PWM device not ready");        \
+            break;                                               \
+        }                                                        \
+        k_work_init(&srv[idx].work, apply_servo);                \
+        atomic_set(&srv[idx].target_us, 1500);                   \
+        k_work_submit(&srv[idx].work);                           \
+        LOG_INF(#alias_node " ready on %s ch%u",                 \
+                srv[idx].spec.dev->name, srv[idx].spec.channel); \
+    } while (0)
 
 void servo_init(void) {
-    LOG_INF("Initializing servo control");
+    LOG_INF("initialising servos…");
 
-    // Servo 0: Steering
 #if DT_NODE_EXISTS(DT_ALIAS(servo0))
-    srv[0].dev = DEVICE_DT_GET(DT_PWMS_CTLR(DT_ALIAS(servo0)));
-    srv[0].channel = DT_PWMS_CHANNEL(DT_ALIAS(servo0));
-    srv[0].period_cycles = DT_PWMS_PERIOD(DT_ALIAS(servo0));
-    srv[0].id = 0;
-
-    if (device_is_ready(srv[0].dev)) {
-        atomic_set(&srv[0].target, 1500);
+    srv[0] = (struct servo_data){
+        .spec = PWM_DT_SPEC_GET(DT_ALIAS(servo0)),
+        .id = 0,
+    };
+    if (!ready(&srv[0])) {
+        LOG_ERR("servo0 PWM device not ready");
+    } else {
         k_work_init(&srv[0].work, apply_servo);
-        servo_request(0, 1500);
-        LOG_INF("Servo 0 (steering) initialized on channel %d", srv[0].channel);
-    } else {
-        LOG_ERR("PWM device for servo 0 not ready");
+        atomic_set(&srv[0].target_us, 1500);
+        k_work_submit(&srv[0].work);
+        LOG_INF("servo0 ready on %s ch%u", srv[0].spec.dev->name, srv[0].spec.channel);
     }
 #endif
 
-    // Servo 1: Gear
 #if DT_NODE_EXISTS(DT_ALIAS(servo1))
-    srv[1].dev = DEVICE_DT_GET(DT_PWMS_CTLR(DT_ALIAS(servo1)));
-    srv[1].channel = DT_PWMS_CHANNEL(DT_ALIAS(servo1));
-    srv[1].period_cycles = DT_PWMS_PERIOD(DT_ALIAS(servo1));
-    srv[1].id = 1;
-
-    if (device_is_ready(srv[1].dev)) {
-        atomic_set(&srv[1].target, 1500);
+    srv[1] = (struct servo_data){
+        .spec = PWM_DT_SPEC_GET(DT_ALIAS(servo1)),
+        .id = 1,
+    };
+    if (!ready(&srv[1])) {
+        LOG_ERR("servo1 PWM device not ready");
+    } else {
         k_work_init(&srv[1].work, apply_servo);
-        servo_request(1, 1500);
-        LOG_INF("Servo 1 (gear) initialized on channel %d", srv[1].channel);
-    } else {
-        LOG_ERR("PWM device for servo 1 not ready");
+        atomic_set(&srv[1].target_us, 1500);
+        k_work_submit(&srv[1].work);
+        LOG_INF("servo1 ready on %s ch%u", srv[1].spec.dev->name, srv[1].spec.channel);
     }
 #endif
 
-    // Servo 2: Throttle
 #if DT_NODE_EXISTS(DT_ALIAS(servo2))
-    srv[2].dev = DEVICE_DT_GET(DT_PWMS_CTLR(DT_ALIAS(servo2)));
-    srv[2].channel = DT_PWMS_CHANNEL(DT_ALIAS(servo2));
-    srv[2].period_cycles = DT_PWMS_PERIOD(DT_ALIAS(servo2));
-    srv[2].id = 2;
-
-    if (device_is_ready(srv[2].dev)) {
-        atomic_set(&srv[2].target, 1500);
-        k_work_init(&srv[2].work, apply_servo);
-        servo_request(2, 1500);
-        LOG_INF("Servo 2 (throttle) initialized on channel %d", srv[2].channel);
+    srv[2] = (struct servo_data){
+        .spec = PWM_DT_SPEC_GET(DT_ALIAS(servo2)),
+        .id = 2,
+    };
+    if (!ready(&srv[2])) {
+        LOG_ERR("servo2 PWM device not ready");
     } else {
-        LOG_ERR("PWM device for servo 2 not ready");
+        k_work_init(&srv[2].work, apply_servo);
+        atomic_set(&srv[2].target_us, 1500);
+        k_work_submit(&srv[2].work);
+        LOG_INF("servo2 ready on %s ch%u", srv[2].spec.dev->name, srv[2].spec.channel);
     }
 #endif
 
-    // Servo 3: Diff
 #if DT_NODE_EXISTS(DT_ALIAS(servo3))
-    srv[3].dev = DEVICE_DT_GET(DT_PWMS_CTLR(DT_ALIAS(servo3)));
-    srv[3].channel = DT_PWMS_CHANNEL(DT_ALIAS(servo3));
-    srv[3].period_cycles = DT_PWMS_PERIOD(DT_ALIAS(servo3));
-    srv[3].id = 3;
-
-    if (device_is_ready(srv[3].dev)) {
-        atomic_set(&srv[3].target, 1500);
-        k_work_init(&srv[3].work, apply_servo);
-        servo_request(3, 1500);
-        LOG_INF("Servo 3 (diff) initialized on channel %d", srv[3].channel);
+    srv[3] = (struct servo_data){
+        .spec = PWM_DT_SPEC_GET(DT_ALIAS(servo3)),
+        .id = 3,
+    };
+    if (!ready(&srv[3])) {
+        LOG_ERR("servo3 PWM device not ready");
     } else {
-        LOG_ERR("PWM device for servo 3 not ready");
+        k_work_init(&srv[3].work, apply_servo);
+        atomic_set(&srv[3].target_us, 1500);
+        k_work_submit(&srv[3].work);
+        LOG_INF("servo3 ready on %s ch%u", srv[3].spec.dev->name, srv[3].spec.channel);
     }
 #endif
 }
+
+/* --------------------------------------------------------------------- */
