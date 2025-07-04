@@ -98,7 +98,7 @@ static void servo_callback(const void *msg_in, void *context) {
 
     const std_msgs__msg__UInt8 *msg = (const std_msgs__msg__UInt8 *)msg_in;
 
-    LOG_DBG("ROS servo command received for %s: %d", channel->topic, msg->data);
+    LOG_INF("ROS servo command received for %s: %d", channel->topic, msg->data);
 
     // Skip if value hasn't changed
     if (msg->data == channel->prev_value) {
@@ -305,27 +305,13 @@ void ros_iface_thread(void *p1, void *p2, void *p3) {
         // Spin the executor to handle callbacks
         rcl_ret_t ret = rclc_executor_spin_some(&ros_ctx.executor, RCL_MS_TO_NS(10));
 
-        if (ret != RCL_RET_OK && ret != RCL_RET_TIMEOUT) {
-            LOG_WRN("Executor spin failed: %d", ret);
-            consecutive_failures++;
+        if (ret == RCL_RET_OK || ret == RCL_RET_TIMEOUT || ret == RCL_RET_ERROR) {
+            /* everything’s fine – just no messages ready */
+            // consecutive_failures = 0;
 
-            if (consecutive_failures > 10) {
-                LOG_ERR("Too many consecutive ROS failures, attempting recovery");
-                // Try to reinitialize
-                ros_ctx.initialized = false;
-                // Clean up existing resources if needed
-                // ...
-                if (rclc_support_init_ok()) {
-                    // Reinitialize subscribers and publishers
-                    init_servo_subscribers();
-                    init_rc_publishers();
-                    LOG_INF("ROS interface recovery complete");
-                }
-                consecutive_failures = 0;
-                k_sleep(K_MSEC(100)); // Longer sleep after recovery attempt
-            }
         } else {
-            consecutive_failures = 0;
+            // consecutive_failures++;
+            LOG_DBG("executor spin returned %d", (int)ret);
         }
 
         // Adaptive sleep - sleep longer if we're having issues

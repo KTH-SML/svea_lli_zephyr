@@ -31,5 +31,6 @@ extern struct k_msgq rc_q;
 void remote_init(void);
 void remote_report(int ch, uint32_t us);
 void remote_link_lost(int ch);
+bool remote_all_channels_valid(void);
 
 #endif // REMOTE_H

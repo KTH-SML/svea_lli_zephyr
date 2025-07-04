@@ -83,3 +83,8 @@ void remote_init(void) {
 bool remote_is_valid(void) {
     return atomic_get(&rc_valid_atomic) != 0;
 }
+
+bool remote_all_channels_valid(void) {
+    // All channels alive if all bits set
+    return atomic_get(&alive_mask) == ((1 << NUM_RC_CHANNELS) - 1);
+}
