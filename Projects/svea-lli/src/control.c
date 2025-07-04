@@ -13,11 +13,11 @@ static int64_t last_ros_cmd = 0;
 static atomic_t ros_cmd_valid_atomic; // Replace global variable with atomic
 
 void center_all_servos(void) {
-    LOG_INF("Centering all servos (failsafe)");
-    servo_request(0, 1500); // Steering
-    servo_request(1, 1500); // Gear
-    servo_request(2, 1500); // Throttle
-    servo_request(3, 1500); // Diff
+    LOG_DBG("Centering all servos (failsafe)");
+    servo_request(0, 0); // Steering
+    servo_request(1, 0); // Gear
+    servo_request(2, 0); // Throttle
+    servo_request(3, 0); // Diff
 }
 
 void control_thread(void *p1, void *p2, void *p3) {
