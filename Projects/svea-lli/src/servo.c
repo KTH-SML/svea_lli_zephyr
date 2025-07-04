@@ -51,10 +51,10 @@ void servo_request(int id, uint32_t pulse_us) {
     }
 
     /* clamp for safety */
-    if (pulse_us < 1000)
-        pulse_us = 1000;
-    if (pulse_us > 2100)
-        pulse_us = 2100;
+    // if (pulse_us < 1000)
+    //     pulse_us = 1000;
+    // if (pulse_us > 2100)
+    //     pulse_us = 2100;
 
     if (pulse_us != atomic_get(&srv[id].target_us)) {
         atomic_set(&srv[id].target_us, pulse_us);
