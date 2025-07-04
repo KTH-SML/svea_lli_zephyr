@@ -1,14 +1,26 @@
 #include "ros_iface.h"
 #include "servo.h"
+#include <microros_transports.h>
 #include <rcl/rcl.h>
 #include <rclc/executor.h>
 #include <rclc/rclc.h>
 #include <rcutils/allocator.h>
 #include <std_msgs/msg/u_int8.h>
+#include <zephyr/device.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_REGISTER(ros_iface, LOG_LEVEL_INF);
+
+static inline void ros_transport_init(void) {
+    rmw_uros_set_custom_transport(
+        true,                    /* MICRO_ROS_FRAMING_REQUIRED           */
+        (void *)&default_params, /* provided by the serial transport     */
+        zephyr_transport_open,
+        zephyr_transport_close,
+        zephyr_transport_write,
+        zephyr_transport_read);
+}
 
 // ROS Topics
 #define ROS_TOPIC_STEERING "/servo/steering"
@@ -245,7 +257,7 @@ void ros_publish_rc(const RemoteState *rc_frame) {
 
 void ros_iface_init(void) {
     LOG_INF("Initializing ROS interface");
-
+    ros_transport_init();
     // Wait for micro-ROS agent
     while (!rclc_support_init_ok()) {
         LOG_INF("Waiting for micro-ROS agent...");

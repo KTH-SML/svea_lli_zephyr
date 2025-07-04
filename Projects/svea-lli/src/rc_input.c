@@ -56,7 +56,8 @@ uint32_t ticks_to_us(uint32_t ticks) {
 void common_cb(const struct device *dev, uint32_t channel,
                uint32_t period, uint32_t pulse, int status, void *user_data) {
     int ch = (int)(uintptr_t)user_data;
-
+    LOG_DBG("PWM capture on channel %d: period %d us, pulse %d us",
+            ch, ticks_to_us(period), ticks_to_us(pulse));
     // Check for capture errors
     if (status != 0) {
         LOG_WRN("PWM capture error on channel %d, status: %d", ch, status);
@@ -89,7 +90,7 @@ void rc_input_init(void) {
 
         // Use the correct Zephyr 4.1 PWM capture API
         int ret = pwm_configure_capture(ch->dev, ch->channel,
-                                        PWM_CAPTURE_TYPE_PULSE,
+                                        PWM_CAPTURE_TYPE_BOTH | PWM_CAPTURE_MODE_CONTINUOUS,
                                         common_cb,
                                         (void *)(uintptr_t)ch->rc_ch_id);
         if (ret < 0) {

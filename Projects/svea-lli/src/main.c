@@ -61,7 +61,7 @@ int main(void) {
     servo_init();
     rc_input_init();
     sensors_init();
-    ros_iface_init();
+    // ros_iface_init();
 
     // Start control system
     control_start();

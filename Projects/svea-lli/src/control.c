@@ -94,4 +94,4 @@ void control_start(void) {
     LOG_INF("Starting control system");
 }
 
-// K_THREAD_DEFINE(control_tid, 4096, control_thread, NULL, NULL, NULL, 0, 0, 0);
+K_THREAD_DEFINE(control_tid, 4096, control_thread, NULL, NULL, NULL, 0, 0, 0);
