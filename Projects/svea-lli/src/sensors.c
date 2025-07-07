@@ -6,13 +6,20 @@
 
 LOG_MODULE_REGISTER(sensors, LOG_LEVEL_INF);
 
+static K_THREAD_STACK_DEFINE(sensors_stack, 2048);
+static struct k_thread sensors_thread_data; // <-- Fix type
+
 static const struct device *imu_dev;
 
 void sensors_init(void) {
-    LOG_INF("Unused for now");
+    LOG_INF("Initializing sensors");
+    k_thread_create(&sensors_thread_data, sensors_stack, K_THREAD_STACK_SIZEOF(sensors_stack),
+                    sensors_thread, NULL, NULL, NULL, // <-- Use sensors_thread
+                    K_PRIO_COOP(4), 0, K_NO_WAIT);
 }
 
-void imu_sensor_thread(void *p1, void *p2, void *p3) {
+// Rename imu_sensor_thread to sensors_thread:
+void sensors_thread(void *p1, void *p2, void *p3) {
     LOG_INF("Initializing sensors");
 
     imu_dev = DEVICE_DT_GET(DT_NODELABEL(ism330dlc));
@@ -52,5 +59,3 @@ void imu_sensor_thread(void *p1, void *p2, void *p3) {
         k_sleep(K_MSEC(100));
     }
 }
-
-K_THREAD_DEFINE(sensors_tid, 2048, imu_sensor_thread, NULL, NULL, NULL, 4, 0, 0);

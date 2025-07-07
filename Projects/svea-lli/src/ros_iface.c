@@ -74,7 +74,13 @@ static struct {
     pub_t rc_connected_pub;
     std_msgs__msg__Bool rc_connected_msg;
 
+    pub_t status_pub;
+    std_msgs__msg__UInt8 status_msg;
+
 } g_ros;
+
+static uint8_t ros_error_count = 0;
+static const uint8_t ROS_ERROR_THRESHOLD = 5;
 
 /* ----- Global state ------------------------------------------------- */
 static ros_command_t g_ros_cmd;
@@ -90,12 +96,21 @@ static K_MUTEX_DEFINE(g_ros_cmd_mutex);
         }                                                                               \
     }
 
-#define RCSOFTCHECK(fn)                                                                   \
-    {                                                                                     \
-        rcl_ret_t temp_rc = fn;                                                           \
-        if ((temp_rc != RCL_RET_OK)) {                                                    \
-            LOG_ERR("Failed status on line %d: %d. Continuing.", __LINE__, (int)temp_rc); \
-        }                                                                                 \
+#define RCSOFTCHECK(fn)                                                                                               \
+    {                                                                                                                 \
+        rcl_ret_t temp_rc = fn;                                                                                       \
+        if ((temp_rc != RCL_RET_OK)) {                                                                                \
+            ros_error_count++;                                                                                        \
+            LOG_ERR("Failed status on line %d: %d. Consecutive errors: %d", __LINE__, (int)temp_rc, ros_error_count); \
+            if (ros_error_count >= ROS_ERROR_THRESHOLD) {                                                             \
+                LOG_ERR("ROS error threshold reached. Publishing status.");                                           \
+                g_ros.status_msg.data = 1; /* Indicate error */                                                       \
+                (void)rcl_publish(&g_ros.status_pub.pub, g_ros.status_pub.msg, NULL);                                 \
+                ros_error_count = 0; /* Reset counter after publishing */                                             \
+            }                                                                                                         \
+        } else {                                                                                                      \
+            ros_error_count = 0; /* Reset counter on success */                                                       \
+        }                                                                                                             \
     }
 
 /* ----- Conversion helpers ------------------------------------------- */
@@ -183,10 +198,35 @@ static void init_subscriptions(void) {
 
     RCCHECK(rclc_executor_init(&g_ros.executor, &g_ros.support.context, num_subs, &g_ros.allocator));
 
-    for (int i = 0; i < num_subs; i++) {
-        RCCHECK(rclc_subscription_init_default(&subs[i]->sub, &g_ros.node, subs[i]->type_support, subs[i]->topic_name));
-        RCCHECK(rclc_executor_add_subscription(&g_ros.executor, &subs[i]->sub, subs[i]->msg, subs[i]->cb, ON_NEW_DATA));
-    }
+    // Initialize best effort subscriptions (steering and throttle)
+    RCCHECK(rclc_subscription_init_best_effort(&g_ros.steering_sub.sub, &g_ros.node,
+                                               g_ros.steering_sub.type_support,
+                                               g_ros.steering_sub.topic_name));
+    RCCHECK(rclc_executor_add_subscription(&g_ros.executor, &g_ros.steering_sub.sub,
+                                           g_ros.steering_sub.msg,
+                                           g_ros.steering_sub.cb, ON_NEW_DATA));
+
+    RCCHECK(rclc_subscription_init_best_effort(&g_ros.throttle_sub.sub, &g_ros.node,
+                                               g_ros.throttle_sub.type_support,
+                                               g_ros.throttle_sub.topic_name));
+    RCCHECK(rclc_executor_add_subscription(&g_ros.executor, &g_ros.throttle_sub.sub,
+                                           g_ros.throttle_sub.msg,
+                                           g_ros.throttle_sub.cb, ON_NEW_DATA));
+
+    // Initialize reliable subscriptions (gear and diff)
+    RCCHECK(rclc_subscription_init_default(&g_ros.gear_sub.sub, &g_ros.node,
+                                           g_ros.gear_sub.type_support,
+                                           g_ros.gear_sub.topic_name));
+    RCCHECK(rclc_executor_add_subscription(&g_ros.executor, &g_ros.gear_sub.sub,
+                                           g_ros.gear_sub.msg,
+                                           g_ros.gear_sub.cb, ON_NEW_DATA));
+
+    RCCHECK(rclc_subscription_init_default(&g_ros.diff_sub.sub, &g_ros.node,
+                                           g_ros.diff_sub.type_support,
+                                           g_ros.diff_sub.topic_name));
+    RCCHECK(rclc_executor_add_subscription(&g_ros.executor, &g_ros.diff_sub.sub,
+                                           g_ros.diff_sub.msg,
+                                           g_ros.diff_sub.cb, ON_NEW_DATA));
 }
 
 static void init_publishers(void) {
@@ -215,7 +255,12 @@ static void init_publishers(void) {
         .type_support = ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
         .topic_name = "/lli/remote/connected"};
 
-    pub_t *pubs[] = {&g_ros.rc_steering_pub, &g_ros.rc_throttle_pub, &g_ros.rc_gear_pub, &g_ros.rc_override_pub, &g_ros.rc_connected_pub};
+    g_ros.status_pub = (pub_t){
+        .msg = &g_ros.status_msg,
+        .type_support = ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, UInt8),
+        .topic_name = "/lli/status"};
+
+    pub_t *pubs[] = {&g_ros.rc_steering_pub, &g_ros.rc_throttle_pub, &g_ros.rc_gear_pub, &g_ros.rc_override_pub, &g_ros.rc_connected_pub, &g_ros.status_pub};
     const int num_pubs = sizeof(pubs) / sizeof(pubs[0]);
 
     for (int i = 0; i < num_pubs; i++) {
@@ -251,7 +296,7 @@ void ros_publish_rc(const RemoteState *rc, bool is_connected) {
     }
 
     g_ros.rc_steering_msg.data = us_to_uint8(rc->steer);
-    g_ros.rc_gear_msg.data = us_to_bool(rc->gear_us);
+    g_ros.rc_gear_msg.data = us_to_bool(rc->high_gear_us);
     g_ros.rc_throttle_msg.data = us_to_uint8(rc->throttle);
     g_ros.rc_override_msg.data = us_to_bool(rc->override_us);
     g_ros.rc_connected_msg.data = is_connected;

@@ -53,9 +53,9 @@ void set_diff_state(bool activated) {
 
 void center_all_servos(void) {
     LOG_DBG("Centering all servos (failsafe)");
-    servo_request(0, 0); // Steering
+    servo_request(0, 0);    // Steering
     servo_request(1, 1000); // Gear to low
-    servo_request(2, 0); // Throttle
+    servo_request(2, 0);    // Throttle
     // Center diffs, then restore last known state
     set_diff_state(true);
 }
@@ -75,6 +75,15 @@ void servo_request(int id, uint32_t pulse_us) {
     if (pulse_us != atomic_get(&srv[id].target_us)) {
         atomic_set(&srv[id].target_us, pulse_us);
         k_work_submit(&srv[id].work);
+    }
+}
+
+void turn_off_all_servos(void) {
+    for (int i = 0; i < SERVO_COUNT; ++i) {
+        if (srv[i].work.handler) { // Only submit if initialized
+            atomic_set(&srv[i].target_us, 0);
+            k_work_submit(&srv[i].work);
+        }
     }
 }
 

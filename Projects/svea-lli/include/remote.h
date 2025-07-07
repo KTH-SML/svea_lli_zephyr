@@ -20,11 +20,13 @@ typedef struct {
             uint32_t high_gear_us;
             uint32_t throttle;
             uint32_t override_us;
-            uint32_t gear_us;
         };
         uint32_t fields[NUM_RC_CHANNELS];
     };
 } RemoteState;
+
+BUILD_ASSERT(ARRAY_SIZE(((RemoteState *)NULL)->fields) == NUM_RC_CHANNELS,
+             "RemoteState.fields[] must match NUM_RC_CHANNELS");
 
 extern struct k_msgq rc_q;
 

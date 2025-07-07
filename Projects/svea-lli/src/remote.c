@@ -10,10 +10,14 @@ static RemoteState cur, prev;
 static atomic_t alive_mask;
 static atomic_t rc_valid_atomic;
 
+#define ALL_CH_MASK ((1U << NUM_RC_CHANNELS) - 1)
+
 // Fixed: K_MSGQ_DEFINE now requires 4 arguments in Zephyr 4.1 (name, msg_size, max_msgs, align)
-K_MSGQ_DEFINE(rc_q, sizeof(RemoteState), 4, 4);
+K_MSGQ_DEFINE(rc_q, sizeof(RemoteState), 16, 4);
 
 static void rc_wdg_expiry(struct k_timer *timer) {
+    // This function runs in the system work-queue context, not ISR context.
+    // It's safe to call k_msgq_put() here.
     LOG_WRN("RC watchdog timeout - all channels lost");
     for (int ch = 0; ch < NUM_RC_CHANNELS; ch++) {
         remote_link_lost(ch);
@@ -28,7 +32,12 @@ void remote_report(int ch, uint32_t us) {
         return;
 
     atomic_set_bit(&alive_mask, ch);
-    atomic_set(&rc_valid_atomic, 1);
+    if (atomic_get(&alive_mask) == ALL_CH_MASK) {
+
+        atomic_set(&rc_valid_atomic, 1);
+        // LOG_INF("All RC channels alive");
+    }
+
     cur.fields[ch] = us;
 
     // Update named fields for convenience
@@ -48,9 +57,10 @@ void remote_report(int ch, uint32_t us) {
     }
 
     // Only send if frame changed
-    if (memcmp(&cur, &prev, sizeof(RemoteState)) != 0) {
-        prev = cur;
-        k_msgq_put(&rc_q, &cur, K_NO_WAIT);
+    RemoteState frame_to_send = cur;
+    if (memcmp(&frame_to_send, &prev, sizeof(RemoteState)) != 0) {
+        prev = frame_to_send;
+        k_msgq_put(&rc_q, &frame_to_send, K_NO_WAIT);
     }
 
     // Fixed: k_timer_start now requires 3 arguments (timer, duration, period)
@@ -64,15 +74,16 @@ void remote_link_lost(int ch) {
     atomic_clear_bit(&alive_mask, ch);
     LOG_WRN("RC channel %d link lost", ch);
 
+    atomic_set(&rc_valid_atomic, 0); /* ← clear immediately */
     if (atomic_get(&alive_mask) == 0) {
-        atomic_set(&rc_valid_atomic, 0);
         LOG_WRN("All RC channels lost");
-        k_msgq_put(&rc_q, &prev, K_NO_WAIT); // Wake arbiter
+        k_msgq_put(&rc_q, &prev, K_NO_WAIT); // Wake arbiter once
     }
 }
 
 void remote_init(void) {
     atomic_clear(&alive_mask);
+    atomic_set(&rc_valid_atomic, 0);
     memset(&cur, 0, sizeof(cur));
     memset(&prev, 0, sizeof(prev));
 
@@ -81,10 +92,10 @@ void remote_init(void) {
 
 // Add getter function in remote.h
 bool remote_is_valid(void) {
-    return atomic_get(&rc_valid_atomic) != 0;
+    return atomic_get(&alive_mask) == ALL_CH_MASK;
 }
 
 bool remote_all_channels_valid(void) {
     // All channels alive if all bits set
-    return atomic_get(&alive_mask) == ((1 << NUM_RC_CHANNELS) - 1);
+    return atomic_get(&alive_mask) == ALL_CH_MASK;
 }

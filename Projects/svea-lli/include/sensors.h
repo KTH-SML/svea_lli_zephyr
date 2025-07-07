@@ -5,6 +5,6 @@
 #include <zephyr/drivers/sensor.h>
 
 void sensors_init(void);
-void sensors_thread(void *p1, void *p2, void *p3);
+void sensors_thread(void *p1, void *p2, void *p3); // <-- match implementation
 
 #endif // SENSORS_H

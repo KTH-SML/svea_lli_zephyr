@@ -55,10 +55,14 @@ static const char *rc_channel_names[NUM_RC_CHANNELS] = {
     [RC_OVERRIDE] = "override",
 };
 
+BUILD_ASSERT(NUM_RC_CHANNELS == ARRAY_SIZE(rc_channel_names),
+             "NUM_RC_CHANNELS must match ARRAY_SIZE(rc_channel_names)");
+
+static uint32_t pwm_clock_frequency_hz = 1000000; // Default to 1 MHz based on comment
+
 uint32_t ticks_to_us(uint32_t ticks) {
-    // Convert timer ticks to microseconds
-    // With prescaler 107, timer frequency is ~1MHz (1 tick ≈ 1 µs)
-    return ticks;
+    // Convert timer ticks to microseconds using the stored PWM clock frequency
+    return (uint32_t)(((uint64_t)ticks * 1000000) / pwm_clock_frequency_hz);
 }
 
 // Track last pulse for each channel
@@ -73,7 +77,7 @@ void common_cb(const struct device *dev, uint32_t channel,
     // Only log if pulse changes significantly (more than 5 us)
     if (ch >= 0 && ch < NUM_RC_CHANNELS) {
         if (last_pulse_us[ch] == 0 || (us > last_pulse_us[ch] + 50) || (us + 50 < last_pulse_us[ch])) {
-            LOG_INF("PWM capture on %s (ch %d): period %d us, pulse %d us",
+            LOG_DBG("PWM capture on %s (ch %d): period %d us, pulse %d us",
                     ch_name, ch, ticks_to_us(period), us);
             last_pulse_us[ch] = us;
         }
