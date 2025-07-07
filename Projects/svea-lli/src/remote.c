@@ -79,6 +79,8 @@ void remote_link_lost(int ch) {
         LOG_WRN("All RC channels lost");
         k_msgq_put(&rc_q, &prev, K_NO_WAIT); // Wake arbiter once
     }
+
+    cur.override_us = 0; // Reset override
 }
 
 void remote_init(void) {
@@ -92,6 +94,9 @@ void remote_init(void) {
 
 // Add getter function in remote.h
 bool remote_is_valid(void) {
+    if (cur.override_us < 900 || cur.override_us > 2100) {
+        return false;
+    }
     return atomic_get(&alive_mask) == ALL_CH_MASK;
 }
 
