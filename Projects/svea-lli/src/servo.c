@@ -44,6 +44,22 @@ static void apply_servo(struct k_work *work) {
 /* --------------------------------------------------------------------- */
 /* public API                                                            */
 
+void set_diff_state(bool activated) {
+    uint32_t front_us = activated ? 2000 : 1000;
+    uint32_t rear_us = activated ? 1000 : 2000;
+    servo_request(3, front_us); // diff front
+    servo_request(4, rear_us);  // diff rear
+}
+
+void center_all_servos(void) {
+    LOG_DBG("Centering all servos (failsafe)");
+    servo_request(0, 0); // Steering
+    servo_request(1, 1000); // Gear to low
+    servo_request(2, 0); // Throttle
+    // Center diffs, then restore last known state
+    set_diff_state(true);
+}
+
 void servo_request(int id, uint32_t pulse_us) {
     if (id < 0 || id >= SERVO_COUNT) {
         LOG_ERR("servo_request: bad id %d", id);

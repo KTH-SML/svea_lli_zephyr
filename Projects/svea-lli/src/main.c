@@ -63,8 +63,7 @@ int main(void) {
     sensors_init();
     ros_iface_init();
 
-    // Start control system
-    control_start();
+    // Control system starts in its own thread, defined in control.c
 
     LOG_INF("All systems initialized, entering main loop");
 

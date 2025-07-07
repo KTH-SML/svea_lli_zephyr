@@ -36,8 +36,8 @@ void remote_report(int ch, uint32_t us) {
     case RC_STEER:
         cur.steer = us;
         break;
-    case RC_GEAR:
-        cur.gear = us;
+    case RC_HIGH_GEAR:
+        cur.high_gear_us = us;
         break;
     case RC_THROTTLE:
         cur.throttle = us;

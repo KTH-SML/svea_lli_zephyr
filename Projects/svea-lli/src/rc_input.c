@@ -24,11 +24,11 @@ static struct rc_input_channel rc_channels[] = {
      .name = "rc-steer",
      .rc_ch_id = RC_STEER},
 #endif
-#if DT_NODE_EXISTS(DT_ALIAS(rc_gear))
-    {.dev = DEVICE_DT_GET(DT_ALIAS(rc_gear)),
+#if DT_NODE_EXISTS(DT_ALIAS(rc_high_gear))
+    {.dev = DEVICE_DT_GET(DT_ALIAS(rc_high_gear)),
      .channel = 1, // TIM9_CH1
-     .name = "rc-gear",
-     .rc_ch_id = RC_GEAR},
+     .name = "rc-high-gear",
+     .rc_ch_id = RC_HIGH_GEAR},
 #endif
 #if DT_NODE_EXISTS(DT_ALIAS(rc_throttle))
     {.dev = DEVICE_DT_GET(DT_ALIAS(rc_throttle)),
@@ -50,7 +50,7 @@ static bool rc_channel_initialized[NUM_RC_CHANNELS] = {false};
 // Add this mapping for channel names
 static const char *rc_channel_names[NUM_RC_CHANNELS] = {
     [RC_STEER] = "steer",
-    [RC_GEAR] = "gear",
+    [RC_HIGH_GEAR] = "high_gear",
     [RC_THROTTLE] = "throttle",
     [RC_OVERRIDE] = "override",
 };

@@ -35,7 +35,7 @@
     aliases {
         /* PWM capture inputs (RC receiver) - silkscreen label in comments */
         rc-steer    = &pwm3_in;   // MISO1
-        rc-gear     = &pwm9_in;   // TX1 (silkscreen), TX2 (datasheet)
+        rc-high-gear     = &pwm9_in;   // TX1 (silkscreen), TX2 (datasheet)
         rc-throttle = &pwm5_in;   // P5
         rc-override = &pwm4_in;   // SCL1
 
