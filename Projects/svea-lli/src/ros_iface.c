@@ -1,5 +1,4 @@
 #include "ros_iface.h"
-
 #include <microros_transports.h>
 #include <rcl/rcl.h>
 #include <rclc/executor.h>
@@ -295,10 +294,10 @@ void ros_publish_rc(const RemoteState *rc, bool is_connected) {
         return;
     }
 
-    g_ros.rc_steering_msg.data = us_to_uint8(rc->steer);
-    g_ros.rc_gear_msg.data = us_to_bool(rc->high_gear_us);
-    g_ros.rc_throttle_msg.data = us_to_uint8(rc->throttle);
-    g_ros.rc_override_msg.data = us_to_bool(rc->override_us);
+    g_ros.rc_steering_msg.data = us_to_uint8(rc->steer_period);
+    g_ros.rc_gear_msg.data = us_to_bool(rc->high_gear_period);
+    g_ros.rc_throttle_msg.data = us_to_uint8(rc->throttle_period);
+    g_ros.rc_override_msg.data = us_to_bool(rc->override_period);
     g_ros.rc_connected_msg.data = is_connected;
 
     RCSOFTCHECK(rcl_publish(&g_ros.rc_steering_pub.pub, g_ros.rc_steering_pub.msg, NULL));

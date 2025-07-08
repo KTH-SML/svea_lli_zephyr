@@ -26,30 +26,6 @@
     status = "okay";
 };
 
-/ {
-    chosen {
-        zephyr,console = &usart3;
-        zephyr,shell-uart = &usart3;
-    };
-
-    aliases {
-        /* PWM capture inputs (RC receiver) - silkscreen label in comments */
-        rc-steer    = &pwm3_in;   // MISO1
-        rc-high-gear     = &pwm9_in;   // TX1 (silkscreen), TX2 (datasheet)
-        rc-throttle = &pwm5_in;   // P5
-        rc-override = &pwm4_in;   // SCL1
-
-        /* PWM outputs (servos/ESC) - silkscreen label in comments */
-        servo0 = &steeringservo;  // P1
-        servo1 = &gearservo;      // P3
-        servo2 = &throttleesc;    // P4
-        servo3 = &diffservo;      // P2
-        servo4 = &diffservorear;  // PA5, TIM2_CH1, SCK1
-
-        watchdog0 = &iwdg;
-    };
-};
-
 #include <zephyr/dt-bindings/pwm/pwm.h>
 
 /* Pinmux definitions - silkscreen label in comments */
@@ -202,3 +178,29 @@
     };
 };
 
+
+
+
+/ {
+    chosen {
+        zephyr,console = &usart3;
+        zephyr,shell-uart = &usart3;
+    };
+
+    aliases {
+        /* PWM capture inputs (RC receiver) - silkscreen label in comments */
+        rc-steer    = &pwm3_in;   // MISO1
+        rc-high-gear     = &pwm9_in;   // TX1 (silkscreen), TX2 (datasheet)
+        rc-throttle = &pwm5_in;   // P5
+        rc-override = &pwm4_in;   // SCL1
+
+        /* PWM outputs (servos/ESC) - silkscreen label in comments */
+        // steeringservo = &servo;           // P1
+        // gearservo = &gear_servo;          // P3
+        // throttleesc = &throttle_esc;      // P4
+        // diffservo = &diff_servo;          // P2
+        // diffservorear = &diff_servo_rear; // PA5, TIM2_CH1, SCK1
+
+        watchdog0 = &iwdg;
+    };
+};

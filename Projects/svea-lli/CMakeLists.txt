@@ -18,8 +18,8 @@ target_sources(app PRIVATE
     src/main.c
     src/control.c
     src/rc_input.c
-    src/remote.c
-    src/servo.c
-    src/sensors.c
-    src/ros_iface.c
+    
+  #  src/servo.c
+   # src/sensors.c
+   # src/ros_iface.c
 )

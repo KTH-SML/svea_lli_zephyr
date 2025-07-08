@@ -1,9 +1,8 @@
 #include "control.h"
 #include "rc_input.h"
-#include "remote.h"
-#include "ros_iface.h"
-#include "sensors.h"
-#include "servo.h"
+// #include "ros_iface.h"
+// #include "sensors.h"
+// #include "servo.h"
 #include <zephyr/drivers/watchdog.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -71,10 +70,9 @@ int main(void) {
     // Initialise modules
     servo_init();
 
-    remote_init();
     rc_input_init();
-    sensors_init();
-    ros_iface_init(); // <-- Fix: use correct function name
+    // sensors_init();
+    //  ros_iface_init(); // <-- Fix: use correct function name
 
     return 0;
 }

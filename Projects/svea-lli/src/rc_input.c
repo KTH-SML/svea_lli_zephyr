@@ -1,5 +1,5 @@
 #include "rc_input.h"
-#include "remote.h"
+#include <string.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/pwm.h>
@@ -12,8 +12,8 @@ LOG_MODULE_REGISTER(rc_input, LOG_LEVEL_INF);
 struct rc_input_channel {
     const struct device *dev;
     uint32_t channel;
-    const char *name;
     int rc_ch_id;
+    const char *name;
 };
 
 // Define RC input channels using direct PWM controller references
@@ -44,101 +44,105 @@ static struct rc_input_channel rc_channels[] = {
 #endif
 };
 
-// Add array to track initialized channels
 static bool rc_channel_initialized[NUM_RC_CHANNELS] = {false};
 
-// Add this mapping for channel names
-static const char *rc_channel_names[NUM_RC_CHANNELS] = {
-    [RC_STEER] = "steer",
-    [RC_HIGH_GEAR] = "high_gear",
-    [RC_THROTTLE] = "throttle",
-    [RC_OVERRIDE] = "override",
-};
+static rc_capture_raw_t rc_capture_raw[NUM_RC_CHANNELS];
+static rc_capture_ns_t rc_capture_ns[NUM_RC_CHANNELS];
 
-BUILD_ASSERT(NUM_RC_CHANNELS == ARRAY_SIZE(rc_channel_names),
-             "NUM_RC_CHANNELS must match ARRAY_SIZE(rc_channel_names)");
+// Lightweight per-channel callbacks
+static void rc_capture_cb(const struct device *dev, uint32_t channel,
+                          uint32_t period, uint32_t pulse, int status, void *user_data) {
+    rc_channel_t ch = (rc_channel_t)(uintptr_t)user_data;
 
-static uint32_t pwm_clock_frequency_hz = 1000000; // Default to 1 MHz based on comment
-
-uint32_t ticks_to_us(uint32_t ticks) {
-    // Convert timer ticks to microseconds using the stored PWM clock frequency
-    return (uint32_t)(((uint64_t)ticks * 1000000) / pwm_clock_frequency_hz);
-}
-
-// Track last pulse for each channel
-static uint32_t last_pulse_us[NUM_RC_CHANNELS] = {0};
-
-void common_cb(const struct device *dev, uint32_t channel,
-               uint32_t period, uint32_t pulse, int status, void *user_data) {
-    int ch = (int)(uintptr_t)user_data;
-    const char *ch_name = (ch >= 0 && ch < NUM_RC_CHANNELS) ? rc_channel_names[ch] : "unknown";
-    uint32_t us = ticks_to_us(pulse);
-
-    // Only log if pulse changes significantly (more than 5 us)
-    if (ch >= 0 && ch < NUM_RC_CHANNELS) {
-        if (last_pulse_us[ch] == 0 || (us > last_pulse_us[ch] + 50) || (us + 50 < last_pulse_us[ch])) {
-            LOG_DBG("PWM capture on %s (ch %d): period %d us, pulse %d us",
-                    ch_name, ch, ticks_to_us(period), us);
-            last_pulse_us[ch] = us;
-        }
-    }
-
-    // Check for capture errors
-    if (status != 0) {
-        LOG_WRN("PWM capture error on %s (ch %d), status: %d", ch_name, ch, status);
-        remote_link_lost(ch);
-        return;
-    }
-
-    // Check for reasonable pulse width (0.5ms to 2.5ms for RC signals)
-    if (pulse < 500 || pulse > 2500) {
-        LOG_DBG("PWM pulse very large/small on %s (ch %d): %d us", ch_name, ch, pulse);
-    }
-
-    remote_report(ch, us);
+    rc_capture_raw[ch].period = period;
+    rc_capture_raw[ch].pulse = pulse;
+    rc_capture_raw[ch].status = status;
+    rc_capture_raw[ch].fresh = true;
+    rc_capture_raw[ch].timestamp = k_uptime_get();
 }
 
 void rc_input_init(void) {
     LOG_INF("Initializing RC input capture");
 
+    memset(rc_capture_raw, 0, sizeof(rc_capture_raw));
+
     int success_count = 0;
 
-    for (int i = 0; i < ARRAY_SIZE(rc_channels); i++) {
+    for (int i = 0; i < NUM_RC_CHANNELS; i++) {
         const struct rc_input_channel *ch = &rc_channels[i];
-
-        if (!device_is_ready(ch->dev)) {
-            LOG_ERR("PWM device %s not ready", ch->dev->name);
+        if (!ch->dev || !device_is_ready(ch->dev)) {
+            LOG_WRN("RC channel %d device not ready or missing", i);
             continue;
         }
 
-        // Use the correct Zephyr 4.1 PWM capture API
-        int ret = pwm_configure_capture(ch->dev, ch->channel,
-                                        PWM_CAPTURE_TYPE_BOTH | PWM_CAPTURE_MODE_CONTINUOUS,
-                                        common_cb,
-                                        (void *)(uintptr_t)ch->rc_ch_id);
+        LOG_INF("Configuring RC input %s on channel %d", ch->name, ch->channel);
+
+        int ret = pwm_configure_capture(
+            ch->dev, ch->channel,
+            PWM_CAPTURE_TYPE_BOTH | PWM_CAPTURE_MODE_CONTINUOUS,
+            rc_capture_cb, (void *)(uintptr_t)i);
         if (ret < 0) {
-            LOG_ERR("Failed to configure PWM capture for %s: %d", ch->name, ret);
-            rc_channel_initialized[ch->rc_ch_id] = false;
+            LOG_ERR("Failed to configure PWM capture for channel %d: %d", i, ret);
+            rc_channel_initialized[i] = false;
             continue;
         }
 
         ret = pwm_enable_capture(ch->dev, ch->channel);
         if (ret < 0) {
-            LOG_ERR("Failed to enable PWM capture for %s: %d", ch->name, ret);
-            rc_channel_initialized[ch->rc_ch_id] = false;
+            LOG_ERR("Failed to enable PWM capture for channel %d: %d", i, ret);
+            rc_channel_initialized[i] = false;
             continue;
         }
 
-        rc_channel_initialized[ch->rc_ch_id] = true;
+        rc_channel_initialized[i] = true;
         success_count++;
-
-        LOG_INF("RC input %s initialized on channel %d", ch->name, ch->channel);
+        LOG_INF("RC input %s initialized on channel %d", RC_CHANNEL_NAME(i), ch->channel);
     }
 
     LOG_INF("RC input initialization complete: %d/%d channels ready",
-            success_count, ARRAY_SIZE(rc_channels));
-
+            success_count, NUM_RC_CHANNELS);
     if (success_count == 0) {
         LOG_ERR("No RC channels initialized! System may not respond to RC input.");
     }
 }
+
+const rc_capture_raw_t *rc_get_capture_raw(rc_channel_t ch) {
+    return &rc_capture_raw[ch];
+}
+
+// Convert raw PWM cycles to microseconds and caches the result
+const rc_capture_ns_t *rc_get_capture_ns(rc_channel_t ch) {
+    if (rc_capture_raw[ch].fresh) {
+        pwm_cycles_to_nsec(rc_channels[ch].dev, rc_channels[ch].channel, rc_capture_raw[ch].pulse, &rc_capture_ns[ch].pulse_ns);
+        pwm_cycles_to_nsec(rc_channels[ch].dev, rc_channels[ch].channel, rc_capture_raw[ch].period, &rc_capture_ns[ch].period_ns);
+        rc_capture_raw[ch].fresh = false;
+    }
+    return &rc_capture_ns[ch];
+}
+
+// Thread to periodically log RC input values
+void rc_input_logger_thread(void *p1, void *p2, void *p3) {
+    ARG_UNUSED(p1);
+    ARG_UNUSED(p2);
+    ARG_UNUSED(p3);
+
+    while (1) {
+        int64_t now = k_uptime_get();
+        for (int i = 0; i < NUM_RC_CHANNELS; ++i) {
+            int64_t age = now - rc_capture_raw[i].timestamp;
+            LOG_INF("RC ch %d (%s): period=%lu, pulse=%lu, status=%d, fresh=%d, timestamp=%lld, age=%lld ms",
+                    i,
+                    rc_channels[i].name,
+                    (unsigned long)rc_capture_raw[i].period,
+                    (unsigned long)rc_capture_raw[i].pulse,
+                    rc_capture_raw[i].status,
+                    rc_capture_raw[i].fresh,
+                    rc_capture_raw[i].timestamp,
+                    age);
+        }
+        k_sleep(K_SECONDS(1));
+    }
+}
+
+// Start the logger thread at file scope
+K_THREAD_DEFINE(rc_input_logger_tid, 1024, rc_input_logger_thread, NULL, NULL, NULL, 5, 0, 0);
