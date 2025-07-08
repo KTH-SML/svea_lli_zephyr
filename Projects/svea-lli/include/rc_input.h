@@ -25,8 +25,8 @@ static const char *const rc_channel_names[NUM_RC_CHANNELS] = {
 
 // Raw capture values (from ISR/callback)
 typedef struct {
-    volatile uint32_t period;
     volatile uint32_t pulse;
+    volatile uint32_t period;
     volatile int status;
     volatile bool fresh;
     uint64_t timestamp; // Timestamp of last update in milliseconds
