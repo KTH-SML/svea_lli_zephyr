@@ -41,15 +41,15 @@ static void rc_override_watchdog_thread(void *p1, void *p2, void *p3) {
         uint64_t RC_OVERRIDE_NS = rc_get_capture_ns(RC_OVERRIDE)->pulse_ns;
         int64_t override_age = k_uptime_get() - rc_get_capture_raw(RC_OVERRIDE)->timestamp;
 
-        if (rc_get_capture_ns(RC_OVERRIDE)->pulse_ns < 50000 || k_uptime_get() - rc_get_capture_raw(RC_OVERRIDE)->timestamp > 50) {
-            LOG_WRN("RC override pulse out of range (%llu ns, age=%lld ms), turning off all servos", RC_OVERRIDE_NS, override_age);
-            turn_off_all_servos();
-            k_sleep(K_MSEC(50));
-            remote_connected = false; // Set remote connected to false
-            continue;
-        } else {
-            remote_connected = true;
-        }
+        // if (rc_get_capture_ns(RC_OVERRIDE)->pulse_ns < 50000 || k_uptime_get() - rc_get_capture_raw(RC_OVERRIDE)->timestamp > 50) {
+        //     LOG_WRN("RC override pulse out of range (%llu ns, age=%lld ms), turning off all servos", RC_OVERRIDE_NS, override_age);
+        //     turn_off_all_servos();
+        //     k_sleep(K_MSEC(50));
+        //     remote_connected = false; // Set remote connected to false
+        //     continue;
+        // } else {
+        //     remote_connected = true;
+        // }
         k_sleep(K_MSEC(25));
     }
 }
@@ -76,35 +76,35 @@ static void control_thread(void *p1, void *p2, void *p3) {
     LOG_INF("RC PWM device ready: %s", rc_pwm_dev->name);
 
     while (1) {
-        if (!remote_connected) {
-            k_sleep(K_MSEC(1));
-            continue;
-        }
-        if (rc_get_capture_ns(RC_OVERRIDE)->pulse_ns > 1500000) { // 1500 us = 1_500_000 ns
-            const rc_capture_ns_t *steer = rc_get_capture_ns(RC_STEER);
-            LOG_DBG("RC steer: period=%llu, pulse=%llu", steer->period_ns, steer->pulse_ns);
-            pwm_set(servos[SERVO_STEERING].spec.dev, servos[SERVO_STEERING].spec.channel,
-                    steer->period_ns, steer->pulse_ns, 0);
+        // if (!remote_connected) {
+        //     k_sleep(K_MSEC(1));
+        //     continue;
+        // }
+        // if (rc_get_capture_ns(RC_OVERRIDE)->pulse_ns > 1500000) { // 1500 us = 1_500_000 ns
+        const rc_capture_ns_t *steer = rc_get_capture_ns(RC_STEER);
+        LOG_DBG("RC steer: period=%llu, pulse=%llu", steer->period_ns, steer->pulse_ns);
+        pwm_set(servos[SERVO_STEERING].spec.dev, servos[SERVO_STEERING].spec.channel,
+                steer->period_ns, steer->pulse_ns, 0);
 
-            const rc_capture_ns_t *throttle = rc_get_capture_ns(RC_THROTTLE);
-            LOG_DBG("RC throttle: period=%llu, pulse=%llu", throttle->period_ns, throttle->pulse_ns);
-            pwm_set(servos[SERVO_THROTTLE].spec.dev, servos[SERVO_THROTTLE].spec.channel,
-                    throttle->period_ns, throttle->pulse_ns, 0);
+        const rc_capture_ns_t *throttle = rc_get_capture_ns(RC_THROTTLE);
+        LOG_DBG("RC throttle: period=%llu, pulse=%llu", throttle->period_ns, throttle->pulse_ns);
+        pwm_set(servos[SERVO_THROTTLE].spec.dev, servos[SERVO_THROTTLE].spec.channel,
+                throttle->period_ns, throttle->pulse_ns, 0);
 
-            const rc_capture_ns_t *high_gear = rc_get_capture_ns(RC_HIGH_GEAR);
-            LOG_DBG("RC high gear: period=%llu, pulse=%llu", high_gear->period_ns, high_gear->pulse_ns);
-            pwm_set(servos[SERVO_GEAR].spec.dev, servos[SERVO_GEAR].spec.channel,
-                    high_gear->period_ns, high_gear->pulse_ns, 0);
+        const rc_capture_ns_t *high_gear = rc_get_capture_ns(RC_HIGH_GEAR);
+        LOG_DBG("RC high gear: period=%llu, pulse=%llu", high_gear->period_ns, high_gear->pulse_ns);
+        pwm_set(servos[SERVO_GEAR].spec.dev, servos[SERVO_GEAR].spec.channel,
+                high_gear->period_ns, high_gear->pulse_ns, 0);
 
-            // Unable to set diff
-        }
+        // Unable to set diff
+        //}
 
-        k_sleep(K_MSEC(10));
+        k_sleep(K_MSEC(1));
     }
 }
 
 // Lower priority than override watchdog
-K_THREAD_DEFINE(control_tid, 4096, control_thread, NULL, NULL, NULL, K_PRIO_PREEMPT(5), 0, 0);
+K_THREAD_DEFINE(control_tid, 4096, control_thread, NULL, NULL, NULL, 5, 0, 0);
 
 void servo_init(void) {
     LOG_INF("Initializing servos...");
@@ -175,10 +175,7 @@ void servo_init(void) {
 }
 
 void turn_off_all_servos(void) {
-    // LOG_WRN("Turning off all servos!");
     for (int i = 0; i < SERVO_COUNT; ++i) {
-        // LOG_INF("Turning off servo %d", i);
-        pwm_set_cycles(servos[SERVO_THROTTLE].spec.dev, servos[SERVO_THROTTLE].spec.channel,
-                       0, 0, 0);
+        pwm_set_cycles(servos[i].spec.dev, servos[i].spec.channel, 0, 0, 0);
     }
 }
