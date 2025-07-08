@@ -112,6 +112,7 @@
     st,prescaler = <107>;
     pwm4_in: pwm4_in {
         four-channel-capture-support;
+
         compatible = "st,stm32-pwm";
         status = "okay";
         #pwm-cells = <3>;
@@ -122,7 +123,7 @@
 
 &timers9 {
     status = "okay";
-    st,prescaler = <107>;
+    st,prescaler = <214>;
     pwm9_in: pwm9_in {
         compatible = "st,stm32-pwm";
         status = "okay";
