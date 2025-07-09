@@ -43,7 +43,7 @@ static void steering_servo_thread(void *p1, void *p2, void *p3) {
         k_sleep(K_MSEC(10));
     }
     while (1) {
-        pwm_set_pulse_dt(&servos[SERVO_STEERING].spec, rc_get_capture_ns(RC_STEER).pulse_ns);
+        pwm_set_pulse_dt(&servos[SERVO_STEERING].spec, rc_pulse[RC_STEER]);
         k_sleep(K_MSEC(20));
     }
 }
@@ -56,7 +56,7 @@ static void throttle_servo_thread(void *p1, void *p2, void *p3) {
         k_sleep(K_MSEC(10));
     }
     while (1) {
-        pwm_set_pulse_dt(&servos[SERVO_THROTTLE].spec, rc_get_capture_ns(RC_THROTTLE).pulse_ns);
+        pwm_set_pulse_dt(&servos[SERVO_THROTTLE].spec, rc_pulse[RC_THROTTLE]);
         k_sleep(K_MSEC(20));
     }
 }
@@ -69,16 +69,16 @@ static void gear_servo_thread(void *p1, void *p2, void *p3) {
         k_sleep(K_MSEC(10));
     }
     while (1) {
-        pwm_set_pulse_dt(&servos[SERVO_GEAR].spec, rc_get_capture_ns(RC_HIGH_GEAR).pulse_ns);
+        pwm_set_pulse_dt(&servos[SERVO_GEAR].spec, rc_pulse[RC_HIGH_GEAR]);
         k_sleep(K_MSEC(500));
     }
 }
 
 // Optionally add more threads for other servos if needed
 
-K_THREAD_DEFINE(steering_servo_tid, SERVO_THREAD_STACK_SIZE, steering_servo_thread, NULL, NULL, NULL, SERVO_THREAD_PRIORITY, 0, 0);
-K_THREAD_DEFINE(throttle_servo_tid, SERVO_THREAD_STACK_SIZE, throttle_servo_thread, NULL, NULL, NULL, SERVO_THREAD_PRIORITY, 0, 0);
-K_THREAD_DEFINE(gear_servo_tid, SERVO_THREAD_STACK_SIZE, gear_servo_thread, NULL, NULL, NULL, SERVO_THREAD_PRIORITY, 0, 0);
+// K_THREAD_DEFINE(steering_servo_tid, SERVO_THREAD_STACK_SIZE, steering_servo_thread, NULL, NULL, NULL, SERVO_THREAD_PRIORITY, 0, 0);
+// K_THREAD_DEFINE(throttle_servo_tid, SERVO_THREAD_STACK_SIZE, throttle_servo_thread, NULL, NULL, NULL, SERVO_THREAD_PRIORITY, 0, 0);
+// K_THREAD_DEFINE(gear_servo_tid, SERVO_THREAD_STACK_SIZE, gear_servo_thread, NULL, NULL, NULL, SERVO_THREAD_PRIORITY, 0, 0);
 
 void servo_init(void) {
     LOG_INF("Initializing servos...");

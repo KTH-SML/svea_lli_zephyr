@@ -39,10 +39,13 @@ typedef struct {
 
 // Only provide accessors, not the arrays themselves!
 const rc_capture_raw_t *rc_get_capture_raw(rc_channel_t ch);
-rc_capture_ns_t rc_get_capture_ns(rc_channel_t ch);
+uint32_t rc_get_capture_ns(rc_channel_t ch);
 
 void rc_input_init(void);
 
 extern volatile rc_capture_ns_t *rc_ns;
 extern volatile rc_capture_raw_t *rc_raw;
+
+extern volatile uint64_t rc_pulse[NUM_RC_CHANNELS];
+
 #endif // RC_INPUT_H

@@ -48,7 +48,7 @@
 /* PWM Output timers - silkscreen label in comments */
 &timers1 {
     status = "okay";
-    st,prescaler = <64>;
+    st,prescaler = <50>;
     pwm1: pwm {
         status = "okay";
         pinctrl-0 = <&tim1_ch1_pe9>; // P1
@@ -58,7 +58,7 @@
 
 &timers2 {
     status = "okay";
-    st,prescaler = <64>;
+    //st,prescaler = <64>;
     pwm2: pwm {
         status = "okay";
         pinctrl-0 = <&tim2_ch3_pb10 &tim2_ch4_pb11 &tim2_ch1_pa5>; // P2, P3, P11
@@ -68,7 +68,7 @@
 
 &timers12 {
     status = "okay";
-    st,prescaler = <64>;
+    st,prescaler = <50>;
     pwm12: pwm {
         status = "okay";
         pinctrl-0 = <&tim12_ch1_ph6>; // P4
@@ -78,7 +78,7 @@
 
 &timers11 {
     status = "okay";
-    st,prescaler = <64>;
+    st,prescaler = <50>;
     pwm11: pwm {
         status = "okay";
         pinctrl-0 = <&tim11_ch1_pb9>; // SDA1
@@ -89,7 +89,7 @@
 /* PWM Input capture timers - silkscreen label in comments */
 &timers3 {
     status = "okay";
-    st,prescaler = <32>;
+    st,prescaler = <24>;
 
     pwm3_in: pwm {
         status = "okay";
@@ -100,12 +100,11 @@
 
 &timers4 {
     status = "okay";
-    st,prescaler = <32>;
+    st,prescaler = <24>;
 
     pwm4_in: pwm {
         four-channel-capture-support;
         status = "okay";
-        #pwm-cells = <3>;
         pinctrl-0 = <&tim4_ch3_pb8>; // SCL1
         pinctrl-names = "default";
     };
@@ -113,7 +112,7 @@
 
 &timers9 {
     status = "okay";
-    st,prescaler = <64>;
+    st,prescaler = <50>;
 
     pwm9_in: pwm {
         status = "okay";
