@@ -44,4 +44,5 @@ const rc_capture_ns_t *rc_get_capture_ns(rc_channel_t ch);
 
 void rc_input_init(void);
 
+extern volatile rc_capture_ns_t *rc_ns;
 #endif // RC_INPUT_H

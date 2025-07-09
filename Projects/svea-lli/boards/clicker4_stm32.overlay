@@ -48,7 +48,7 @@
 /* PWM Output timers - silkscreen label in comments */
 &timers1 {
     status = "okay";
-    st,prescaler = <107>;
+    st,prescaler = <215>;
     pwm1: pwm1 {
         compatible = "st,stm32-pwm";
         status = "okay";
@@ -123,7 +123,7 @@
 
 &timers9 {
     status = "okay";
-    st,prescaler = <214>;
+    st,prescaler = <215>;
     pwm9_in: pwm9_in {
         compatible = "st,stm32-pwm";
         status = "okay";
