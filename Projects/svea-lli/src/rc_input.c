@@ -1,126 +1,104 @@
+/* rc_input.c – pure-hardware capture, no ISR, no overlay tweaks */
+
 #include "rc_input.h"
-#include <string.h>
+#include <stm32_ll_bus.h>
+#include <stm32_ll_tim.h>
 #include <zephyr/device.h>
-#include <zephyr/devicetree.h>
-#include <zephyr/drivers/pwm.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
-LOG_MODULE_REGISTER(rc_input, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(rc_input_hw, LOG_LEVEL_INF);
 
-struct rc_input_channel {
-    const struct device *dev;
-    uint32_t channel;
-    int rc_ch_id;
-    const char *name;
-};
+/* ───────── helpers to fetch the TIM base pointer from a pwm device ───────── */
 
-static struct rc_input_channel rc_channels[] = {
-#if DT_NODE_EXISTS(DT_ALIAS(rc_steer))
-    {.dev = DEVICE_DT_GET(DT_ALIAS(rc_steer)),
-     .channel = 1, // TIM3_CH1
-     .name = "rc-steer",
-     .rc_ch_id = RC_STEER},
-#endif
-#if DT_NODE_EXISTS(DT_ALIAS(rc_high_gear))
-    {.dev = DEVICE_DT_GET(DT_ALIAS(rc_high_gear)),
-     .channel = 1, // TIM9_CH1
-     .name = "rc-high-gear",
-     .rc_ch_id = RC_HIGH_GEAR},
-#endif
-#if DT_NODE_EXISTS(DT_ALIAS(rc_throttle))
-    {.dev = DEVICE_DT_GET(DT_ALIAS(rc_throttle)),
-     .channel = 1, // TIM5_CH1
-     .name = "rc-throttle",
-     .rc_ch_id = RC_THROTTLE},
-#endif
-#if DT_NODE_EXISTS(DT_ALIAS(rc_override))
-    {.dev = DEVICE_DT_GET(DT_ALIAS(rc_override)),
-     .channel = 3, // TIM4_CH3
-     .name = "rc-override",
-     .rc_ch_id = RC_OVERRIDE},
-#endif
-};
+struct pwm_stm32_cfg {
+    TIM_TypeDef *timer;
+}; /* forward decl. */
 
-static rc_capture_raw_t rc_capture_raw[NUM_RC_CHANNELS];
-
-bool rc_initialized = false;
-
-// Callback for PWM capture
-static void rc_capture_cb(const struct device *dev, uint32_t channel,
-                          uint32_t period, uint32_t pulse, int status, void *user_data) {
-    rc_channel_t ch = (rc_channel_t)(uintptr_t)user_data;
-
-    rc_capture_raw[ch].pulse = pulse;
-    rc_capture_raw[ch].status = status;
-    rc_capture_raw[ch].fresh = true;
-    rc_capture_raw[ch].timestamp = k_uptime_get();
+static inline TIM_TypeDef *pwm_to_tim(const struct device *pwm_dev) {
+    return ((const struct pwm_stm32_cfg *)pwm_dev->config)->timer;
 }
 
-// Initialization: register callback for each channel
+/* ───────── table that matches your /aliases ───────── */
+
+#define RC_STEER 0
+#define RC_HIGH_GEAR 1
+#define RC_THROTTLE 2
+#define RC_OVERRIDE 3
+#define NUM_RC_CH 4
+
+static const struct device *const pwm_dev[NUM_RC_CH] = {
+    DEVICE_DT_GET(DT_ALIAS(rc_steer)),
+    DEVICE_DT_GET(DT_ALIAS(rc_high_gear)),
+    DEVICE_DT_GET(DT_ALIAS(rc_throttle)),
+    DEVICE_DT_GET(DT_ALIAS(rc_override)),
+};
+
+/* ───────── hardware re-configuration ───────── */
+
+static void tim_config_pwm_input(TIM_TypeDef *T) {
+    /* 1 µs tick: APB1 108 MHz / (108-1) = 1 MHz */
+    LL_TIM_DisableCounter(T);
+    LL_TIM_SetPrescaler(T, 107);
+    LL_TIM_SetAutoReload(T, 0xFFFF);
+
+    /* CH1 = rising direct, CH2 = falling indirect */
+    LL_TIM_IC_SetActiveInput(T, LL_TIM_CHANNEL_CH1, LL_TIM_ACTIVEINPUT_DIRECTTI);
+    LL_TIM_IC_SetActiveInput(T, LL_TIM_CHANNEL_CH2, LL_TIM_ACTIVEINPUT_INDIRECTTI);
+    LL_TIM_IC_SetPolarity(T, LL_TIM_CHANNEL_CH1, LL_TIM_IC_POLARITY_RISING);
+    LL_TIM_IC_SetPolarity(T, LL_TIM_CHANNEL_CH2, LL_TIM_IC_POLARITY_FALLING);
+    LL_TIM_IC_SetPrescaler(T, LL_TIM_CHANNEL_CH1, LL_TIM_ICPSC_DIV1);
+    LL_TIM_IC_SetPrescaler(T, LL_TIM_CHANNEL_CH2, LL_TIM_ICPSC_DIV1);
+
+    /* reset counter on every rising edge */
+    LL_TIM_SetTriggerInput(T, LL_TIM_TS_TI1FP1);
+    LL_TIM_SetSlaveMode(T, LL_TIM_SLAVEMODE_RESET);
+
+    /* disable any IRQ the Zephyr driver might have left on */
+    LL_TIM_DisableIT_CC1(T);
+    LL_TIM_DisableIT_CC2(T);
+    LL_TIM_ClearFlag_CC1(T);
+    LL_TIM_ClearFlag_CC2(T);
+
+    LL_TIM_CC_EnableChannel(T, LL_TIM_CHANNEL_CH1 | LL_TIM_CHANNEL_CH2);
+    LL_TIM_EnableCounter(T);
+}
+
+/* ───────── public API ───────── */
+
+static TIM_TypeDef *tim[NUM_RC_CH]; /* saved after init */
+
 void rc_input_init(void) {
-    LOG_INF("Initializing RC input capture");
-
-    memset(rc_capture_raw, 0, sizeof(rc_capture_raw));
-
-    int success_count = 0;
-
-    for (int i = 0; i < NUM_RC_CHANNELS; i++) {
-        const struct rc_input_channel *ch = &rc_channels[i];
-        if (!ch->dev || !device_is_ready(ch->dev)) {
-            LOG_WRN("RC channel %d device not ready or missing", i);
+    for (int i = 0; i < NUM_RC_CH; i++) {
+        if (!device_is_ready(pwm_dev[i])) {
+            LOG_ERR("RC dev %d not ready", i);
             continue;
         }
-
-        LOG_INF("Configuring RC input %s on channel %d", ch->name, ch->channel);
-
-        int ret = pwm_configure_capture(
-            ch->dev, ch->channel,
-            PWM_CAPTURE_TYPE_PULSE | PWM_CAPTURE_MODE_CONTINUOUS,
-            rc_capture_cb, (void *)(uintptr_t)i);
-        if (ret < 0) {
-            LOG_ERR("Failed to configure PWM capture for channel %d: %d", i, ret);
-            continue;
-        }
-
-        ret = pwm_enable_capture(ch->dev, ch->channel);
-        if (ret < 0) {
-            LOG_ERR("Failed to enable PWM capture for channel %d: %d", i, ret);
-            continue;
-        }
-
-        success_count++;
-        LOG_INF("RC input %s initialized on channel %d", RC_CHANNEL_NAME(i), ch->channel);
-    }
-
-    LOG_INF("RC input initialization complete: %d/%d channels ready",
-            success_count, NUM_RC_CHANNELS);
-    if (success_count == 0) {
-        LOG_ERR("No RC channels initialized! System may not respond to RC input.");
+        tim[i] = pwm_to_tim(pwm_dev[i]);
+        tim_config_pwm_input(tim[i]);
+        LOG_INF("RC timer %d set to PWM-input", i);
     }
 }
 
-const rc_capture_raw_t *rc_get_capture_raw(rc_channel_t ch) {
-    return &rc_capture_raw[ch];
+uint32_t rc_get_pulse_us(rc_channel_t idx) {
+
+    return idx < NUM_RC_CH ? LL_TIM_IC_GetCaptureCH2(tim[idx]) : 0;
+}
+uint32_t rc_get_period_us(rc_channel_t idx) {
+    return idx < NUM_RC_CH ? LL_TIM_IC_GetCaptureCH1(tim[idx]) : 0;
 }
 
-// Logger thread (unchanged except period removed)
-void rc_input_logger_thread(void *p1, void *p2, void *p3) {
-    ARG_UNUSED(p1);
-    ARG_UNUSED(p2);
-    ARG_UNUSED(p3);
+/* ───────── optional logger thread ───────── */
 
+static void rc_log(void *, void *, void *) {
+    rc_input_init();
     while (1) {
-        int64_t now = k_uptime_get();
-        for (int i = 0; i < NUM_RC_CHANNELS; ++i) {
-            int64_t age = now - rc_capture_raw[i].timestamp;
-            LOG_INF("RC ch %d (%s): raw_pulse=%lu us, status=%d, fresh=%d, timestamp=%lld, age=%lld ms",
-                    i, rc_channels[i].name, (unsigned long)rc_capture_raw[i].pulse,
-                    rc_capture_raw[i].status, rc_capture_raw[i].fresh,
-                    rc_capture_raw[i].timestamp, age);
-        }
-        k_sleep(K_SECONDS(1));
+        LOG_INF("steer %u us  throttle %u us  gear %u us  override %u us",
+                rc_get_pulse_us(RC_STEER),
+                rc_get_pulse_us(RC_THROTTLE),
+                rc_get_pulse_us(RC_HIGH_GEAR),
+                rc_get_pulse_us(RC_OVERRIDE));
+        k_msleep(500);
     }
 }
-
-K_THREAD_DEFINE(rc_input_logger_tid, 1024, rc_input_logger_thread, NULL, NULL, NULL, 5, 0, 0);
+K_THREAD_DEFINE(rc_log_tid, 1024, rc_log, NULL, NULL, NULL, 7, 0, 0);
