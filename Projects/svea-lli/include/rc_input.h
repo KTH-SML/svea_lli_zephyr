@@ -27,9 +27,8 @@ static const char *const rc_channel_names[NUM_RC_CHANNELS] = {
 typedef struct {
     volatile uint32_t period;
     volatile uint32_t pulse;
-    volatile int status;
-    volatile bool fresh;
     uint64_t timestamp; // Timestamp of last update in milliseconds
+    volatile bool pending;
 } rc_capture_raw_t;
 
 // Converted microsecond values (updated by a thread or on-demand)
@@ -40,9 +39,10 @@ typedef struct {
 
 // Only provide accessors, not the arrays themselves!
 const rc_capture_raw_t *rc_get_capture_raw(rc_channel_t ch);
-const rc_capture_ns_t *rc_get_capture_ns(rc_channel_t ch);
+rc_capture_ns_t rc_get_capture_ns(rc_channel_t ch);
 
 void rc_input_init(void);
 
 extern volatile rc_capture_ns_t *rc_ns;
+extern volatile rc_capture_raw_t *rc_raw;
 #endif // RC_INPUT_H

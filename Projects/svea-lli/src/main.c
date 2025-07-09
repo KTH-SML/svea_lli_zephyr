@@ -44,6 +44,8 @@ K_THREAD_DEFINE(wdt_tid, 1024, watchdog_thread, NULL, NULL, NULL, 1, 0, 0);
 
 int main(void) {
     LOG_INF("SVEA LLI starting");
+    /* Brief sleep to allow for peripherals to initialize */
+    k_msleep(1000);
 
     // Watchdog setup
     wdt_dev = DEVICE_DT_GET(DT_ALIAS(watchdog0));

@@ -5,16 +5,16 @@
 / {
 	model = "MikroElektronika Clicker 4 for STM32";
 	compatible = "mikroe,clicker4-stm32", "st,stm32f767";
-    aliases {
-        led0 = &led1;
-        led1 = &led2;
-        led2 = &led3;
-        led3 = &led4;
-        led4 = &led5;
-        led5 = &led6;
-        led6 = &led7;
-        led7 = &led8;
-    };
+	aliases {
+		led0 = &led1;
+		led1 = &led2;
+		led2 = &led3;
+		led3 = &led4;
+		led4 = &led5;
+		led5 = &led6;
+		led6 = &led7;
+		led7 = &led8;
+	};
 	chosen {
 		zephyr,sram = &sram0;
 		zephyr,flash = &flash0;
@@ -33,7 +33,7 @@
 		led6: led_5 { label = "L6"; gpios = <&gpiog 5 GPIO_ACTIVE_HIGH>; };
 		led7: led_6 { label = "L7"; gpios = <&gpiog 6 GPIO_ACTIVE_HIGH>; };
 		led8: led_7 { label = "L8"; gpios = <&gpiog 7 GPIO_ACTIVE_HIGH>; };
-	};              
+	};
 
 	keys {
 		compatible = "gpio-keys";
@@ -54,14 +54,14 @@
 			gpio-map-mask = <0xffffffff 0xffffffc0>;
 			gpio-map-pass-thru = <0 0x3f>;
 			gpio-map =
-				< 0 0 &gpiof  3 0>,	<16 0 &gpiof  6 0>,	// AN	- PWM
-				< 1 0 &gpioi  9 0>,	<15 0 &gpioa  4 0>,	// RST	- INT
-				< 2 0 &gpioc  3 0>,	<14 0 &gpiod  9 0>,	// CS	- RX
-				< 3 0 &gpioi  1 0>,	<13 0 &gpiod  8 0>,	// SCK	- TX
-				< 4 0 &gpioi  2 0>,	<12 0 &gpiof  1 0>,	// MISO	- SCL
-				< 5 0 &gpioi  3 0>,	<11 0 &gpiof  0 0>;	// MOSI	- SDA
-														// 3.3V	- 5V
-														// GND	- GND
+			<0 0 &gpiof  3 0>,    <16 0 &gpiof  6 0>,    // AN    - PWM
+			<1 0 &gpioi  9 0>,    <15 0 &gpioa  4 0>,    // RST    - INT
+			<2 0 &gpioc  3 0>,    <14 0 &gpiod  9 0>,    // CS    - RX
+			<3 0 &gpioi  1 0>,    <13 0 &gpiod  8 0>,    // SCK    - TX
+			<4 0 &gpioi  2 0>,    <12 0 &gpiof  1 0>,    // MISO    - SCL
+			<5 0 &gpioi  3 0>,    <11 0 &gpiof  0 0>;    // MOSI    - SDA
+			// 3.3V    - 5V
+			// GND    - GND
 		};
 
 		mb2: mikrobus_2 {
@@ -70,14 +70,14 @@
 			gpio-map-mask = <0xffffffff 0xffffffc0>;
 			gpio-map-pass-thru = <0 0x3f>;
 			gpio-map =
-				< 0 0 &gpioc  0 0>,	<16 0 &gpiof  7 0>,	// AN	- PWM
-				< 1 0 &gpioi 10 0>,	<15 0 &gpiof 11 0>,	// RST	- INT
-				< 2 0 &gpioh  2 0>,	<14 0 &gpiob  7 0>,	// CS	- RX
-				< 3 0 &gpioi  1 0>,	<13 0 &gpiob  6 0>,	// SCK	- TX
-				< 4 0 &gpioi  2 0>,	<12 0 &gpiof  1 0>,	// MISO	- SCL
-				< 5 0 &gpioi  3 0>,	<11 0 &gpiof  0 0>;	// MOSI	- SDA
-										// 3.3V	- 5V
-										// GND	- GND
+			<0 0 &gpioc  0 0>,    <16 0 &gpiof  7 0>,    // AN    - PWM
+			<1 0 &gpioi 10 0>,    <15 0 &gpiof 11 0>,    // RST    - INT
+			<2 0 &gpioh  2 0>,    <14 0 &gpiob  7 0>,    // CS    - RX
+			<3 0 &gpioi  1 0>,    <13 0 &gpiob  6 0>,    // SCK    - TX
+			<4 0 &gpioi  2 0>,    <12 0 &gpiof  1 0>,    // MISO    - SCL
+			<5 0 &gpioi  3 0>,    <11 0 &gpiof  0 0>;    // MOSI    - SDA
+			// 3.3V    - 5V
+			// GND    - GND
 		};
 
 		mb3: mikrobus_3 {
@@ -86,14 +86,14 @@
 			gpio-map-mask = <0xffffffff 0xffffffc0>;
 			gpio-map-pass-thru = <0 0x3f>;
 			gpio-map =
-				< 0 0 &gpiof  5 0>,	<16 0 &gpiof  8 0>,	// AN	- PWM
-				< 1 0 &gpioi 11 0>,	<15 0 &gpiob  0 0>,	// RST	- INT
-				< 2 0 &gpioh  3 0>,	<14 0 &gpioc  7 0>,	// CS	- RX
-				< 3 0 &gpioc 10 0>,	<13 0 &gpioc  6 0>,	// SCK	- TX
-				< 4 0 &gpioc 11 0>,	<12 0 &gpioh  7 0>,	// MISO	- SCL
-				< 5 0 &gpioc 12 0>,	<11 0 &gpioh  8 0>;	// MOSI	- SDA
-										// 3.3V	- 5V
-										// GND	- GND
+			<0 0 &gpiof  5 0>,    <16 0 &gpiof  8 0>,    // AN    - PWM
+			<1 0 &gpioi 11 0>,    <15 0 &gpiob  0 0>,    // RST    - INT
+			<2 0 &gpioh  3 0>,    <14 0 &gpioc  7 0>,    // CS    - RX
+			<3 0 &gpioc 10 0>,    <13 0 &gpioc  6 0>,    // SCK    - TX
+			<4 0 &gpioc 11 0>,    <12 0 &gpioh  7 0>,    // MISO    - SCL
+			<5 0 &gpioc 12 0>,    <11 0 &gpioh  8 0>;    // MOSI    - SDA
+			// 3.3V    - 5V
+			// GND    - GND
 		};
 
 		mb4: mikrobus_4 {
@@ -102,14 +102,14 @@
 			gpio-map-mask = <0xffffffff 0xffffffc0>;
 			gpio-map-pass-thru = <0 0x3f>;
 			gpio-map =
-				< 0 0 &gpiof 10 0>,	<16 0 &gpiof  9 0>,	// AN	- PWM
-				< 1 0 &gpiof  2 0>,	<15 0 &gpiob  1 0>,	// RST	- INT
-				< 2 0 &gpioh  4 0>,	<14 0 &gpioe  7 0>,	// CS	- RX
-				< 3 0 &gpioc 10 0>,	<13 0 &gpioe  8 0>,	// SCK	- TX
-				< 4 0 &gpioc 11 0>,	<12 0 &gpioh  7 0>,	// MISO	- SCL
-				< 5 0 &gpioc 12 0>,	<11 0 &gpioh  8 0>;	// MOSI	- SDA
-										// 3.3V	- 5V
-										// GND	- GND
+			<0 0 &gpiof 10 0>,    <16 0 &gpiof  9 0>,    // AN    - PWM
+			<1 0 &gpiof  2 0>,    <15 0 &gpiob  1 0>,    // RST    - INT
+			<2 0 &gpioh  4 0>,    <14 0 &gpioe  7 0>,    // CS    - RX
+			<3 0 &gpioc 10 0>,    <13 0 &gpioe  8 0>,    // SCK    - TX
+			<4 0 &gpioc 11 0>,    <12 0 &gpioh  7 0>,    // MISO    - SCL
+			<5 0 &gpioc 12 0>,    <11 0 &gpioh  8 0>;    // MOSI    - SDA
+			// 3.3V    - 5V
+			// GND    - GND
 		};
 	};
 
@@ -125,48 +125,48 @@
 		#address-cells = <1>;
 		#size-cells = <1>;
 
-                /*
-                 * The two sectors 0-1 (32+32 kbytes) are reserved for
-                 * the bootloader.
-                 */
-                boot_partition: partition@0 {
-                        reg = <0x0 DT_SIZE_K(64)>;
-                        read-only;
-                };
+		/*
+		 * The two sectors 0-1 (32+32 kbytes) are reserved for
+		 * the bootloader.
+		 */
+		boot_partition: partition@0 {
+			reg = <0x0 DT_SIZE_K(64)>;
+			read-only;
+		};
 
-                /*
-                 * The flash starting at offset 0x10000 and ending at
-                 * offset 0x1ffff is reserved for use by the application.
-                 * This represents sectors 2-3 (32+32 kbytes)
-                 */
-                storage_partition: partition@10000 {
-                        reg = <0x00010000 DT_SIZE_K(64)>;
-                };
+		/*
+		 * The flash starting at offset 0x10000 and ending at
+		 * offset 0x1ffff is reserved for use by the application.
+		 * This represents sectors 2-3 (32+32 kbytes)
+		 */
+		storage_partition: partition@10000 {
+			reg = <0x00010000 DT_SIZE_K(64)>;
+		};
 
-                /*
-                 * Sector 4 (128 kbytes) unallocated.
-                 */
+		/*
+		 * Sector 4 (128 kbytes) unallocated.
+		 */
 
-                /*
-                 * Allocated 3 (256k x 3) sectors for image-0. Sectors 5-7.
-                 */
-                slot0_partition: partition@40000 {
-                        reg = <0x00040000 DT_SIZE_K(768)>;
-                };
+		/*
+		 * Allocated 3 (256k x 3) sectors for image-0. Sectors 5-7.
+		 */
+		slot0_partition: partition@40000 {
+			reg = <0x00040000 DT_SIZE_K(768)>;
+		};
 
-                /*
-                 * Allocated 3 (256k x 3) sectors for image-1. Sectors 8-10.
-                 */
-                slot1_partition: partition@100000 {
-                        reg = <0x00100000 DT_SIZE_K(768)>;
-                };
+		/*
+		 * Allocated 3 (256k x 3) sectors for image-1. Sectors 8-10.
+		 */
+		slot1_partition: partition@100000 {
+			reg = <0x00100000 DT_SIZE_K(768)>;
+		};
 
-                /*
-                 * Allocated 1 (256k) sector for image-scratch. Sector 11.
-                 */
-                scratch_partition: partition@1C0000 {
-                        reg = <0x001C0000 DT_SIZE_K(256)>;
-                };
+		/*
+		 * Allocated 1 (256k) sector for image-scratch. Sector 11.
+		 */
+		scratch_partition: partition@1C0000 {
+			reg = <0x001C0000 DT_SIZE_K(256)>;
+		};
 	};
 };
 
@@ -184,12 +184,12 @@
 };
 
 &pll {
-    div-m = <25>; /* PLLM: divide HSE by 25 */
-    mul-n = <432>; /* PLLN: multiply by 432 */
-    div-p = <2>; /* PLLP: divide by 2 */
-    div-q = <9>; /* PLLQ: divide by 9 (for USB clock) */
-    clocks = <&clk_hse>;
-    status = "okay";
+	div-m = <25>; /* PLLM: divide HSE by 25 */
+	mul-n = <432>; /* PLLN: multiply by 432 */
+	div-p = <2>; /* PLLP: divide by 2 */
+	div-q = <9>; /* PLLQ: divide by 9 (for USB clock) */
+	clocks = <&clk_hse>;
+	status = "okay";
 };
 
 &rcc {
@@ -205,15 +205,15 @@
 // USB
 
 zephyr_udc0: &usbotg_fs {
-    pinctrl-0 = <&usb_otg_fs_dm_pa11 &usb_otg_fs_dp_pa12>;
-    pinctrl-names = "default";
-    status = "okay";
+	pinctrl-0 = <&usb_otg_fs_dm_pa11 &usb_otg_fs_dp_pa12>;
+	pinctrl-names = "default";
+	status = "okay";
 
-    cdc_acm_uart0: cdc_acm_uart0 {
-        compatible = "zephyr,cdc-acm-uart";
-        label = "CDC_ACM_0";
-        status = "okay";
-    };
+	cdc_acm_uart0: cdc_acm_uart0 {
+		compatible = "zephyr,cdc-acm-uart";
+		label = "CDC_ACM_0";
+		status = "okay";
+	};
 };
 
 // -------------------------------------------------------------

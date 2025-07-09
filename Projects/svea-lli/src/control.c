@@ -11,6 +11,9 @@ LOG_MODULE_REGISTER(control, LOG_LEVEL_INF);
 #define RC_WATCHDOG_TIMEOUT_MS 150 // Increased from 120 to give more leeway
 #define PWM_PERIOD_NS 10000000     // 20 ms typical for RC servos
 
+#define SERVO_THREAD_STACK_SIZE 1024
+#define SERVO_THREAD_PRIORITY 5
+
 bool servos_initialized = false; // Flag to indicate if servos are initialized
 bool remote_connected = false;   // Flag to indicate if remote is connected
 // Servo array
@@ -32,36 +35,50 @@ servo_t servos[SERVO_COUNT] = {
 #endif
 };
 
-static void control_thread(void *p1, void *p2, void *p3) {
+static void steering_servo_thread(void *p1, void *p2, void *p3) {
     ARG_UNUSED(p1);
     ARG_UNUSED(p2);
     ARG_UNUSED(p3);
-
     while (!servos_initialized) {
-        LOG_DBG("Waiting for servos to initialize...");
-        k_sleep(K_MSEC(100)); // Wait a bit before checking again
+        k_sleep(K_MSEC(10));
     }
-
-    LOG_INF("Control thread started");
-
     while (1) {
-        // Steering
-        pwm_set_dt(&servos[SERVO_STEERING].spec, PWM_PERIOD_NS, rc_ns[RC_STEER].pulse_ns);
-
-        // Throttle
-        pwm_set_dt(&servos[SERVO_THROTTLE].spec, PWM_PERIOD_NS, rc_ns[RC_THROTTLE].pulse_ns);
-
-        // Gear
-        pwm_set_dt(&servos[SERVO_GEAR].spec, PWM_PERIOD_NS, rc_ns[RC_HIGH_GEAR].pulse_ns);
-
-        // Add more channels if needed...
-
-        k_sleep(K_MSEC(1));
+        pwm_set_pulse_dt(&servos[SERVO_STEERING].spec, rc_get_capture_ns(RC_STEER).pulse_ns);
+        k_sleep(K_MSEC(20));
     }
 }
 
-// Lower priority than override watchdog
-K_THREAD_DEFINE(control_tid, 4096, control_thread, NULL, NULL, NULL, 5, 0, 0);
+static void throttle_servo_thread(void *p1, void *p2, void *p3) {
+    ARG_UNUSED(p1);
+    ARG_UNUSED(p2);
+    ARG_UNUSED(p3);
+    while (!servos_initialized) {
+        k_sleep(K_MSEC(10));
+    }
+    while (1) {
+        pwm_set_pulse_dt(&servos[SERVO_THROTTLE].spec, rc_get_capture_ns(RC_THROTTLE).pulse_ns);
+        k_sleep(K_MSEC(20));
+    }
+}
+
+static void gear_servo_thread(void *p1, void *p2, void *p3) {
+    ARG_UNUSED(p1);
+    ARG_UNUSED(p2);
+    ARG_UNUSED(p3);
+    while (!servos_initialized) {
+        k_sleep(K_MSEC(10));
+    }
+    while (1) {
+        pwm_set_pulse_dt(&servos[SERVO_GEAR].spec, rc_get_capture_ns(RC_HIGH_GEAR).pulse_ns);
+        k_sleep(K_MSEC(500));
+    }
+}
+
+// Optionally add more threads for other servos if needed
+
+K_THREAD_DEFINE(steering_servo_tid, SERVO_THREAD_STACK_SIZE, steering_servo_thread, NULL, NULL, NULL, SERVO_THREAD_PRIORITY, 0, 0);
+K_THREAD_DEFINE(throttle_servo_tid, SERVO_THREAD_STACK_SIZE, throttle_servo_thread, NULL, NULL, NULL, SERVO_THREAD_PRIORITY, 0, 0);
+K_THREAD_DEFINE(gear_servo_tid, SERVO_THREAD_STACK_SIZE, gear_servo_thread, NULL, NULL, NULL, SERVO_THREAD_PRIORITY, 0, 0);
 
 void servo_init(void) {
     LOG_INF("Initializing servos...");
