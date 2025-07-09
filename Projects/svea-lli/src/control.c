@@ -31,30 +31,8 @@ servo_t servos[SERVO_COUNT] = {
 #endif
 };
 
-// Function to turn off all servos at highest priority if the remote is disconnected
-static void rc_override_watchdog_thread(void *p1, void *p2, void *p3) {
-    ARG_UNUSED(p1);
-    ARG_UNUSED(p2);
-    ARG_UNUSED(p3);
-
-    while (1) {
-        // uint64_t RC_OVERRIDE_NS = rc_get_capture_ns(RC_OVERRIDE)->pulse_ns;
-        // int64_t override_age = k_uptime_get() - rc_get_capture_raw(RC_OVERRIDE)->timestamp;
-
-        // if (rc_get_capture_ns(RC_OVERRIDE)->pulse_ns < 50000 || k_uptime_get() - rc_get_capture_raw(RC_OVERRIDE)->timestamp > 50) {
-        //     LOG_WRN("RC override pulse out of range (%llu ns, age=%lld ms), turning off all servos", RC_OVERRIDE_NS, override_age);
-        //     turn_off_all_servos();
-        //     k_sleep(K_MSEC(50));
-        //     remote_connected = false; // Set remote connected to false
-        //     continue;
-        // } else {
-        //     remote_connected = true;
-        // }
-        k_sleep(K_MSEC(10000));
-    }
-}
-
-K_THREAD_DEFINE(rc_override_watchdog_tid, 1024, rc_override_watchdog_thread, NULL, NULL, NULL, K_PRIO_PREEMPT(3), 0, 0);
+#define PWM_PERIOD_TICKS 10000 /* 10 ms period, prescaler = 1 µs/tick */
+#define LOOP_MS 20             /* run once per RC frame (50 Hz)       */
 
 static void control_thread(void *p1, void *p2, void *p3) {
     ARG_UNUSED(p1);
@@ -62,44 +40,60 @@ static void control_thread(void *p1, void *p2, void *p3) {
     ARG_UNUSED(p3);
 
     while (!servos_initialized) {
-        LOG_DBG("Waiting for servos to initialize...");
-        k_sleep(K_MSEC(100));
+        k_sleep(K_MSEC(10));
     }
-
     LOG_INF("Control thread started");
 
-    const struct device *rc_pwm_dev = DEVICE_DT_GET(DT_ALIAS(rc_steer));
-    while (!device_is_ready(rc_pwm_dev)) {
-        LOG_ERR("RC PWM device not ready!");
-        k_sleep(K_MSEC(100));
-    }
-    LOG_INF("RC PWM device ready: %s", rc_pwm_dev->name);
-
     while (1) {
-        // Steering
-        uint32_t steer_pulse = rc_get_capture_raw(RC_STEER);
-        LOG_INF("STEER: period=%lu, pulse=%lu",
-                (unsigned long)servos[SERVO_STEERING].spec.period,
-                (unsigned long)steer_pulse);
-        pwm_set_pulse_dt(&servos[SERVO_STEERING].spec, steer_pulse);
+        /* ---- steering -------------------------------------------------- */
+        uint32_t steer_ticks = rc_get_pulse_us(RC_STEER); /* µs == ticks */
+        pwm_set_cycles(servos[SERVO_STEERING].spec.dev,
+                       servos[SERVO_STEERING].spec.channel,
+                       servos[SERVO_STEERING].spec.period, // Use period from DT
+                       steer_ticks,
+                       0);
 
-        // Throttle
-        uint32_t throttle_pulse = rc_get_capture_raw(RC_THROTTLE);
-        LOG_INF("THROTTLE: period=%lu, pulse=%lu",
-                (unsigned long)servos[SERVO_THROTTLE].spec.period,
-                (unsigned long)throttle_pulse);
-        pwm_set_pulse_dt(&servos[SERVO_THROTTLE].spec, throttle_pulse);
+        /* ---- throttle -------------------------------------------------- */
+        uint32_t throttle_ticks = rc_get_pulse_us(RC_THROTTLE);
+        pwm_set_cycles(servos[SERVO_THROTTLE].spec.dev,
+                       servos[SERVO_THROTTLE].spec.channel,
+                       servos[SERVO_THROTTLE].spec.period, // Use period from DT
+                       throttle_ticks,
+                       0);
 
-        // High Gear
-        uint32_t high_gear_pulse = rc_get_capture_raw(RC_HIGH_GEAR);
-        LOG_INF("HIGH_GEAR: period=%lu, pulse=%lu",
-                (unsigned long)servos[SERVO_GEAR].spec.period,
-                (unsigned long)high_gear_pulse);
-        pwm_set_pulse_dt(&servos[SERVO_GEAR].spec, high_gear_pulse);
+        /* ---- high gear ------------------------------------------------- */
+        uint32_t gear_ticks = rc_get_pulse_us(RC_HIGH_GEAR);
+        pwm_set_cycles(servos[SERVO_GEAR].spec.dev,
+                       servos[SERVO_GEAR].spec.channel,
+                       servos[SERVO_GEAR].spec.period, // Use period from DT
+                       gear_ticks,
+                       0);
 
-        // Add other channels as needed
+        /* ---- diff (front) --------------------------------------------- */
+#ifdef SERVO_DIFF
+        uint32_t diff_ticks = rc_get_pulse_us(RC_STEER); /* example source */
+        pwm_set_cycles(servos[SERVO_DIFF].spec.dev,
+                       servos[SERVO_DIFF].spec.channel,
+                       PWM_PERIOD_TICKS,
+                       diff_ticks,
+                       0);
+#endif
 
-        k_sleep(K_MSEC(1000));
+        /* ---- diff (rear) ---------------------------------------------- */
+#ifdef SERVO_DIFF_REAR
+        uint32_t diff_rear_ticks = rc_get_pulse_us(RC_STEER);
+        pwm_set_cycles(servos[SERVO_DIFF_REAR].spec.dev,
+                       servos[SERVO_DIFF_REAR].spec.channel,
+                       PWM_PERIOD_TICKS,
+                       diff_rear_ticks,
+                       0);
+#endif
+
+        /* optional debug print */
+        LOG_DBG("steer=%uµs throttle=%uµs gear=%uµs",
+                steer_ticks, throttle_ticks, gear_ticks);
+
+        k_sleep(K_MSEC(LOOP_MS));
     }
 }
 

@@ -48,7 +48,7 @@
 /* PWM Output timers - silkscreen label in comments */
 &timers1 {
     status = "okay";
-    st,prescaler = <107>;
+    st,prescaler = <215>;
     pwm1: pwm1 {
         compatible = "st,stm32-pwm";
         status = "okay";
@@ -149,31 +149,31 @@
     // Servo output nodes - silkscreen label in comments
     steeringservo: servo {
         compatible = "pwm-servo";
-        pwms = <&pwm1 1 10000000 PWM_POLARITY_NORMAL>; // P1
+        pwms = <&pwm1 1 10000 PWM_POLARITY_NORMAL>; // P1
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
     gearservo: gear_servo {
         compatible = "pwm-servo";
-        pwms = <&pwm2 4 10000000 PWM_POLARITY_NORMAL>; // P3
+        pwms = <&pwm2 4 10000 PWM_POLARITY_NORMAL>; // P3
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
     throttleesc: throttle_esc {
         compatible = "pwm-servo";
-        pwms = <&pwm12 1 10000000 PWM_POLARITY_NORMAL>; // P4
+        pwms = <&pwm12 1 10000 PWM_POLARITY_NORMAL>; // P4
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
     diffservo: diff_servo {
         compatible = "pwm-servo";
-        pwms = <&pwm2 3 10000000 PWM_POLARITY_NORMAL>; // P2
+        pwms = <&pwm2 3 10000 PWM_POLARITY_NORMAL>; // P2
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
     diffservorear: diff_servo_rear {
         compatible = "pwm-servo";
-        pwms = <&pwm2 1 10000000 PWM_POLARITY_NORMAL>; // P11 (PA5, TIM2_CH1, SCK1)
+        pwms = <&pwm2 1 10000 PWM_POLARITY_NORMAL>; // P11 (PA5, TIM2_CH1, SCK1)
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };

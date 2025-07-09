@@ -95,7 +95,7 @@ uint32_t rc_get_capture_raw(rc_channel_t ch) {
     }
     // By convention, CH2 is pulse width (high time), CH1 is period
     // Convert from microseconds to nanoseconds (multiply by 1000)
-    return LL_TIM_IC_GetCaptureCH2(tim[ch]) * 1000;
+    return LL_TIM_IC_GetCaptureCH2(tim[ch]);
 }
 
 /* ───────── optional logger thread ───────── */
