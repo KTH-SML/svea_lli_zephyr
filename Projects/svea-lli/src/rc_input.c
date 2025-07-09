@@ -88,6 +88,16 @@ uint32_t rc_get_period_us(rc_channel_t idx) {
     return idx < NUM_RC_CH ? LL_TIM_IC_GetCaptureCH1(tim[idx]) : 0;
 }
 
+uint32_t rc_get_capture_raw(rc_channel_t ch) {
+    // Defensive: handle out-of-bounds and uninitialized timer
+    if (ch < 0 || ch >= NUM_RC_CH || tim[ch] == NULL) {
+        return 0;
+    }
+    // By convention, CH2 is pulse width (high time), CH1 is period
+    // Convert from microseconds to nanoseconds (multiply by 1000)
+    return LL_TIM_IC_GetCaptureCH2(tim[ch]) * 1000;
+}
+
 /* ───────── optional logger thread ───────── */
 
 static void rc_log(void *, void *, void *) {

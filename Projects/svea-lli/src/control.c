@@ -81,36 +81,21 @@ static void control_thread(void *p1, void *p2, void *p3) {
         LOG_INF("STEER: period=%lu, pulse=%lu",
                 (unsigned long)servos[SERVO_STEERING].spec.period,
                 (unsigned long)steer_pulse);
-        pwm_set_cycles(
-            servos[SERVO_STEERING].spec.dev,
-            servos[SERVO_STEERING].spec.channel,
-            servos[SERVO_STEERING].spec.period,
-            steer_pulse,
-            servos[SERVO_STEERING].spec.flags);
+        pwm_set_pulse_dt(&servos[SERVO_STEERING].spec, steer_pulse);
 
         // Throttle
         uint32_t throttle_pulse = rc_get_capture_raw(RC_THROTTLE);
         LOG_INF("THROTTLE: period=%lu, pulse=%lu",
                 (unsigned long)servos[SERVO_THROTTLE].spec.period,
                 (unsigned long)throttle_pulse);
-        pwm_set_cycles(
-            servos[SERVO_THROTTLE].spec.dev,
-            servos[SERVO_THROTTLE].spec.channel,
-            servos[SERVO_THROTTLE].spec.period,
-            throttle_pulse,
-            servos[SERVO_THROTTLE].spec.flags);
+        pwm_set_pulse_dt(&servos[SERVO_THROTTLE].spec, throttle_pulse);
 
         // High Gear
         uint32_t high_gear_pulse = rc_get_capture_raw(RC_HIGH_GEAR);
         LOG_INF("HIGH_GEAR: period=%lu, pulse=%lu",
                 (unsigned long)servos[SERVO_GEAR].spec.period,
                 (unsigned long)high_gear_pulse);
-        pwm_set_cycles(
-            servos[SERVO_GEAR].spec.dev,
-            servos[SERVO_GEAR].spec.channel,
-            servos[SERVO_GEAR].spec.period,
-            high_gear_pulse,
-            servos[SERVO_GEAR].spec.flags);
+        pwm_set_pulse_dt(&servos[SERVO_GEAR].spec, high_gear_pulse);
 
         // Add other channels as needed
 
@@ -119,7 +104,7 @@ static void control_thread(void *p1, void *p2, void *p3) {
 }
 
 // Lower priority than override watchdog
-// K_THREAD_DEFINE(control_tid, 4096, control_thread, NULL, NULL, NULL, 5, 0, 0);
+K_THREAD_DEFINE(control_tid, 4096, control_thread, NULL, NULL, NULL, 5, 0, 0);
 
 void servo_init(void) {
     LOG_INF("Initializing servos...");
