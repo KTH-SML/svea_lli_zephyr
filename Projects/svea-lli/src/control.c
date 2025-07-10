@@ -2,11 +2,11 @@
 #include "control.h"
 #include "rc_input.h" /* rc_get_pulse_us() prototype        */
 
+#include <stdlib.h>       // <-- Add this line
 #include <stm32_ll_tim.h> /* low-level TIM helpers               */
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include <stdlib.h> // <-- Add this line
 
 #include <stm32_ll_tim.h> /* already included, but make sure */
 
@@ -104,21 +104,22 @@ void servo_init(void) {
 }
 /* write compare value (ticks = 1 µs) */
 static inline void servo_set_ticks(const struct pwm_dt_spec *s, uint32_t t) {
-    TIM_TypeDef *T = pwm_to_tim(s);
-    switch (s->channel) {
-    case 1:
-        LL_TIM_OC_SetCompareCH1(T, t);
-        break;
-    case 2:
-        LL_TIM_OC_SetCompareCH2(T, t);
-        break;
-    case 3:
-        LL_TIM_OC_SetCompareCH3(T, t);
-        break;
-    case 4:
-        LL_TIM_OC_SetCompareCH4(T, t);
-        break;
-    }
+    // TIM_TypeDef *T = pwm_to_tim(s);
+    // switch (s->channel) {
+    // case 1:
+    //     LL_TIM_OC_SetCompareCH1(T, t);
+    //     break;
+    // case 2:
+    //     LL_TIM_OC_SetCompareCH2(T, t);
+    //     break;
+    // case 3:
+    //     LL_TIM_OC_SetCompareCH3(T, t);
+    //     break;
+    // case 4:
+    //     LL_TIM_OC_SetCompareCH4(T, t);
+    //     break;
+    // }
+    pwm_set_cycles(s->dev, s->channel, s->period, t, 0);
 }
 
 /* ───── 3. control thread – 20 ms loop, non-blocking ─────────────────── */
