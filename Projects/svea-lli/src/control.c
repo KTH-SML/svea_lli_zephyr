@@ -15,7 +15,8 @@ LOG_MODULE_REGISTER(control, LOG_LEVEL_INF);
 
 /* ───── 1. servo bookkeeping (unchanged) ──────────────────────────────── */
 bool servos_initialized = false;
-bool remote_connected = false;
+bool remote_connected = true;
+bool in_override_mode = true;
 
 servo_t servos[SERVO_COUNT] = {
     [SERVO_STEERING] = {.spec = PWM_DT_SPEC_GET(DT_NODELABEL(steeringservo))},
@@ -34,12 +35,6 @@ void servo_init(void) {
                        0,
                        0);
     }
-
-    /* Now kill preload so future raw writes land immediately */
-    // for (int i = 0; i < SERVO_COUNT; ++i) {
-    //     servo_raw_init_once(&servos[i].spec);
-    // }
-
     servos_initialized = true;
 }
 static inline void servo_set_ticks(const struct pwm_dt_spec *s, uint32_t t_us) {
@@ -47,6 +42,8 @@ static inline void servo_set_ticks(const struct pwm_dt_spec *s, uint32_t t_us) {
     pwm_set_pulse_dt(s, t_ns);
 }
 /* ───── 3. control thread – barebones, no filtering ─────────────────── */
+#define OVERRIDE_AGE_DISCONNECT_US 15000
+#define RECONNECT_WINDOW_MS 500
 #define LOOP_MS 11
 
 static void control_thread(void *, void *, void *) {
@@ -57,23 +54,54 @@ static void control_thread(void *, void *, void *) {
     LOG_INF("Control thread started, servos initialized.");
 
     int log_counter = 0;
+    int reconnect_counter = 0;
+    int reconnect_samples = RECONNECT_WINDOW_MS / LOOP_MS;
 
     for (;;) {
         uint64_t loop_start_us = k_ticks_to_us_floor64(k_uptime_ticks());
 
-        uint32_t steer = rc_get_pulse_us(RC_STEER);
-        uint32_t thr = rc_get_pulse_us(RC_THROTTLE);
-        uint32_t gear = rc_get_pulse_us(RC_HIGH_GEAR);
+        uint32_t override_age = rc_get_age_us(RC_OVERRIDE);
+
+        uint32_t steer = 0;
+        uint32_t thr = 0;
+        uint32_t gear = 0;
+        uint32_t override = 0;
+        uint32_t diff = 0;
+        uint32_t diff_rear = 0;
+        // Disconnect if override age exceeds threshold
+        if (override_age > OVERRIDE_AGE_DISCONNECT_US) {
+            remote_connected = false;
+            reconnect_counter = 0; // reset reconnect averaging
+        } else {
+            // If currently disconnected, check for reconnection
+            if (!remote_connected) {
+                reconnect_counter++;
+                if (reconnect_counter >= reconnect_samples) {
+                    // If we've seen reconnect_samples consecutive "good" ages, reconnect
+                    remote_connected = true;
+                    reconnect_counter = 0;
+                }
+            }
+        }
+        in_override_mode = rc_get_pulse_us(RC_OVERRIDE) > 1500;
+        if (remote_connected && in_override_mode) {
+            steer = rc_get_pulse_us(RC_STEER);
+            thr = rc_get_pulse_us(RC_THROTTLE);
+            gear = rc_get_pulse_us(RC_HIGH_GEAR);
+            // override = rc_get_pulse_us(RC_OVERRIDE) > 1500;
+        }
 
         servo_set_ticks(&servos[SERVO_STEERING].spec, steer);
         servo_set_ticks(&servos[SERVO_THROTTLE].spec, thr);
         servo_set_ticks(&servos[SERVO_GEAR].spec, gear);
+        servo_set_ticks(&servos[SERVO_DIFF].spec, diff);
+        servo_set_ticks(&servos[SERVO_DIFF_REAR].spec, diff_rear);
 
         uint64_t elapsed_us = k_ticks_to_us_floor64(k_uptime_ticks()) - loop_start_us;
         int32_t sleep_time = LOOP_MS * 1000 - elapsed_us;
         if (log_counter++ >= 25) { // Log every 500ms
-            LOG_INF("steer %u us  throttle %u us  gear %u us  elapsed %llu us",
-                    steer, thr, gear, elapsed_us);
+            LOG_DBG("steer %u us  throttle %u us  gear %u us  override %u us  override_age %u us  elapsed %llu us  remote_connected %d",
+                    steer, thr, gear, override, override_age, elapsed_us, remote_connected);
             log_counter = 0;
         }
         if (sleep_time > 0) {

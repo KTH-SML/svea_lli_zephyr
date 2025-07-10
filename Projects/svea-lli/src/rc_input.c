@@ -68,6 +68,13 @@ static void tim_config_pwm_input(TIM_TypeDef *T) {
 
 static TIM_TypeDef *tim[NUM_RC_CH]; /* saved after init */
 
+uint32_t rc_get_age_us(rc_channel_t ch) {
+    if (ch < 0 || ch >= NUM_RC_CH || tim[ch] == NULL) {
+        return UINT32_MAX; /* invalid channel */
+    }
+    return LL_TIM_GetCounter(tim[ch]); /* direct read of CNT */
+}
+
 void rc_input_init(void) {
     for (int i = 0; i < NUM_RC_CH; i++) {
         if (!device_is_ready(pwm_dev[i])) {
@@ -118,12 +125,13 @@ uint32_t rc_get_capture_raw(rc_channel_t ch) {
 static void rc_log(void *, void *, void *) {
     rc_input_init();
     while (1) {
-        LOG_INF("steer %u us  throttle %u us  gear %u us  override %u us",
+        LOG_INF("steer %u us  throttle %u us  gear %u us  override %u us  override_age %u us",
                 rc_get_capture_raw(RC_STEER),
                 rc_get_capture_raw(RC_THROTTLE),
                 rc_get_capture_raw(RC_HIGH_GEAR),
-                rc_get_capture_raw(RC_OVERRIDE));
+                rc_get_capture_raw(RC_OVERRIDE),
+                rc_get_age_us(RC_OVERRIDE));
         k_msleep(500);
     }
 }
-// K_THREAD_DEFINE(rc_log_tid, 1024, rc_log, NULL, NULL, NULL, 7, 0, 0);
+K_THREAD_DEFINE(rc_log_tid, 1024, rc_log, NULL, NULL, NULL, 7, 0, 0);
