@@ -8,6 +8,8 @@
 #include <std_msgs/msg/bool.h>
 #include <std_msgs/msg/u_int8.h>
 
+#include "control.h" // for g_ros_ctrl
+
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
@@ -132,38 +134,22 @@ static inline bool us_to_bool(uint32_t us) {
 /* ----- Topic callbacks ---------------------------------------------- */
 static void steering_callback(const void *msg) {
     const std_msgs__msg__UInt8 *m = (const std_msgs__msg__UInt8 *)msg;
-    k_mutex_lock(&g_ros_cmd_mutex, K_FOREVER);
-    g_ros_cmd.steering_us = uint8_to_us(m->data);
-    g_ros_cmd.timestamp = k_uptime_get();
-    k_mutex_unlock(&g_ros_cmd_mutex);
-    LOG_INF("ROS steering received: %d", m->data);
+    g_ros_ctrl.steering = m->data;
 }
 
 static void gear_callback(const void *msg) {
     const std_msgs__msg__Bool *m = (const std_msgs__msg__Bool *)msg;
-    k_mutex_lock(&g_ros_cmd_mutex, K_FOREVER);
-    g_ros_cmd.high_gear = m->data;
-    g_ros_cmd.timestamp = k_uptime_get();
-    k_mutex_unlock(&g_ros_cmd_mutex);
-    LOG_INF("ROS gear received: %s", m->data ? "high" : "low");
+    g_ros_ctrl.high_gear = m->data;
 }
 
 static void throttle_callback(const void *msg) {
     const std_msgs__msg__UInt8 *m = (const std_msgs__msg__UInt8 *)msg;
-    k_mutex_lock(&g_ros_cmd_mutex, K_FOREVER);
-    g_ros_cmd.throttle_us = uint8_to_us(m->data);
-    g_ros_cmd.timestamp = k_uptime_get();
-    k_mutex_unlock(&g_ros_cmd_mutex);
-    LOG_INF("ROS throttle received: %d", m->data);
+    g_ros_ctrl.throttle = m->data;
 }
 
 static void diff_callback(const void *msg) {
     const std_msgs__msg__Bool *m = (const std_msgs__msg__Bool *)msg;
-    k_mutex_lock(&g_ros_cmd_mutex, K_FOREVER);
-    g_ros_cmd.diff_locked = m->data;
-    g_ros_cmd.timestamp = k_uptime_get();
-    k_mutex_unlock(&g_ros_cmd_mutex);
-    LOG_INF("ROS diff lock received: %s", m->data ? "locked" : "unlocked");
+    g_ros_ctrl.diff = m->data;
 }
 
 /* ----- Private functions -------------------------------------------- */
