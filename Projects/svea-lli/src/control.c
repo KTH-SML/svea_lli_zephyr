@@ -47,7 +47,7 @@ static inline void servo_set_ticks(const struct pwm_dt_spec *s, uint32_t t_us) {
     pwm_set_pulse_dt(s, t_ns);
 }
 /* ───── 3. control thread – barebones, no filtering ─────────────────── */
-#define LOOP_MS 20
+#define LOOP_MS 11
 
 static void control_thread(void *, void *, void *) {
     while (!servos_initialized) {
@@ -56,7 +56,11 @@ static void control_thread(void *, void *, void *) {
 
     LOG_INF("Control thread started, servos initialized.");
 
+    int log_counter = 0;
+
     for (;;) {
+        uint64_t loop_start_us = k_ticks_to_us_floor64(k_uptime_ticks());
+
         uint32_t steer = rc_get_pulse_us(RC_STEER);
         uint32_t thr = rc_get_pulse_us(RC_THROTTLE);
         uint32_t gear = rc_get_pulse_us(RC_HIGH_GEAR);
@@ -65,7 +69,16 @@ static void control_thread(void *, void *, void *) {
         servo_set_ticks(&servos[SERVO_THROTTLE].spec, thr);
         servo_set_ticks(&servos[SERVO_GEAR].spec, gear);
 
-        k_sleep(K_MSEC(LOOP_MS));
+        uint64_t elapsed_us = k_ticks_to_us_floor64(k_uptime_ticks()) - loop_start_us;
+        int32_t sleep_time = LOOP_MS * 1000 - elapsed_us;
+        if (log_counter++ >= 25) { // Log every 500ms
+            LOG_INF("steer %u us  throttle %u us  gear %u us  elapsed %llu us",
+                    steer, thr, gear, elapsed_us);
+            log_counter = 0;
+        }
+        if (sleep_time > 0) {
+            k_sleep(K_USEC(sleep_time));
+        }
     }
 }
 

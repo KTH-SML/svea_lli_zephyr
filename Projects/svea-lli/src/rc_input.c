@@ -126,4 +126,4 @@ static void rc_log(void *, void *, void *) {
         k_msleep(500);
     }
 }
-K_THREAD_DEFINE(rc_log_tid, 1024, rc_log, NULL, NULL, NULL, 7, 0, 0);
+// K_THREAD_DEFINE(rc_log_tid, 1024, rc_log, NULL, NULL, NULL, 7, 0, 0);
