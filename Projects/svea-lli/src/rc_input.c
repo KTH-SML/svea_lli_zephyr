@@ -39,7 +39,7 @@ static const struct device *const pwm_dev[NUM_RC_CH] = {
 static void tim_config_pwm_input(TIM_TypeDef *T) {
     /* 1 µs tick: APB1 108 MHz / (108-1) = 1 MHz */
     LL_TIM_DisableCounter(T);
-    LL_TIM_SetPrescaler(T, 107);
+    // LL_TIM_SetPrescaler(T, 107); set in overlay
     LL_TIM_SetAutoReload(T, 0xFFFF);
 
     /* CH1 = rising direct, CH2 = falling indirect */
@@ -81,9 +81,24 @@ void rc_input_init(void) {
 }
 
 uint32_t rc_get_pulse_us(rc_channel_t idx) {
+    if (idx < 0 || idx >= NUM_RC_CH || tim[idx] == NULL) {
+        return 0;
+    }
 
-    return idx < NUM_RC_CH ? LL_TIM_IC_GetCaptureCH2(tim[idx]) : 0;
+    uint32_t pulse = LL_TIM_IC_GetCaptureCH2(tim[idx]);
+    // Clamp to [1000, 2000] if in plausible range, else return 0
+    if (pulse >= 1000 && pulse <= 2000) {
+        return pulse;
+    }
+    if (pulse > 900 && pulse < 1000) {
+        return 1000;
+    }
+    if (pulse > 2000 && pulse < 2100) {
+        return 2000;
+    }
+    return 0; // Out of plausible
 }
+
 uint32_t rc_get_period_us(rc_channel_t idx) {
     return idx < NUM_RC_CH ? LL_TIM_IC_GetCaptureCH1(tim[idx]) : 0;
 }
@@ -104,10 +119,10 @@ static void rc_log(void *, void *, void *) {
     rc_input_init();
     while (1) {
         LOG_INF("steer %u us  throttle %u us  gear %u us  override %u us",
-                rc_get_pulse_us(RC_STEER),
-                rc_get_pulse_us(RC_THROTTLE),
-                rc_get_pulse_us(RC_HIGH_GEAR),
-                rc_get_pulse_us(RC_OVERRIDE));
+                rc_get_capture_raw(RC_STEER),
+                rc_get_capture_raw(RC_THROTTLE),
+                rc_get_capture_raw(RC_HIGH_GEAR),
+                rc_get_capture_raw(RC_OVERRIDE));
         k_msleep(500);
     }
 }
