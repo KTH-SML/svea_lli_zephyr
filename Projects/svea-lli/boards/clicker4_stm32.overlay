@@ -37,12 +37,14 @@
     tim3_ch1_pa6: tim3_ch1_pa6    { pinmux = <STM32_PINMUX('A', 6, AF2)>;  }; // MISO1
     tim3_ch2_pa7: tim3_ch2_pa7    { pinmux = <STM32_PINMUX('A', 7, AF2)>;  };
     tim4_ch3_pb8: tim4_ch3_pb8    { pinmux = <STM32_PINMUX('B', 8, AF2)>;  }; // SCL1
-    tim4_ch4_pb9: tim4_ch4_pb9    { pinmux = <STM32_PINMUX('B', 9, AF2)>;  };
     tim5_ch1_ph10: tim5_ch1_ph10   { pinmux = <STM32_PINMUX('H', 10, AF2)>; }; // P5
     tim15_ch1_pe4: tim15_ch1_pe4   { pinmux = <STM32_PINMUX('E', 4,  AF2)>; };
     tim9_ch1_pa2: tim9_ch1_pa2    { pinmux = <STM32_PINMUX('A', 2, AF3)>;  }; // TX1 (silkscreen), TX2 (datasheet)
-    tim11_ch1_pb9: tim11_ch1_pb9   { pinmux = <STM32_PINMUX('B', 9, AF1)>;  }; // SDA1
+    tim11_ch4_pb9: tim11_ch4_pb9   { pinmux = <STM32_PINMUX('B', 9, AF2)>;  bias-disable;}; // NEW ESC
     tim2_ch1_pa5: tim2_ch1_pa5 { pinmux = <STM32_PINMUX('A', 5, AF1)>; }; // P11 (PA5, TIM2_CH1, SCK1)
+
+    //tim14_ch1_pf14: tim14_ch1_pf14 { pinmux = <STM32_PINMUX('F', 14, AF9)>; }; // new ESC out
+
 };
 
 /* PWM Output timers - silkscreen label in comments */
@@ -70,26 +72,26 @@
     };
 };
 
-&timers12 {
-    status = "okay";
-    st,prescaler = <107>;
-    pwm12: pwm12 {
-        compatible = "st,stm32-pwm";
-        status = "okay";
-        #pwm-cells = <3>;
-        pinctrl-0 = <&tim12_ch1_ph6>; // P4
-        pinctrl-names = "default";
-    };
-};
+//&timers12 {
+    //    status = "okay";
+    //    st,prescaler = <107>;
+    //    pwm12: pwm12 {
+        //        compatible = "st,stm32-pwm";
+        //        status = "okay";
+        //        #pwm-cells = <3>;
+        //        pinctrl-0 = <&tim12_ch1_ph6>; // P4
+        //        pinctrl-names = "default";
+    //    };
+//};
 
-&timers11 {
+&timers4 {
     status = "okay";
-    st,prescaler = <107>;
-    pwm11: pwm11 {
+    st,prescaler = <215>;
+    pwm4: pwm {
         compatible = "st,stm32-pwm";
         status = "okay";
         #pwm-cells = <3>;
-        pinctrl-0 = <&tim11_ch1_pb9>; // SDA1
+        pinctrl-0 = <&tim11_ch4_pb9>;
         pinctrl-names = "default";
     };
 };
@@ -107,14 +109,16 @@
     };
 };
 
-&timers4 {
+
+&timers12 {
     status = "okay";
     st,prescaler = <107>;
-    pwm4_in: pwm4_in {
+
+    pwm12_in: pwm {           /* ---- NEW ---- */
         compatible = "st,stm32-pwm";
         status = "okay";
         #pwm-cells = <3>;
-        pinctrl-0 = <&tim4_ch3_pb8>; // SCL1
+        pinctrl-0 = <&tim12_ch1_ph6>;   // PH6 (P4) now capture
         pinctrl-names = "default";
     };
 };
@@ -122,7 +126,7 @@
 &timers9 {
     status = "okay";
     st,prescaler = <215>;
-    pwm9_in: pwm9_in {
+    pwm9_in: pwm {
         compatible = "st,stm32-pwm";
         status = "okay";
         #pwm-cells = <3>;
@@ -134,7 +138,7 @@
 &timers5 {
     status = "okay";
     st,prescaler = <107>;
-    pwm5_in: pwm5_in {
+    pwm5_in: pwm {
         compatible = "st,stm32-pwm";
         status = "okay";
         #pwm-cells = <3>;
@@ -159,7 +163,7 @@
     };
     throttleesc: throttle_esc {
         compatible = "pwm-servo";
-        pwms = <&pwm12 1 10000000 PWM_POLARITY_NORMAL>; // P4
+        pwms = <&pwm4 4 10000000 PWM_POLARITY_NORMAL>; // P4
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
@@ -191,7 +195,7 @@
         rc-steer    = &pwm3_in;   // MISO1
         rc-high-gear     = &pwm9_in;   // TX1 (silkscreen), TX2 (datasheet)
         rc-throttle = &pwm5_in;   // P5
-        rc-override = &pwm4_in;   // SCL1
+        rc-override = &pwm12_in;   // SCL1
 
         /* PWM outputs (servos/ESC) - silkscreen label in comments */
         // steeringservo = &servo;           // P1
