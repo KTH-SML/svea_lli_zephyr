@@ -2,9 +2,9 @@
 #define ROS_IFACE_H
 
 #include "rc_input.h"
-#include <zephyr/kernel.h>
-#include <std_msgs/msg/u_int8.h>
 #include <std_msgs/msg/bool.h>
+#include <std_msgs/msg/u_int8.h>
+#include <zephyr/kernel.h>
 
 typedef struct {
     uint32_t steering_us;
@@ -16,6 +16,5 @@ typedef struct {
 
 void ros_iface_init(void);
 void ros_get_command(ros_command_t *cmd);
-void ros_publish_rc(const RCInputState *rc_frame, bool is_connected);
 
 #endif // ROS_IFACE_H

@@ -13,3 +13,4 @@ typedef enum {
 // Returns the latest captured pulse width (timer ticks) for the channel
 uint32_t rc_get_capture_raw(rc_channel_t ch);
 uint32_t rc_get_age_us(rc_channel_t ch);
+uint32_t rc_get_pulse_us(rc_channel_t ch);

@@ -85,14 +85,15 @@ void rc_input_init(void) {
         tim_config_pwm_input(tim[i]);
         LOG_INF("RC timer %d set to PWM-input", i);
     }
+    return;
 }
 
-uint32_t rc_get_pulse_us(rc_channel_t idx) {
-    if (idx < 0 || idx >= NUM_RC_CH || tim[idx] == NULL) {
+uint32_t rc_get_pulse_us(rc_channel_t ch) {
+    if (ch < 0 || ch >= NUM_RC_CH || tim[ch] == NULL) {
         return 0;
     }
 
-    uint32_t pulse = LL_TIM_IC_GetCaptureCH2(tim[idx]);
+    uint32_t pulse = LL_TIM_IC_GetCaptureCH2(tim[ch]);
     // Clamp to [1000, 2000] if in plausible range, else return 0
     if (pulse >= 1000 && pulse <= 2000) {
         return pulse;
@@ -124,14 +125,18 @@ uint32_t rc_get_capture_raw(rc_channel_t ch) {
 
 static void rc_log(void *, void *, void *) {
     rc_input_init();
+    extern bool in_override_mode;
+    extern bool remote_connected;
     while (1) {
-        LOG_INF("steer %u us  throttle %u us  gear %u us  override %u us  override_age %u us",
+        LOG_INF("steer %u us  throttle %u us  gear %u us  override %u us  override_age %u us  override_mode %d  connected %d",
                 rc_get_capture_raw(RC_STEER),
                 rc_get_capture_raw(RC_THROTTLE),
                 rc_get_capture_raw(RC_HIGH_GEAR),
                 rc_get_capture_raw(RC_OVERRIDE),
-                rc_get_age_us(RC_OVERRIDE));
-        k_msleep(500);
+                rc_get_age_us(RC_OVERRIDE),
+                in_override_mode,
+                remote_connected);
+        k_msleep(1000);
     }
 }
 K_THREAD_DEFINE(rc_log_tid, 1024, rc_log, NULL, NULL, NULL, 7, 0, 0);

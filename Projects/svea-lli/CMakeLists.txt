@@ -2,7 +2,7 @@
 
 cmake_minimum_required(VERSION 3.13.1)
 
-#list(APPEND ZEPHYR_EXTRA_MODULES ${CMAKE_CURRENT_SOURCE_DIR}/../../modules/lib/micro_ros_zephyr_module/modules/libmicroros)
+list(APPEND ZEPHYR_EXTRA_MODULES ${CMAKE_CURRENT_SOURCE_DIR}/../../modules/lib/micro_ros_zephyr_module/modules/libmicroros)
 list(APPEND ZEPHYR_EXTRA_MODULES
     ${CMAKE_CURRENT_SOURCE_DIR}/../../drivers
 )
@@ -18,8 +18,5 @@ target_sources(app PRIVATE
     src/main.c
     src/control.c
     src/rc_input.c
-    
-  #  src/servo.c
-   # src/sensors.c
-   # src/ros_iface.c
+    src/ros_iface.c
 )

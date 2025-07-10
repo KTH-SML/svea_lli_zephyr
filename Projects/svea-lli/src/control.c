@@ -44,7 +44,13 @@ static inline void servo_set_ticks(const struct pwm_dt_spec *s, uint32_t t_us) {
 /* ───── 3. control thread – barebones, no filtering ─────────────────── */
 #define OVERRIDE_AGE_DISCONNECT_US 15000
 #define RECONNECT_WINDOW_MS 500
-#define LOOP_MS 11
+#define LOOP_MS 21
+
+// Remove old pulse_to_us, use new int8 mapping
+static inline uint32_t int8_to_us(int8_t val) {
+    // Map [-127,127] to [1000,2000]us, 0 = 1500us
+    return 1500 + ((int32_t)val * 500) / 127;
+}
 
 static void control_thread(void *, void *, void *) {
     while (!servos_initialized) {
@@ -88,7 +94,17 @@ static void control_thread(void *, void *, void *) {
             steer = rc_get_pulse_us(RC_STEER);
             thr = rc_get_pulse_us(RC_THROTTLE);
             gear = rc_get_pulse_us(RC_HIGH_GEAR);
-            // override = rc_get_pulse_us(RC_OVERRIDE) > 1500;
+        } else {
+            // Use signed int8 from g_ros_ctrl, map to us
+            steer = int8_to_us(g_ros_ctrl.steering);
+            thr = int8_to_us(g_ros_ctrl.throttle);
+            gear = g_ros_ctrl.high_gear ? 2000 : 1000;
+            diff = g_ros_ctrl.diff ? 2000 : 1000;
+            diff_rear = g_ros_ctrl.diff ? 1000 : 2000;
+
+            // LOG_INF("Using fallback control: steer %d, throttle %d, gear %d, diff %d",
+            //         g_ros_ctrl.steering, g_ros_ctrl.throttle,
+            //         g_ros_ctrl.high_gear, g_ros_ctrl.diff);
         }
 
         servo_set_ticks(&servos[SERVO_STEERING].spec, steer);
@@ -100,8 +116,8 @@ static void control_thread(void *, void *, void *) {
         uint64_t elapsed_us = k_ticks_to_us_floor64(k_uptime_ticks()) - loop_start_us;
         int32_t sleep_time = LOOP_MS * 1000 - elapsed_us;
         if (log_counter++ >= 25) { // Log every 500ms
-            LOG_DBG("steer %u us  throttle %u us  gear %u us  override %u us  override_age %u us  elapsed %llu us  remote_connected %d",
-                    steer, thr, gear, override, override_age, elapsed_us, remote_connected);
+            // LOG_DBG("steer %u us  throttle %u us  gear %u us  override %u us  override_age %u us  elapsed %llu us  remote_connected %d",
+            //         steer, thr, gear, override, override_age, elapsed_us, remote_connected);
             log_counter = 0;
         }
         if (sleep_time > 0) {
@@ -111,4 +127,4 @@ static void control_thread(void *, void *, void *) {
 }
 
 K_THREAD_DEFINE(control_tid, 2048, control_thread, NULL, NULL, NULL,
-                2 /* prio */, 0, 0);
+                3 /* prio */, 0, 0);

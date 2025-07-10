@@ -13,7 +13,7 @@ manifest:
       import:
         path-prefix: external
     # 2025 Jun 24
-    - name: micro_ros_zephyr_module
-      remote: microros
-      revision: jazzy
-      path: modules/lib/micro_ros_zephyr_module
+    # - name: micro_ros_zephyr_module
+    #   remote: microros
+    #   revision: jazzy
+    #   path: modules/lib/micro_ros_zephyr_module

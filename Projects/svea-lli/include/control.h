@@ -17,8 +17,8 @@ enum {
 };
 
 typedef struct {
-    uint8_t steering;
-    uint8_t throttle;
+    int8_t steering;
+    int8_t throttle;
     bool high_gear;
     bool diff;
 } ros_ctrl_t;
@@ -28,6 +28,5 @@ extern servo_t servos[SERVO_COUNT];
 extern bool remote_connected;
 
 void servo_init(void);
-void turn_off_all_servos(void);
 
 #endif // CONTROL_H

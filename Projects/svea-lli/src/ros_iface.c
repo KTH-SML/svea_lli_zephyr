@@ -1,300 +1,92 @@
 #include "ros_iface.h"
-#include <microros_transports.h>
+#include "control.h"
+#include "rc_input.h"
 #include <rcl/rcl.h>
 #include <rclc/executor.h>
 #include <rclc/rclc.h>
-#include <rcutils/allocator.h>
-#include <rmw_microros/rmw_microros.h>
 #include <std_msgs/msg/bool.h>
 #include <std_msgs/msg/u_int8.h>
-
-#include "control.h" // for g_ros_ctrl
-
+#include <zephyr/device.h>
+#include <zephyr/devicetree.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/posix/time.h>
+
+#include <rcl/error_handling.h>
+#include <rcl/rcl.h>
+#include <std_msgs/msg/int32.h>
+#include <std_msgs/msg/int8.h>
+
+#include <rclc/executor.h>
+#include <rclc/rclc.h>
+
+#include <microros_transports.h>
+#include <rmw_microros/rmw_microros.h>
 
 LOG_MODULE_REGISTER(ros_iface, LOG_LEVEL_INF);
-
-/* ----- Thread definitions ------------------------------------------- */
+ros_ctrl_t g_ros_ctrl = {0};
 #define ROS_STACK_SIZE 4096
-#define ROS_THREAD_PRIORITY 5
 
 static K_THREAD_STACK_DEFINE(ros_stack, ROS_STACK_SIZE);
 static struct k_thread ros_thread;
 
-/* ----- Type definitions --------------------------------------------- */
-typedef struct {
-    rcl_subscription_t sub;
-    void *msg;
-    rclc_subscription_callback_t cb;
-    const rosidl_message_type_support_t *type_support;
-    const char *topic_name;
-} sub_t;
+static rclc_support_t support;
+static rcl_node_t node;
+static rclc_executor_t executor;
 
-typedef struct {
-    rcl_publisher_t pub;
-    void *msg;
-    const rosidl_message_type_support_t *type_support;
-    const char *topic_name;
-} pub_t;
+// Publishers
+static rcl_publisher_t pub_steer, pub_throttle, pub_gear, pub_override, pub_connected;
+static std_msgs__msg__Int8 msg_steer, msg_throttle;
+static std_msgs__msg__Bool msg_gear, msg_override;
 
-/* ----- ROS Context -------------------------------------------------- */
-static struct {
-    rcl_allocator_t allocator;
-    rclc_support_t support;
-    rcl_node_t node;
-    rclc_executor_t executor;
-    bool initialized;
+// Subscriptions
+static rcl_subscription_t sub_steer, sub_throttle, sub_gear, sub_diff;
+static std_msgs__msg__Int8 submsg_steer, submsg_throttle;
+static std_msgs__msg__Bool submsg_gear, submsg_diff;
 
-    // Subscriptions
-    sub_t steering_sub;
-    std_msgs__msg__UInt8 steering_msg;
-
-    sub_t gear_sub;
-    std_msgs__msg__Bool gear_msg;
-
-    sub_t throttle_sub;
-    std_msgs__msg__UInt8 throttle_msg;
-
-    sub_t diff_sub;
-    std_msgs__msg__Bool diff_msg;
-
-    // Publishers
-    pub_t rc_steering_pub;
-    std_msgs__msg__UInt8 rc_steering_msg;
-
-    pub_t rc_gear_pub;
-    std_msgs__msg__Bool rc_gear_msg;
-
-    pub_t rc_throttle_pub;
-    std_msgs__msg__UInt8 rc_throttle_msg;
-
-    pub_t rc_override_pub;
-    std_msgs__msg__Bool rc_override_msg;
-
-    pub_t rc_connected_pub;
-    std_msgs__msg__Bool rc_connected_msg;
-
-    pub_t status_pub;
-    std_msgs__msg__UInt8 status_msg;
-
-} g_ros;
-
-static uint8_t ros_error_count = 0;
-static const uint8_t ROS_ERROR_THRESHOLD = 5;
-
-/* ----- Global state ------------------------------------------------- */
-static ros_command_t g_ros_cmd;
-static K_MUTEX_DEFINE(g_ros_cmd_mutex);
-
-/* ----- error helper ------------------------------------------------- */
-#define RCCHECK(fn)                                                                     \
-    {                                                                                   \
-        rcl_ret_t temp_rc = fn;                                                         \
-        if ((temp_rc != RCL_RET_OK)) {                                                  \
-            LOG_ERR("Failed status on line %d: %d. Aborting.", __LINE__, (int)temp_rc); \
-            return;                                                                     \
-        }                                                                               \
-    }
-
-#define RCSOFTCHECK(fn)                                                                                               \
-    {                                                                                                                 \
-        rcl_ret_t temp_rc = fn;                                                                                       \
-        if ((temp_rc != RCL_RET_OK)) {                                                                                \
-            ros_error_count++;                                                                                        \
-            LOG_ERR("Failed status on line %d: %d. Consecutive errors: %d", __LINE__, (int)temp_rc, ros_error_count); \
-            if (ros_error_count >= ROS_ERROR_THRESHOLD) {                                                             \
-                LOG_ERR("ROS error threshold reached. Publishing status.");                                           \
-                g_ros.status_msg.data = 1; /* Indicate error */                                                       \
-                (void)rcl_publish(&g_ros.status_pub.pub, g_ros.status_pub.msg, NULL);                                 \
-                ros_error_count = 0; /* Reset counter after publishing */                                             \
-            }                                                                                                         \
-        } else {                                                                                                      \
-            ros_error_count = 0; /* Reset counter on success */                                                       \
-        }                                                                                                             \
-    }
-
-/* ----- Conversion helpers ------------------------------------------- */
-static inline uint32_t uint8_to_us(uint8_t v) {
-    return 1000 + ((uint32_t)v * 1000) / 255;
-}
-
-static inline uint8_t us_to_uint8(uint32_t us) {
+// Map pulse [1000,2000] to int8 [-127,127]
+static inline int8_t pulse_to_int8(int32_t us) {
     if (us < 1000)
         us = 1000;
     if (us > 2000)
         us = 2000;
-    return (uint8_t)(((us - 1000) * 255) / 1000);
+    return (int8_t)(((us - 1500) * 127) / 500);
 }
-
-static inline bool us_to_bool(uint32_t us) {
+// Map pulse to bool (>1500 true)
+static inline bool pulse_to_bool(uint32_t us) {
     return us > 1500;
 }
 
-/* ----- Topic callbacks ---------------------------------------------- */
-static void steering_callback(const void *msg) {
-    const std_msgs__msg__UInt8 *m = (const std_msgs__msg__UInt8 *)msg;
-    g_ros_ctrl.steering = m->data;
+// Subscription callbacks
+static void steer_cb(const void *msg) {
+    int8_t value = ((std_msgs__msg__Int8 *)msg)->data;
+    LOG_INF("Received steering command: %d", value);
+    g_ros_ctrl.steering = value;
 }
 
-static void gear_callback(const void *msg) {
-    const std_msgs__msg__Bool *m = (const std_msgs__msg__Bool *)msg;
-    g_ros_ctrl.high_gear = m->data;
+static void throttle_cb(const void *msg) {
+    int8_t value = ((std_msgs__msg__Int8 *)msg)->data;
+    LOG_INF("Received throttle command: %d", value);
+    g_ros_ctrl.throttle = value;
 }
 
-static void throttle_callback(const void *msg) {
-    const std_msgs__msg__UInt8 *m = (const std_msgs__msg__UInt8 *)msg;
-    g_ros_ctrl.throttle = m->data;
+static void gear_cb(const void *msg) {
+    bool value = ((std_msgs__msg__Bool *)msg)->data;
+    LOG_INF("Received high gear command: %s", value ? "true" : "false");
+    g_ros_ctrl.high_gear = value;
 }
 
-static void diff_callback(const void *msg) {
-    const std_msgs__msg__Bool *m = (const std_msgs__msg__Bool *)msg;
-    g_ros_ctrl.diff = m->data;
+static void diff_cb(const void *msg) {
+    bool value = ((std_msgs__msg__Bool *)msg)->data;
+    LOG_INF("Received diff command: %s", value ? "true" : "false");
+    g_ros_ctrl.diff = value;
 }
 
-/* ----- Private functions -------------------------------------------- */
-static void init_subscriptions(void) {
-    g_ros.steering_sub = (sub_t){
-        .msg = &g_ros.steering_msg,
-        .cb = steering_callback,
-        .type_support = ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, UInt8),
-        .topic_name = "/lli/ctrl/steering"};
+static void ros_iface_thread(void *a, void *b, void *c) {
+    LOG_INF("ros_iface_thread: started");
 
-    g_ros.throttle_sub = (sub_t){
-        .msg = &g_ros.throttle_msg,
-        .cb = throttle_callback,
-        .type_support = ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, UInt8),
-        .topic_name = "/lli/ctrl/throttle"};
-
-    g_ros.gear_sub = (sub_t){
-        .msg = &g_ros.gear_msg,
-        .cb = gear_callback,
-        .type_support = ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
-        .topic_name = "/lli/ctrl/high_gear"};
-
-    g_ros.diff_sub = (sub_t){
-        .msg = &g_ros.diff_msg,
-        .cb = diff_callback,
-        .type_support = ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
-        .topic_name = "/lli/ctrl/diff"};
-
-    sub_t *subs[] = {&g_ros.steering_sub, &g_ros.throttle_sub, &g_ros.gear_sub, &g_ros.diff_sub};
-    const int num_subs = sizeof(subs) / sizeof(subs[0]);
-
-    RCCHECK(rclc_executor_init(&g_ros.executor, &g_ros.support.context, num_subs, &g_ros.allocator));
-
-    // Initialize best effort subscriptions (steering and throttle)
-    RCCHECK(rclc_subscription_init_best_effort(&g_ros.steering_sub.sub, &g_ros.node,
-                                               g_ros.steering_sub.type_support,
-                                               g_ros.steering_sub.topic_name));
-    RCCHECK(rclc_executor_add_subscription(&g_ros.executor, &g_ros.steering_sub.sub,
-                                           g_ros.steering_sub.msg,
-                                           g_ros.steering_sub.cb, ON_NEW_DATA));
-
-    RCCHECK(rclc_subscription_init_best_effort(&g_ros.throttle_sub.sub, &g_ros.node,
-                                               g_ros.throttle_sub.type_support,
-                                               g_ros.throttle_sub.topic_name));
-    RCCHECK(rclc_executor_add_subscription(&g_ros.executor, &g_ros.throttle_sub.sub,
-                                           g_ros.throttle_sub.msg,
-                                           g_ros.throttle_sub.cb, ON_NEW_DATA));
-
-    // Initialize reliable subscriptions (gear and diff)
-    RCCHECK(rclc_subscription_init_default(&g_ros.gear_sub.sub, &g_ros.node,
-                                           g_ros.gear_sub.type_support,
-                                           g_ros.gear_sub.topic_name));
-    RCCHECK(rclc_executor_add_subscription(&g_ros.executor, &g_ros.gear_sub.sub,
-                                           g_ros.gear_sub.msg,
-                                           g_ros.gear_sub.cb, ON_NEW_DATA));
-
-    RCCHECK(rclc_subscription_init_default(&g_ros.diff_sub.sub, &g_ros.node,
-                                           g_ros.diff_sub.type_support,
-                                           g_ros.diff_sub.topic_name));
-    RCCHECK(rclc_executor_add_subscription(&g_ros.executor, &g_ros.diff_sub.sub,
-                                           g_ros.diff_sub.msg,
-                                           g_ros.diff_sub.cb, ON_NEW_DATA));
-}
-
-static void init_publishers(void) {
-    g_ros.rc_steering_pub = (pub_t){
-        .msg = &g_ros.rc_steering_msg,
-        .type_support = ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, UInt8),
-        .topic_name = "/lli/remote/steering"};
-
-    g_ros.rc_throttle_pub = (pub_t){
-        .msg = &g_ros.rc_throttle_msg,
-        .type_support = ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, UInt8),
-        .topic_name = "/lli/remote/throttle"};
-
-    g_ros.rc_gear_pub = (pub_t){
-        .msg = &g_ros.rc_gear_msg,
-        .type_support = ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
-        .topic_name = "/lli/remote/high_gear"};
-
-    g_ros.rc_override_pub = (pub_t){
-        .msg = &g_ros.rc_override_msg,
-        .type_support = ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
-        .topic_name = "/lli/remote/override"};
-
-    g_ros.rc_connected_pub = (pub_t){
-        .msg = &g_ros.rc_connected_msg,
-        .type_support = ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
-        .topic_name = "/lli/remote/connected"};
-
-    g_ros.status_pub = (pub_t){
-        .msg = &g_ros.status_msg,
-        .type_support = ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, UInt8),
-        .topic_name = "/lli/status"};
-
-    pub_t *pubs[] = {&g_ros.rc_steering_pub, &g_ros.rc_throttle_pub, &g_ros.rc_gear_pub, &g_ros.rc_override_pub, &g_ros.rc_connected_pub, &g_ros.status_pub};
-    const int num_pubs = sizeof(pubs) / sizeof(pubs[0]);
-
-    for (int i = 0; i < num_pubs; i++) {
-        RCCHECK(rclc_publisher_init_best_effort(&pubs[i]->pub, &g_ros.node, pubs[i]->type_support, pubs[i]->topic_name));
-    }
-}
-
-static void ros_spin(void *a, void *b, void *c) {
-    ARG_UNUSED(a);
-    ARG_UNUSED(b);
-    ARG_UNUSED(c);
-
-    while (!g_ros.initialized) {
-        k_msleep(50);
-    }
-
-    while (1) {
-        RCSOFTCHECK(rclc_executor_spin_some(&g_ros.executor, RCL_MS_TO_NS(10)));
-        k_msleep(10);
-    }
-}
-
-/* ----- Public functions --------------------------------------------- */
-void ros_get_command(ros_command_t *cmd) {
-    k_mutex_lock(&g_ros_cmd_mutex, K_FOREVER);
-    *cmd = g_ros_cmd;
-    k_mutex_unlock(&g_ros_cmd_mutex);
-}
-
-void ros_publish_rc(const RemoteState *rc, bool is_connected) {
-    if (!g_ros.initialized) {
-        return;
-    }
-
-    g_ros.rc_steering_msg.data = us_to_uint8(rc->steer_period);
-    g_ros.rc_gear_msg.data = us_to_bool(rc->high_gear_period);
-    g_ros.rc_throttle_msg.data = us_to_uint8(rc->throttle_period);
-    g_ros.rc_override_msg.data = us_to_bool(rc->override_period);
-    g_ros.rc_connected_msg.data = is_connected;
-
-    RCSOFTCHECK(rcl_publish(&g_ros.rc_steering_pub.pub, g_ros.rc_steering_pub.msg, NULL));
-    RCSOFTCHECK(rcl_publish(&g_ros.rc_gear_pub.pub, g_ros.rc_gear_pub.msg, NULL));
-    RCSOFTCHECK(rcl_publish(&g_ros.rc_throttle_pub.pub, g_ros.rc_throttle_pub.msg, NULL));
-    RCSOFTCHECK(rcl_publish(&g_ros.rc_override_pub.pub, g_ros.rc_override_pub.msg, NULL));
-    RCSOFTCHECK(rcl_publish(&g_ros.rc_connected_pub.pub, g_ros.rc_connected_pub.msg, NULL));
-}
-
-void ros_iface_init(void) {
-    // Set up microROS transport
+    // --- ADD THIS BLOCK: Micro-ROS transport setup ---
     rmw_uros_set_custom_transport(
         MICRO_ROS_FRAMING_REQUIRED,
         (void *)&default_params,
@@ -302,32 +94,184 @@ void ros_iface_init(void) {
         zephyr_transport_close,
         zephyr_transport_write,
         zephyr_transport_read);
+    // -------------------------------------------------
 
-    // Initialize allocator and support
-    g_ros.allocator = rcl_get_default_allocator();
-    RCCHECK(rclc_support_init(&g_ros.support, 0, NULL, &g_ros.allocator));
+    rcl_ret_t rc;
+    rcl_allocator_t allocator = rcl_get_default_allocator();
+    LOG_INF("ros_iface_thread: initializing rclc_support");
+    while (1) {
 
-    // Create node
-    RCCHECK(rclc_node_init_default(&g_ros.node, "svea_lli_node", "", &g_ros.support));
+        rc = rclc_support_init(&support, 0, NULL, &allocator);
+        if (rc != RCL_RET_OK) {
+            LOG_ERR("rclc_support_init failed: %d", rc);
+            k_msleep(1000);
+            continue;
+        }
 
-    // Initialize publishers and subscriptions
-    init_publishers();
-    init_subscriptions();
+        rc = rclc_node_init_default(&node, "svea_lli_node", "", &support);
+        if (rc != RCL_RET_OK) {
+            LOG_ERR("rclc_node_init_default failed: %d", rc);
+            rclc_support_fini(&support);
+            k_msleep(1000);
+            continue;
+        }
 
-    // Initialize command state
-    k_mutex_lock(&g_ros_cmd_mutex, K_FOREVER);
-    g_ros_cmd.steering_us = 1500;
-    g_ros_cmd.throttle_us = 1500;
-    g_ros_cmd.high_gear = false;
-    g_ros_cmd.diff_locked = true;
-    g_ros_cmd.timestamp = 0;
-    k_mutex_unlock(&g_ros_cmd_mutex);
+        // Publishers
+        rc = rclc_publisher_init_best_effort(&pub_steer, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/remote/steering");
+        if (rc != RCL_RET_OK) {
+            LOG_ERR("rclc_publisher_init_best_effort (pub_steer) failed: %d", rc);
+            rcl_node_fini(&node);
+            rclc_support_fini(&support);
+            k_msleep(1000);
+            continue;
+        }
+        rc = rclc_publisher_init_best_effort(&pub_throttle, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/remote/throttle");
+        if (rc != RCL_RET_OK) {
+            LOG_ERR("rclc_publisher_init_best_effort (pub_throttle) failed: %d", rc);
+            rcl_node_fini(&node);
+            rclc_support_fini(&support);
+            k_msleep(1000);
+            continue;
+        }
+        rc = rclc_publisher_init_best_effort(&pub_gear, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/remote/high_gear");
+        if (rc != RCL_RET_OK) {
+            LOG_ERR("rclc_publisher_init_best_effort (pub_gear) failed: %d", rc);
+            rcl_node_fini(&node);
+            rclc_support_fini(&support);
+            k_msleep(1000);
+            continue;
+        }
+        rc = rclc_publisher_init_best_effort(&pub_override, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/remote/override");
+        if (rc != RCL_RET_OK) {
+            LOG_ERR("rclc_publisher_init_best_effort (pub_override) failed: %d", rc);
+            rcl_node_fini(&node);
+            rclc_support_fini(&support);
+            k_msleep(1000);
+            continue;
+        }
+        rc = rclc_publisher_init_best_effort(&pub_connected, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/remote/connected");
+        if (rc != RCL_RET_OK) {
+            LOG_ERR("rclc_publisher_init_best_effort (pub_connected) failed: %d", rc);
+            rcl_node_fini(&node);
+            rclc_support_fini(&support);
+            k_msleep(1000);
+            continue;
+        }
 
-    // Start executor thread
+        // Subscriptions
+        rc = rclc_subscription_init_best_effort(&sub_steer, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/ctrl/steering");
+        if (rc != RCL_RET_OK) {
+            LOG_ERR("rclc_subscription_init_best_effort (sub_steer) failed: %d", rc);
+            rcl_node_fini(&node);
+            rclc_support_fini(&support);
+            k_msleep(1000);
+            continue;
+        }
+        rc = rclc_subscription_init_best_effort(&sub_throttle, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/ctrl/throttle");
+        if (rc != RCL_RET_OK) {
+            LOG_ERR("rclc_subscription_init_best_effort (sub_throttle) failed: %d", rc);
+            rcl_node_fini(&node);
+            rclc_support_fini(&support);
+            k_msleep(1000);
+            continue;
+        }
+        rc = rclc_subscription_init_best_effort(&sub_gear, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/ctrl/high_gear");
+        if (rc != RCL_RET_OK) {
+            LOG_ERR("rclc_subscription_init_best_effort (sub_gear) failed: %d", rc);
+            rcl_node_fini(&node);
+            rclc_support_fini(&support);
+            k_msleep(1000);
+            continue;
+        }
+        rc = rclc_subscription_init_best_effort(&sub_diff, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/ctrl/diff");
+        if (rc != RCL_RET_OK) {
+            LOG_ERR("rclc_subscription_init_best_effort (sub_diff) failed: %d", rc);
+            rcl_node_fini(&node);
+            rclc_support_fini(&support);
+            k_msleep(1000);
+            continue;
+        }
+
+        rc = rclc_executor_init(&executor, &support.context, 5, support.allocator);
+        if (rc != RCL_RET_OK) {
+            LOG_ERR("rclc_executor_init failed: %d", rc);
+            rcl_node_fini(&node);
+            rclc_support_fini(&support);
+            k_msleep(1000);
+            continue;
+        }
+        rc = rclc_executor_add_subscription(&executor, &sub_steer, &submsg_steer, steer_cb, ON_NEW_DATA);
+        if (rc != RCL_RET_OK) {
+            LOG_ERR("rclc_executor_add_subscription (sub_steer) failed: %d", rc);
+            rcl_node_fini(&node);
+            rclc_support_fini(&support);
+            k_msleep(1000);
+            continue;
+        }
+        rc = rclc_executor_add_subscription(&executor, &sub_throttle, &submsg_throttle, throttle_cb, ON_NEW_DATA);
+        if (rc != RCL_RET_OK) {
+            LOG_ERR("rclc_executor_add_subscription (sub_throttle) failed: %d", rc);
+            rcl_node_fini(&node);
+            rclc_support_fini(&support);
+            k_msleep(1000);
+            continue;
+        }
+        rc = rclc_executor_add_subscription(&executor, &sub_gear, &submsg_gear, gear_cb, ON_NEW_DATA);
+        if (rc != RCL_RET_OK) {
+            LOG_ERR("rclc_executor_add_subscription (sub_gear) failed: %d", rc);
+            rcl_node_fini(&node);
+            rclc_support_fini(&support);
+            k_msleep(1000);
+            continue;
+        }
+        rc = rclc_executor_add_subscription(&executor, &sub_diff, &submsg_diff, diff_cb, ON_NEW_DATA);
+        if (rc != RCL_RET_OK) {
+            LOG_ERR("rclc_executor_add_subscription (sub_diff) failed: %d", rc);
+            rcl_node_fini(&node);
+            rclc_support_fini(&support);
+            k_msleep(1000);
+            continue;
+        }
+
+        // If all succeeded, break out of retry loop
+        break;
+    }
+
+    LOG_INF("ROS iface thread started");
+
+    uint32_t pub_counter = 0;
+    const uint32_t pub_period_ms = 50; // Publish every 50ms
+
+    while (1) {
+        // Spin executor as fast as possible (every 1ms)
+        rclc_executor_spin_some(&executor, 10);
+        k_msleep(1);
+
+        pub_counter += 1;
+        if (pub_counter >= (pub_period_ms)) {
+            pub_counter = 0;
+
+            // Publish RC channels (map to correct types)
+            int32_t steer_us = rc_get_pulse_us(RC_STEER);
+            int32_t throttle_us = rc_get_pulse_us(RC_THROTTLE);
+            uint32_t gear_us = rc_get_pulse_us(RC_HIGH_GEAR);
+            uint32_t override_us = rc_get_pulse_us(RC_OVERRIDE);
+
+            msg_steer.data = pulse_to_int8(steer_us);
+            msg_throttle.data = pulse_to_int8(throttle_us);
+            msg_gear.data = pulse_to_bool(gear_us);
+            msg_override.data = pulse_to_bool(override_us);
+
+            rcl_publish(&pub_steer, &msg_steer, NULL);
+            rcl_publish(&pub_throttle, &msg_throttle, NULL);
+            rcl_publish(&pub_gear, &msg_gear, NULL);
+            rcl_publish(&pub_override, &msg_override, NULL);
+        }
+    }
+}
+
+void ros_iface_init(void) {
     k_thread_create(&ros_thread, ros_stack, K_THREAD_STACK_SIZEOF(ros_stack),
-                    ros_spin, NULL, NULL, NULL,
-                    K_PRIO_COOP(ROS_THREAD_PRIORITY), 0, K_NO_WAIT);
-
-    g_ros.initialized = true;
-    LOG_INF("ROS interface initialized successfully");
+                    ros_iface_thread, NULL, NULL, NULL,
+                    5, 0, K_NO_WAIT);
 }

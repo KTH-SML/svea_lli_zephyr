@@ -245,6 +245,40 @@
         "overlay": [],
         "extraOverlay": []
       }
+    },
+    "svea-lli": {
+      "rel_path": "Projects/svea-lli",
+      "name": "svea-lli",
+      "buildConfigs": {
+        "build/clicker4_stm32": {
+          "relBoardDir": "boards",
+          "relBoardSubDir": "arm/clicker4_stm32",
+          "board": "clicker4_stm32",
+          "name": "build/clicker4_stm32",
+          "westBuildArgs": "",
+          "westBuildCMakeArgs": " -DCONFIG_SPEED_OPTIMIZATIONS=y ",
+          "confFiles": {
+            "config": [],
+            "extraConfig": [],
+            "overlay": [],
+            "extraOverlay": []
+          },
+          "runnerConfigs": {
+            "default": {
+              "runner": "default",
+              "name": "default",
+              "args": ""
+            }
+          }
+        }
+      },
+      "twisterConfigs": {},
+      "confFiles": {
+        "config": [],
+        "extraConfig": [],
+        "overlay": [],
+        "extraOverlay": []
+      }
     }
   }
 }
