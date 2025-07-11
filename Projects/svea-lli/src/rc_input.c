@@ -124,7 +124,7 @@ uint32_t rc_get_capture_raw(rc_channel_t ch) {
 /* ───────── optional logger thread ───────── */
 
 static void rc_log(void *, void *, void *) {
-    rc_input_init();
+
     extern bool in_override_mode;
     extern bool remote_connected;
     while (1) {
@@ -139,4 +139,4 @@ static void rc_log(void *, void *, void *) {
         k_msleep(1000);
     }
 }
-K_THREAD_DEFINE(rc_log_tid, 1024, rc_log, NULL, NULL, NULL, 7, 0, 0);
+K_THREAD_DEFINE(rc_log_tid, 1024, rc_log, NULL, NULL, NULL, 1, 0, 0);

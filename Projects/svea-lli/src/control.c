@@ -72,8 +72,8 @@ static void control_thread(void *, void *, void *) {
         uint32_t thr = 0;
         uint32_t gear = 0;
         uint32_t override = 0;
-        uint32_t diff = 0;
-        uint32_t diff_rear = 0;
+        uint32_t diff = 1900;
+        uint32_t diff_rear = 1100;
         // Disconnect if override age exceeds threshold
         if (override_age > OVERRIDE_AGE_DISCONNECT_US) {
             remote_connected = false;
@@ -89,14 +89,18 @@ static void control_thread(void *, void *, void *) {
                 }
             }
         }
+        in_override_mode = rc_get_pulse_us(RC_OVERRIDE) > 1500;
 
         if (remote_connected) {
-            in_override_mode = rc_get_pulse_us(RC_OVERRIDE) > 1500;
             if (in_override_mode) {
                 steer = rc_get_pulse_us(RC_STEER);
                 thr = rc_get_pulse_us(RC_THROTTLE);
-                gear = rc_get_pulse_us(RC_HIGH_GEAR);
+                gear = (rc_get_pulse_us(RC_HIGH_GEAR) > 1500) ? 1000 : 2000;
 
+                // Update g_ros_ctrl with current remote values
+                g_ros_ctrl.steering = (int8_t)((int32_t)steer - 1500) * 127 / 500;
+                g_ros_ctrl.throttle = (int8_t)((int32_t)thr - 1500) * 127 / 500;
+                g_ros_ctrl.high_gear = (gear > 1500);
             } else {
                 // Use signed int8 from g_ros_ctrl, map to us
                 steer = int8_to_us(g_ros_ctrl.steering);
@@ -104,10 +108,6 @@ static void control_thread(void *, void *, void *) {
                 gear = g_ros_ctrl.high_gear ? 2000 : 1000;
                 diff = g_ros_ctrl.diff ? 2000 : 1000;
                 diff_rear = g_ros_ctrl.diff ? 1000 : 2000;
-
-                // LOG_INF("Using fallback control: steer %d, throttle %d, gear %d, diff %d",
-                //         g_ros_ctrl.steering, g_ros_ctrl.throttle,
-                //         g_ros_ctrl.high_gear, g_ros_ctrl.diff);
             }
         }
 

@@ -66,6 +66,6 @@ void sensors_thread(void *p1, void *p2, void *p3) {
             LOG_WRN("Failed to fetch sensor sample");
         }
 
-        // k_sleep(K_MSEC(1));
+        k_sleep(K_MSEC(1));
     }
 }

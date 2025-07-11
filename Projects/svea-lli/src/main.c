@@ -13,9 +13,10 @@ int main(void) {
     LOG_INF("SVEA LLI starting");
 
     // Initialise modules
-    servo_init();
 
     rc_input_init();
+
+    servo_init();
 
     ros_iface_init(); // <-- Fix: use correct function name
 
