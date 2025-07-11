@@ -1,6 +1,7 @@
 #include "ros_iface.h"
 #include "control.h"
 #include "rc_input.h"
+
 #include <rcl/rcl.h>
 #include <rclc/executor.h>
 #include <rclc/rclc.h>
@@ -28,6 +29,8 @@ LOG_MODULE_REGISTER(ros_iface, LOG_LEVEL_INF);
 ros_ctrl_t g_ros_ctrl = {0};
 #define ROS_STACK_SIZE 4096
 
+bool ros_initialized = false;
+
 static K_THREAD_STACK_DEFINE(ros_stack, ROS_STACK_SIZE);
 static struct k_thread ros_thread;
 
@@ -44,6 +47,9 @@ static std_msgs__msg__Bool msg_gear, msg_override;
 static rcl_subscription_t sub_steer, sub_throttle, sub_gear, sub_diff;
 static std_msgs__msg__Int8 submsg_steer, submsg_throttle;
 static std_msgs__msg__Bool submsg_gear, submsg_diff;
+
+// IMU Publisher
+rcl_publisher_t imu_pub;
 
 // Map pulse [1000,2000] to int8 [-127,127]
 static inline int8_t pulse_to_int8(int32_t us) {
@@ -157,7 +163,16 @@ static void ros_iface_thread(void *a, void *b, void *c) {
             k_msleep(1000);
             continue;
         }
+        // Sensors pubs
 
+        rc = rclc_publisher_init_best_effort(&imu_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu), "/lli/sensor/imu");
+        if (rc != RCL_RET_OK) {
+            LOG_ERR("rclc_publisher_init_best_effort (pub_imu) failed: %d", rc);
+            rcl_node_fini(&node);
+            rclc_support_fini(&support);
+            k_msleep(1000);
+            continue;
+        }
         // Subscriptions
         rc = rclc_subscription_init_best_effort(&sub_steer, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/ctrl/steering");
         if (rc != RCL_RET_OK) {
@@ -238,18 +253,18 @@ static void ros_iface_thread(void *a, void *b, void *c) {
     }
 
     LOG_INF("ROS iface thread started");
-
-    uint32_t pub_counter = 0;
+    ros_initialized = true;
     const uint32_t pub_period_ms = 50; // Publish every 50ms
+    uint64_t last_pub_time = k_uptime_get();
 
     while (1) {
         // Spin executor as fast as possible (every 1ms)
-        rclc_executor_spin_some(&executor, 10);
+        rclc_executor_spin_some(&executor, 1);
         k_msleep(1);
 
-        pub_counter += 1;
-        if (pub_counter >= (pub_period_ms)) {
-            pub_counter = 0;
+        uint64_t now = k_uptime_get();
+        if ((now - last_pub_time) >= pub_period_ms) {
+            last_pub_time = now;
 
             // Publish RC channels (map to correct types)
             int32_t steer_us = rc_get_pulse_us(RC_STEER);

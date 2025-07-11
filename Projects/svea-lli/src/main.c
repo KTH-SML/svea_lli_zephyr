@@ -1,7 +1,7 @@
 #include "control.h"
 #include "rc_input.h"
 // #include "ros_iface.h"
-// #include "sensors.h"
+#include "sensors.h"
 // #include "servo.h"
 #include "ros_iface.h"
 #include <zephyr/drivers/watchdog.h>
@@ -16,8 +16,10 @@ int main(void) {
     servo_init();
 
     rc_input_init();
-    // sensors_init();
+
     ros_iface_init(); // <-- Fix: use correct function name
+
+    sensors_init();
 
     return 0;
 }

@@ -19,4 +19,5 @@ target_sources(app PRIVATE
     src/control.c
     src/rc_input.c
     src/ros_iface.c
+    src/sensors.c
 )

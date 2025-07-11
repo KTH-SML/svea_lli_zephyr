@@ -2,6 +2,8 @@
 #define ROS_IFACE_H
 
 #include "rc_input.h"
+#include <rcl/rcl.h>
+#include <sensor_msgs/msg/imu.h>
 #include <std_msgs/msg/bool.h>
 #include <std_msgs/msg/u_int8.h>
 #include <zephyr/kernel.h>
@@ -16,5 +18,9 @@ typedef struct {
 
 void ros_iface_init(void);
 void ros_get_command(ros_command_t *cmd);
+extern bool ros_initialized;
+
+// Sensors
+extern rcl_publisher_t imu_pub;
 
 #endif // ROS_IFACE_H
