@@ -46,10 +46,51 @@ static inline void servo_set_ticks(const struct pwm_dt_spec *s, uint32_t t_us) {
 #define RECONNECT_WINDOW_MS 500
 #define LOOP_MS 25 // 400 Hz control loop
 
+#define ACCELERATION_CLAMP_LIMIT_US 1000 // 1 ms max change per loop
+
+// Throttle ramp: time (ms) to go from 1000us to 1500us (500us change)
+#define THROTTLE_RAMP_DELTA_US 500
+#define THROTTLE_RAMP_TIME_MS 500
+
+// New: Deceleration clamp (towards 1500us)
+#define THROTTLE_DECEL_DELTA_US 500
+#define THROTTLE_DECEL_TIME_MS 200
+
 // Remove old pulse_to_us, use new int8 mapping
 static inline uint32_t int8_to_us(int8_t val) {
     // Map [-127,127] to [1000,2000]us, 0 = 1500us
     return 1500 + ((int32_t)val * 500) / 127;
+}
+
+static inline int32_t clamp_delta(int32_t value, int32_t prev, int32_t max_step) {
+    int32_t delta = value - prev;
+    if (delta > max_step)
+        return prev + max_step;
+    if (delta < -max_step)
+        return prev - max_step;
+    return value;
+}
+
+static inline int32_t clamp_throttle(int32_t value, int32_t prev, int32_t max_accel, int32_t max_decel) {
+    int32_t delta = value - prev;
+    // Determine if moving away from 1500 (acceleration) or towards 1500 (deceleration)
+    int32_t prev_dist = abs(prev - 1500);
+    int32_t value_dist = abs(value - 1500);
+
+    if (value_dist > prev_dist) {
+        // Acceleration (moving away from 1500)
+        if (delta > max_accel)
+            return prev + max_accel;
+        if (delta < -max_accel)
+            return prev - max_accel;
+    } else {
+        // Deceleration (moving towards 1500)
+        if (delta > max_decel)
+            return prev + max_decel;
+        if (delta < -max_decel)
+            return prev - max_decel;
+    }
+    return value;
 }
 
 static void control_thread(void *, void *, void *) {
@@ -63,6 +104,14 @@ static void control_thread(void *, void *, void *) {
     int reconnect_counter = 0;
     int reconnect_samples = RECONNECT_WINDOW_MS / LOOP_MS;
 
+    uint32_t prev_thr = 1500; // Start at neutral
+    uint32_t diff = 1900;
+    uint32_t diff_rear = 1100;
+
+    // Calculate max allowed step per loop
+    const int32_t max_thr_accel = (THROTTLE_RAMP_DELTA_US * LOOP_MS) / THROTTLE_RAMP_TIME_MS;
+    const int32_t max_thr_decel = (THROTTLE_DECEL_DELTA_US * LOOP_MS) / THROTTLE_DECEL_TIME_MS;
+
     for (;;) {
         uint64_t loop_start_us = k_ticks_to_us_floor64(k_uptime_ticks());
 
@@ -72,8 +121,7 @@ static void control_thread(void *, void *, void *) {
         uint32_t thr = 0;
         uint32_t gear = 0;
         uint32_t override = 0;
-        uint32_t diff = 1900;
-        uint32_t diff_rear = 1100;
+
         // Disconnect if override age exceeds threshold
         if (override_age > OVERRIDE_AGE_DISCONNECT_US) {
             remote_connected = false;
@@ -95,7 +143,7 @@ static void control_thread(void *, void *, void *) {
             if (in_override_mode) {
                 steer = rc_get_pulse_us(RC_STEER);
                 thr = rc_get_pulse_us(RC_THROTTLE);
-                gear = (rc_get_pulse_us(RC_HIGH_GEAR) > 1500) ? 1000 : 2000;
+                gear = (rc_get_pulse_us(RC_HIGH_GEAR) > 1500) ? 1100 : 1900;
 
                 // Update g_ros_ctrl with current remote values
                 g_ros_ctrl.steering = (int8_t)((int32_t)steer - 1500) * 127 / 500;
@@ -105,9 +153,26 @@ static void control_thread(void *, void *, void *) {
                 // Use signed int8 from g_ros_ctrl, map to us
                 steer = int8_to_us(g_ros_ctrl.steering);
                 thr = int8_to_us(g_ros_ctrl.throttle);
-                gear = g_ros_ctrl.high_gear ? 2000 : 1000;
+                gear = g_ros_ctrl.high_gear ? 1100 : 1900;
                 diff = g_ros_ctrl.diff ? 2000 : 1000;
                 diff_rear = g_ros_ctrl.diff ? 1000 : 2000;
+            }
+
+            // Double ramp rates if gear is high
+            int32_t accel = max_thr_accel;
+            int32_t decel = max_thr_decel;
+            if (gear < 1500) { // When in high gear, decrease ramp rates
+                accel /= 2;
+                decel /= 1;
+            }
+
+            thr = clamp_throttle(thr, prev_thr, accel, decel);
+            prev_thr = thr;
+
+            if (log_counter++ >= 25) { // Log every 500ms
+                LOG_INF("steer %u us  throttle %u us  gear %u us  override %u us  override_age %u us remote_connected %d  max_thr_accel %d  max_thr_decel %d",
+                        steer, thr, gear, override, override_age, remote_connected, accel, decel);
+                log_counter = 0;
             }
         }
 
@@ -119,11 +184,6 @@ static void control_thread(void *, void *, void *) {
 
         uint64_t elapsed_us = k_ticks_to_us_floor64(k_uptime_ticks()) - loop_start_us;
         int32_t sleep_time = LOOP_MS * 1000 - elapsed_us;
-        if (log_counter++ >= 25) { // Log every 500ms
-            // LOG_DBG("steer %u us  throttle %u us  gear %u us  override %u us  override_age %u us  elapsed %llu us  remote_connected %d",
-            //         steer, thr, gear, override, override_age, elapsed_us, remote_connected);
-            log_counter = 0;
-        }
         if (sleep_time > 0) {
             k_sleep(K_USEC(sleep_time));
         }
