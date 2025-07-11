@@ -44,7 +44,7 @@ static inline void servo_set_ticks(const struct pwm_dt_spec *s, uint32_t t_us) {
 /* ───── 3. control thread – barebones, no filtering ─────────────────── */
 #define OVERRIDE_AGE_DISCONNECT_US 15000
 #define RECONNECT_WINDOW_MS 500
-#define LOOP_MS 21
+#define LOOP_MS 25 // 400 Hz control loop
 
 // Remove old pulse_to_us, use new int8 mapping
 static inline uint32_t int8_to_us(int8_t val) {
@@ -89,22 +89,26 @@ static void control_thread(void *, void *, void *) {
                 }
             }
         }
-        in_override_mode = rc_get_pulse_us(RC_OVERRIDE) > 1500;
-        if (remote_connected && in_override_mode) {
-            steer = rc_get_pulse_us(RC_STEER);
-            thr = rc_get_pulse_us(RC_THROTTLE);
-            gear = rc_get_pulse_us(RC_HIGH_GEAR);
-        } else {
-            // Use signed int8 from g_ros_ctrl, map to us
-            steer = int8_to_us(g_ros_ctrl.steering);
-            thr = int8_to_us(g_ros_ctrl.throttle);
-            gear = g_ros_ctrl.high_gear ? 2000 : 1000;
-            diff = g_ros_ctrl.diff ? 2000 : 1000;
-            diff_rear = g_ros_ctrl.diff ? 1000 : 2000;
 
-            // LOG_INF("Using fallback control: steer %d, throttle %d, gear %d, diff %d",
-            //         g_ros_ctrl.steering, g_ros_ctrl.throttle,
-            //         g_ros_ctrl.high_gear, g_ros_ctrl.diff);
+        if (remote_connected) {
+            in_override_mode = rc_get_pulse_us(RC_OVERRIDE) > 1500;
+            if (in_override_mode) {
+                steer = rc_get_pulse_us(RC_STEER);
+                thr = rc_get_pulse_us(RC_THROTTLE);
+                gear = rc_get_pulse_us(RC_HIGH_GEAR);
+
+            } else {
+                // Use signed int8 from g_ros_ctrl, map to us
+                steer = int8_to_us(g_ros_ctrl.steering);
+                thr = int8_to_us(g_ros_ctrl.throttle);
+                gear = g_ros_ctrl.high_gear ? 2000 : 1000;
+                diff = g_ros_ctrl.diff ? 2000 : 1000;
+                diff_rear = g_ros_ctrl.diff ? 1000 : 2000;
+
+                // LOG_INF("Using fallback control: steer %d, throttle %d, gear %d, diff %d",
+                //         g_ros_ctrl.steering, g_ros_ctrl.throttle,
+                //         g_ros_ctrl.high_gear, g_ros_ctrl.diff);
+            }
         }
 
         servo_set_ticks(&servos[SERVO_STEERING].spec, steer);
