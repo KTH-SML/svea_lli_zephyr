@@ -258,7 +258,6 @@ static void ros_iface_thread(void *a, void *b, void *c) {
     uint64_t last_pub_time = k_uptime_get();
 
     while (1) {
-        // Spin executor as fast as possible (every 1ms)
         rclc_executor_spin_some(&executor, 1);
         k_msleep(1);
 
@@ -266,21 +265,37 @@ static void ros_iface_thread(void *a, void *b, void *c) {
         if ((now - last_pub_time) >= pub_period_ms) {
             last_pub_time = now;
 
-            // Publish RC channels (map to correct types)
-            int32_t steer_us = rc_get_pulse_us(RC_STEER);
-            int32_t throttle_us = rc_get_pulse_us(RC_THROTTLE);
-            uint32_t gear_us = rc_get_pulse_us(RC_HIGH_GEAR);
-            uint32_t override_us = rc_get_pulse_us(RC_OVERRIDE);
+            // Only publish remote state if remote is connected
+            if (remote_connected) {
+                int32_t steer_us = rc_get_pulse_us(RC_STEER);
+                int32_t throttle_us = rc_get_pulse_us(RC_THROTTLE);
+                uint32_t gear_us = rc_get_pulse_us(RC_HIGH_GEAR);
+                uint32_t override_us = rc_get_pulse_us(RC_OVERRIDE);
 
-            msg_steer.data = pulse_to_int8(steer_us);
-            msg_throttle.data = pulse_to_int8(throttle_us);
-            msg_gear.data = pulse_to_bool(gear_us);
-            msg_override.data = pulse_to_bool(override_us);
+                msg_steer.data = pulse_to_int8(steer_us);
+                msg_throttle.data = pulse_to_int8(throttle_us);
+                msg_gear.data = pulse_to_bool(gear_us);
+                msg_override.data = pulse_to_bool(override_us);
 
-            rcl_publish(&pub_steer, &msg_steer, NULL);
-            rcl_publish(&pub_throttle, &msg_throttle, NULL);
-            rcl_publish(&pub_gear, &msg_gear, NULL);
-            rcl_publish(&pub_override, &msg_override, NULL);
+                rcl_ret_t rc;
+                rc = rcl_publish(&pub_steer, &msg_steer, NULL);
+                if (rc != RCL_RET_OK)
+                    LOG_ERR("pub_steer failed: %d", rc);
+                rc = rcl_publish(&pub_throttle, &msg_throttle, NULL);
+                if (rc != RCL_RET_OK)
+                    LOG_ERR("pub_throttle failed: %d", rc);
+                rc = rcl_publish(&pub_gear, &msg_gear, NULL);
+                if (rc != RCL_RET_OK)
+                    LOG_ERR("pub_gear failed: %d", rc);
+                rc = rcl_publish(&pub_override, &msg_override, NULL);
+                if (rc != RCL_RET_OK)
+                    LOG_ERR("pub_override failed: %d", rc);
+            }
+
+            // Always publish remote_connected status
+            rcl_ret_t rc = rcl_publish(&pub_connected, &remote_connected, NULL);
+            if (rc != RCL_RET_OK)
+                LOG_ERR("pub_connected failed: %d", rc);
         }
     }
 }
