@@ -26,8 +26,8 @@ void sensors_thread(void *p1, void *p2, void *p3) {
 
     imu_dev = DEVICE_DT_GET(DT_NODELABEL(ism330dlc));
 
-    while (!device_is_ready(imu_dev)) {
-        LOG_ERR("IMU device not ready, retrying...");
+    while (!device_is_ready(imu_dev) && !ros_initialized) {
+        LOG_DBG("IMU device not ready, retrying...");
         k_sleep(K_MSEC(200));
     }
 
