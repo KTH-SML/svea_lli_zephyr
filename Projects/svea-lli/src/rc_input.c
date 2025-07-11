@@ -139,4 +139,4 @@ static void rc_log(void *, void *, void *) {
         k_msleep(1000);
     }
 }
-K_THREAD_DEFINE(rc_log_tid, 1024, rc_log, NULL, NULL, NULL, 1, 0, 0);
+// K_THREAD_DEFINE(rc_log_tid, 1024, rc_log, NULL, NULL, NULL, 1, 0, 0);
