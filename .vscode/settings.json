@@ -11,7 +11,8 @@
         "pwm.h": "c",
         "regex": "c",
         "pwm_actuator.h": "c",
-        "rclc.h": "c"
+        "rclc.h": "c",
+        "watchdog.h": "c"
     },
     "terminal.integrated.defaultProfile.osx": "Zephyr IDE Terminal"
 }
