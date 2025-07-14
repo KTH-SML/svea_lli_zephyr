@@ -37,7 +37,16 @@ void servo_init(void) {
     }
     servos_initialized = true;
 }
-static inline void servo_set_ticks(const struct pwm_dt_spec *s, uint32_t t_us) {
+static inline void servo_set_ticks(const struct pwm_dt_spec *s, uint16_t t_us) {
+    // Clamp t_us to [1000, 2000] (1-2 ms)
+    // if (t_us == 0) {
+    //     pwm_set_pulse_dt(s, 0);
+    //     return;
+    // }
+    // if (t_us < 1000)
+    //     t_us = 1000;
+    // if (t_us > 2000)
+    //     t_us = 2000;
     uint32_t t_ns = t_us * 1000; // Convert microseconds to nanoseconds
     pwm_set_pulse_dt(s, t_ns);
 }
