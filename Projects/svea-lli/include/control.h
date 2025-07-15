@@ -21,6 +21,7 @@ typedef struct {
     int8_t throttle;
     bool high_gear;
     bool diff;
+    uint32_t timestamp;
 } ros_ctrl_t;
 
 extern ros_ctrl_t g_ros_ctrl;

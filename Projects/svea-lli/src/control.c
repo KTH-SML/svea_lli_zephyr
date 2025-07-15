@@ -53,7 +53,8 @@ static inline void servo_set_ticks(const struct pwm_dt_spec *s, uint16_t t_us) {
 /* ───── 3. control thread – barebones, no filtering ─────────────────── */
 #define OVERRIDE_AGE_DISCONNECT_US 15000
 #define RECONNECT_WINDOW_MS 500
-#define LOOP_MS 25 // 400 Hz control loop
+#define LOOP_MS 25                          // 400 Hz control loop
+#define ROS_THROTTLE_AGE_TIMEOUT_US 1000000 // 1 seconds max age for ROS throttle command
 
 #define ACCELERATION_CLAMP_LIMIT_US 1000 // 1 ms max change per loop
 
@@ -127,7 +128,7 @@ static void control_thread(void *, void *, void *) {
         uint32_t override_age = rc_get_age_us(RC_OVERRIDE);
 
         uint32_t steer = 0;
-        uint32_t thr = 0;
+        uint32_t thr = 1500;
         uint32_t gear = 0;
         uint32_t override = 0;
 
@@ -162,7 +163,7 @@ static void control_thread(void *, void *, void *) {
                 // Use signed int8 from g_ros_ctrl, map to us
                 steer = int8_to_us(g_ros_ctrl.steering);
                 thr = int8_to_us(g_ros_ctrl.throttle);
-                gear = g_ros_ctrl.high_gear ? 1100 : 1900;
+                gear = g_ros_ctrl.high_gear ? 1900 : 1100;
                 diff = g_ros_ctrl.diff ? 2000 : 1000;
                 diff_rear = g_ros_ctrl.diff ? 1000 : 2000;
             }
