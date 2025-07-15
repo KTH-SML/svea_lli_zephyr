@@ -2,6 +2,7 @@
 #include "rc_input.h"
 #include "ros_iface.h"
 #include "sensors.h"
+#include "wheel_enc.h"
 #include <zephyr/drivers/watchdog.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -41,13 +42,14 @@ static void app_wdt_setup(void) {
 
 int main(void) {
     LOG_INF("SVEA LLI starting");
-
+    k_sleep(K_SECONDS(1)); // Allow time for logging to initialize
     app_wdt_setup();
-
+    k_sleep(K_SECONDS(1)); // Allow time for watchdog setup
     rc_input_init();
     servo_init();
     ros_iface_init();
     sensors_init();
+    wheel_enc_init();
 
     while (1) {
         if (wdt_channel_id >= 0) {

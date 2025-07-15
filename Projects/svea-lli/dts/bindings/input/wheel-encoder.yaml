@@ -1,0 +1,13 @@
+description: Custom wheel encoder key with debounce
+compatible: "wheel-encoder-key"
+include: base.yaml
+properties:
+  gpios:
+    type: phandle-array
+    required: true
+  label:
+    type: string
+  debounce-us:
+    type: int
+    required: false
+    description: Debounce time in microseconds

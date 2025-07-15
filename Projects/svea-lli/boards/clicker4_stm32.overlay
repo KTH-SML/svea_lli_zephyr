@@ -31,7 +31,7 @@
 /* Pinmux definitions - silkscreen label in comments */
 &pinctrl {
     tim1_ch1_pe9: tim1_ch1_pe9    { pinmux = <STM32_PINMUX('E', 9, AF1)>;  }; // P1
-    tim2_ch3_pb10: tim2_ch3_pb10   { pinmux = <STM32_PINMUX('B', 10, AF1)>; }; // P2
+
     tim2_ch4_pb11: tim2_ch4_pb11   { pinmux = <STM32_PINMUX('B', 11, AF1)>; }; // P3
     tim12_ch1_ph6: tim12_ch1_ph6   { pinmux = <STM32_PINMUX('H', 6, AF9)>;  }; // P4
     tim3_ch1_pa6: tim3_ch1_pa6    { pinmux = <STM32_PINMUX('A', 6, AF2)>;  }; // MISO1
@@ -50,22 +50,10 @@
 };
 
 /* PWM Output timers - silkscreen label in comments */
-//&timers1 {
-    //    status = "okay";
-    //    st,prescaler = <215>;
-    //    pwm1: pwm1 {
-        //        compatible = "st,stm32-pwm";
-        //        status = "okay";
-        //        #pwm-cells = <3>;
-        //        pinctrl-0 = <&tim1_ch1_pe9>; // P1
-        //        pinctrl-names = "default";
-    //    };
-//};
-
 &timers2 {
     status = "okay";
     st,prescaler = <107>;
-    pwm2: pwm2 {
+    pwm2: pwm {
         compatible = "st,stm32-pwm";
         status = "okay";
         #pwm-cells = <3>;
@@ -73,18 +61,6 @@
         pinctrl-names = "default";
     };
 };
-
-//&timers12 {
-    //    status = "okay";
-    //    st,prescaler = <107>;
-    //    pwm12: pwm12 {
-        //        compatible = "st,stm32-pwm";
-        //        status = "okay";
-        //        #pwm-cells = <3>;
-        //        pinctrl-0 = <&tim12_ch1_ph6>; // P4
-        //        pinctrl-names = "default";
-    //    };
-//};
 
 &timers4 {
     status = "okay";
@@ -102,7 +78,7 @@
 &timers3 {
     status = "okay";
     st,prescaler = <107>;
-    pwm3_in: pwm_in {
+    pwm3_in: pwm {
         compatible = "st,stm32-pwm";
         status = "okay";
         #pwm-cells = <3>;
@@ -153,34 +129,6 @@
 #include <zephyr/dt-bindings/timer/stm32-timer.h>
 
 
-/* encoders.overlay – drop into boards/…/ */
-&pinctrl {
-    tim13_ch1_pf8: tim13_ch1_pf8 { // 3
-        pinmux = <STM32_PINMUX('F', 8, AF9)>; // PF8 → TIM13_CH1
-        bias-pull-down;
-    };
-    tim14_ch1_pf9: tim14_ch1_pf9 {
-        pinmux = <STM32_PINMUX('F', 9, AF9)>; // PF9 → TIM14_CH1
-        bias-pull-down;
-    };
-};
-
-/* enable the two single-channel timers */
-
-/* ---------- TIM 13: left wheel counter ---------- */
-&timers13 {
-    status = "okay";
-    // prescaler = <1000>;
-};
-
-/* ---------- TIM 14: right wheel counter ---------- */
-&timers14 {
-    status = "okay";
-    //prescaler = <1000>;
-
-};
-
-
 / {
     // Servo output nodes - silkscreen label in comments
     steeringservo: servo {
@@ -216,6 +164,24 @@
 };
 
 
+/ {
+    wheel_encoders: wheel_encoders {
+        compatible = "gpio-keys";
+        status = "okay";
+        wheel_left: wheel_left {
+            compatible = "wheel-encoder-key";
+            gpios = <&gpioc 0 GPIO_ACTIVE_HIGH>;
+            label = "WHEEL_LEFT";
+            debounce-us = <500>;
+        };
+        wheel_right: wheel_right {
+            compatible = "wheel-encoder-key";
+            gpios = <&gpioi 10 GPIO_ACTIVE_HIGH>;
+            label = "WHEEL_RIGHT";
+            debounce-us = <500>;
+        };
+    };
+};
 
 
 / {
@@ -238,9 +204,11 @@
         // diffservo = &diff_servo;          // P2
         // diffservorear = &diff_servo_rear; // PA5, TIM2_CH1, SCK1
 
-        wheel-left  = &timers13;
-        wheel-right = &timers14;
+        wheel-left-gpio  = &wheel_left;
+        wheel-right-gpio = &wheel_right;
+        //wheel-right = &timers13;
 
         watchdog0 = &iwdg;
     };
 };
+
