@@ -63,35 +63,35 @@ static inline int8_t pulse_to_int8(int32_t us) {
 static inline bool pulse_to_bool(uint32_t us) {
     return us > 1500;
 }
-
 // Subscription callbacks
 static void steer_cb(const void *msg) {
     int8_t value = ((std_msgs__msg__Int8 *)msg)->data;
-    LOG_INF("Received steering command: %d", value);
+    LOG_DBG("Received steering command: %d", value);
     g_ros_ctrl.steering = value;
 }
 
 static void throttle_cb(const void *msg) {
     int8_t value = ((std_msgs__msg__Int8 *)msg)->data;
-    LOG_INF("Received throttle command: %d", value);
+    LOG_DBG("Received throttle command: %d", value);
     g_ros_ctrl.throttle = value;
+    g_ros_ctrl.timestamp = k_uptime_get(); // Update timestamp on throttle change, important
 }
 
 static void gear_cb(const void *msg) {
     bool value = ((std_msgs__msg__Bool *)msg)->data;
-    LOG_INF("Received high gear command: %s", value ? "true" : "false");
+    LOG_DBG("Received high gear command: %s", value ? "true" : "false");
     g_ros_ctrl.high_gear = value;
 }
 
 static void diff_cb(const void *msg) {
     bool value = ((std_msgs__msg__Bool *)msg)->data;
-    LOG_INF("Received diff command: %s", value ? "true" : "false");
+    LOG_DBG("Received diff command: %s", value ? "true" : "false");
     g_ros_ctrl.diff = value;
 }
 
 static void ros_iface_thread(void *a, void *b, void *c) {
     LOG_INF("ros_iface_thread: started");
-
+    k_msleep(1000); // Allow time for other subsystems to initialize
     // --- ADD THIS BLOCK: Micro-ROS transport setup ---
     rmw_uros_set_custom_transport(
         MICRO_ROS_FRAMING_REQUIRED,
@@ -103,10 +103,10 @@ static void ros_iface_thread(void *a, void *b, void *c) {
     // -------------------------------------------------
 
     rcl_ret_t rc;
-    rcl_allocator_t allocator = rcl_get_default_allocator();
+
     LOG_INF("ros_iface_thread: initializing rclc_support");
     while (1) {
-
+        rcl_allocator_t allocator = rcl_get_default_allocator();
         rc = rclc_support_init(&support, 0, NULL, &allocator);
         if (rc != RCL_RET_OK) {
             LOG_ERR("rclc_support_init failed: %d", rc);
@@ -258,7 +258,7 @@ static void ros_iface_thread(void *a, void *b, void *c) {
     uint64_t last_pub_time = k_uptime_get();
 
     while (1) {
-        rclc_executor_spin_some(&executor, 1);
+        rclc_executor_spin_some(&executor, 10);
         k_msleep(1);
 
         uint64_t now = k_uptime_get();
