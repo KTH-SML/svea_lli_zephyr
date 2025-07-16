@@ -22,5 +22,6 @@ extern bool ros_initialized;
 
 // Sensors
 extern rcl_publisher_t imu_pub;
+extern rcl_publisher_t encoders_pub;
 
 #endif // ROS_IFACE_H

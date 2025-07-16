@@ -172,13 +172,13 @@
             compatible = "wheel-encoder-key";
             gpios = <&gpioc 0 GPIO_ACTIVE_HIGH>;
             label = "WHEEL_LEFT";
-            debounce-us = <500>;
+            debounce-us = <1000>;
         };
         wheel_right: wheel_right {
             compatible = "wheel-encoder-key";
             gpios = <&gpioi 10 GPIO_ACTIVE_HIGH>;
             label = "WHEEL_RIGHT";
-            debounce-us = <500>;
+            debounce-us = <1000>;
         };
     };
 };

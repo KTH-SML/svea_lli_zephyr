@@ -2,6 +2,7 @@
 #include "control.h"
 #include "rc_input.h"
 
+#include <geometry_msgs/msg/twist.h>
 #include <rcl/rcl.h>
 #include <rclc/executor.h>
 #include <rclc/rclc.h>
@@ -50,6 +51,9 @@ static std_msgs__msg__Bool submsg_gear, submsg_diff;
 
 // IMU Publisher
 rcl_publisher_t imu_pub;
+
+// Encoder Publisher
+rcl_publisher_t encoders_pub;
 
 // Map pulse [1000,2000] to int8 [-127,127]
 static inline int8_t pulse_to_int8(int32_t us) {
@@ -168,6 +172,15 @@ static void ros_iface_thread(void *a, void *b, void *c) {
         rc = rclc_publisher_init_best_effort(&imu_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu), "/lli/sensor/imu");
         if (rc != RCL_RET_OK) {
             LOG_ERR("rclc_publisher_init_best_effort (pub_imu) failed: %d", rc);
+            rcl_node_fini(&node);
+            rclc_support_fini(&support);
+            k_msleep(1000);
+            continue;
+        }
+
+        rc = rclc_publisher_init_best_effort(&encoders_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist), "/lli/sensor/encoders");
+        if (rc != RCL_RET_OK) {
+            LOG_ERR("rclc_publisher_init_best_effort (pub_encoders) failed: %d", rc);
             rcl_node_fini(&node);
             rclc_support_fini(&support);
             k_msleep(1000);

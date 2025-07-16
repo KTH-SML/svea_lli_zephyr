@@ -45,6 +45,7 @@ int main(void) {
     k_sleep(K_SECONDS(1)); // Allow time for logging to initialize
     app_wdt_setup();
     k_sleep(K_SECONDS(1)); // Allow time for watchdog setup
+
     rc_input_init();
     servo_init();
     ros_iface_init();

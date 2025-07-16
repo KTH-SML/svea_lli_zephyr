@@ -115,8 +115,10 @@ static void control_thread(void *, void *, void *) {
     int reconnect_samples = RECONNECT_WINDOW_MS / LOOP_MS;
 
     uint32_t prev_thr = 1500; // Start at neutral
-    uint32_t diff = 1900;
-    uint32_t diff_rear = 1100;
+    uint32_t diff = 1100;
+    uint32_t diff_rear = 1900;
+
+    g_ros_ctrl.diff = true;
 
     // Calculate max allowed step per loop
     const int32_t max_thr_accel = (THROTTLE_RAMP_DELTA_US * LOOP_MS) / THROTTLE_RAMP_TIME_MS;
@@ -179,11 +181,11 @@ static void control_thread(void *, void *, void *) {
             thr = clamp_throttle(thr, prev_thr, accel, decel);
             prev_thr = thr;
 
-            if (log_counter++ >= 25) { // Log every 500ms
-                LOG_INF("steer %u us  throttle %u us  gear %u us  override %u us  override_age %u us remote_connected %d  max_thr_accel %d  max_thr_decel %d",
-                        steer, thr, gear, override, override_age, remote_connected, accel, decel);
-                log_counter = 0;
-            }
+            // if (log_counter++ >= 25) { // Log every 500ms
+            //     LOG_INF("steer %u us  throttle %u us  gear %u us  override %u us  override_age %u us remote_connected %d  max_thr_accel %d  max_thr_decel %d",
+            //             steer, thr, gear, override, override_age, remote_connected, accel, decel);
+            //     log_counter = 0;
+            // }
         }
 
         servo_set_ticks(&servos[SERVO_STEERING].spec, steer);
@@ -200,5 +202,4 @@ static void control_thread(void *, void *, void *) {
     }
 }
 
-K_THREAD_DEFINE(control_tid, 2048, control_thread, NULL, NULL, NULL,
-                3 /* prio */, 0, 0);
+K_THREAD_DEFINE(control_tid, 2048, control_thread, NULL, NULL, NULL, 3 /* prio */, 0, 0);
