@@ -1,0 +1,37 @@
+{
+  "name": "Default Zephyr Development Container",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/workdir,type=bind,consistency=cached"
+  ],
+  "runArgs": [
+    "--network=host",
+    "--mount=type=bind,source=/dev/bus/usb,target=/dev/bus/usb"
+  ],
+  "privileged": true,
+  "workspaceFolder": "/workdir",
+  "remoteUser": "root",
+  "postStartCommand": "/workdir/entrypoint",
+  "customizations": {
+  "vscode": {
+    "settings": {
+      "cmake.scanForKitsOnOpen": true,
+      "cmake.configureOnOpen": true,
+      "cmake.generator": "Ninja",
+      "cmake.sourceDirectory": "${workspaceFolder}/svea_lli",
+      "cmake.buildDirectory": "${workspaceFolder}/build"
+    },
+    "extensions": [
+      "trond-snekvik.devicetree",
+      "trond-snekvik.kconfig-lang",
+      "mylonics.zephyr-ide",
+      "tomoki1207.pdf",
+      "ms-vscode.cpptools",
+      "ms-vscode.cmake-tools",
+      "ms-python.python"
+    ]
+  }
+}
+}

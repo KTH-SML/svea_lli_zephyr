@@ -10,3 +10,8 @@ manifest:
       clone-depth: 1
       import:
         path-prefix: external
+        name-allowlist:
+          - mcuboot
+          - hal_st
+          - hal_stm32
+          - cmsis

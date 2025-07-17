@@ -1,0 +1,295 @@
+/dts-v1/;
+
+#include <st/f7/stm32f767Xi.dtsi>
+#include <st/f7/stm32f767b(g-i)tx-pinctrl.dtsi>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+#include <zephyr/dt-bindings/pwm/pwm.h>
+
+
+// -------------------------------------------------------------
+// FLASH
+
+&flash0 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		/* Sectors 0-1: 64 kB (bootloader) */
+		boot_partition: partition@0 {
+			reg = <0x00000000 DT_SIZE_K(64)>;
+			read-only;
+		};
+
+		/* Sectors 2-3: 64 kB (app storage) */
+		storage_partition: partition@10000 {
+			reg = <0x00010000 DT_SIZE_K(64)>;
+		};
+
+		/* Sector 4: 128 kB - left unallocated */
+
+		/* Image 0: 256k x 2 = 512k (Sectors 5-6) */
+		slot0_partition: partition@40000 {
+			reg = <0x00040000 DT_SIZE_K(512)>;
+		};
+
+		/* Image 1: 256k (Sector 7) */
+		slot1_partition: partition@C0000 {
+			reg = <0x000C0000 DT_SIZE_K(256)>;
+		};
+
+		/* Scratch: 128k (Sector 8) */
+		scratch_partition: partition@100000 {
+			reg = <0x00100000 DT_SIZE_K(128)>;
+		};
+	};
+};
+
+
+// -------------------------------------------------------------
+// CLOCK
+
+&clk_lsi {
+	status = "okay";
+};
+
+&clk_hse {
+	clock-frequency = <DT_FREQ_M(25)>; /* 25MHz clock */
+	status = "okay";
+};
+
+&pll {
+    div-m = <25>; /* PLLM: divide HSE by 25 */
+    mul-n = <432>; /* PLLN: multiply by 432 */
+    div-p = <2>; /* PLLP: divide by 2 */
+    div-q = <9>; /* PLLQ: divide by 9 (for USB clock) */
+    clocks = <&clk_hse>;
+    status = "okay";
+};
+
+&rcc {
+	clocks = <&pll>;
+	clock-frequency = <DT_FREQ_M(216)>; /* 216MHz system clock */
+	ahb-prescaler = <1>; /* AHB prescaler */
+	apb1-prescaler = <4>; /* APB1 prescaler */
+	apb2-prescaler = <2>; /* APB2 prescaler */
+	status = "okay";
+};
+
+
+// -------------------------------------------------------------
+// USB
+
+zephyr_udc0: &usbotg_fs {
+    pinctrl-0 = <&usb_otg_fs_dm_pa11 &usb_otg_fs_dp_pa12>;
+    pinctrl-names = "default";
+    status = "okay";
+
+    cdc_acm_uart0: cdc_acm_uart0 {
+        compatible = "zephyr,cdc-acm-uart";
+        label = "CDC_ACM_0";
+        status = "okay";
+    };
+};
+
+
+// -------------------------------------------------------------
+// SPI
+
+// SPI controller for MB1, MB2, MB3
+&spi1 {
+	pinctrl-0 = <&spi1_sck_pa5 &spi1_miso_pa6 &spi1_mosi_pa7>;
+	pinctrl-names = "default";
+	cs-gpios = 
+		<&gpioa  4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+		<&gpioh  2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+		<&gpiod 13 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+};
+
+// SPI controller for MB4
+&spi3 {
+	pinctrl-0 = <&spi3_sck_pc10 &spi3_miso_pc11 &spi3_mosi_pc12>;
+	pinctrl-names = "default";
+	cs-gpios = <&gpiod 15 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+};
+
+
+// -------------------------------------------------------------
+// I2C
+
+// I2C controller for MB1, MB2, MB3, MB4, HDR
+&i2c2 {
+	pinctrl-0 = <&i2c2_scl_pb10 &i2c2_sda_pb11>;
+	pinctrl-names = "default";
+};
+
+
+// -------------------------------------------------------------
+// UART
+
+&usart2 {
+	pinctrl-0 = <&usart2_tx_pa2 &usart2_rx_pa3>;
+	pinctrl-names = "default";
+	current-speed = <115200>;
+};
+
+&usart1 {
+	pinctrl-0 = <&usart1_tx_pb6 &usart1_rx_pb7>;
+	pinctrl-names = "default";
+	current-speed = <115200>;
+};
+
+&usart3 {
+	pinctrl-0 = <&usart3_tx_pd8 &usart3_rx_pd9>;
+	pinctrl-names = "default";
+	current-speed = <115200>;
+};
+
+
+// -------------------------------------------------------------
+// PWM
+
+// -------------------------------------------------------------
+// Board: Clicker 4 for STM32F7
+
+/ {
+	model = "MikroElektronika Clicker 4 for STM32";
+	compatible = "mikroe,clicker4-stm32", "st,stm32f767";
+	
+	chosen {
+			zephyr,sram = &sram0;
+			zephyr,flash = &flash0;
+			zephyr,code-partition = &slot0_partition;
+			// zephyr,console = &cdc_acm_uart0; for usb port
+			zephyr,console = &usart1; // for MD2, connect logic analyzer
+	};
+
+	aliases {
+		// SPI
+		mb1-spi = &spi1;
+		mb2-spi = &spi1;
+		mb3-spi = &spi1;
+		mb4-spi = &spi3;
+		hdr-spi1 = &spi3;
+		// I2C
+		mb1-i2c = &i2c2;
+		mb2-i2c = &i2c2;
+		mb3-i2c = &i2c2;
+		mb4-i2c = &i2c2;
+		hdr-i2c1 = &i2c2;
+		// UART
+		mb1-uart = &usart2;
+		mb2-uart = &usart1;
+		mb3-uart = &usart1;
+		mb4-uart = &usart3;
+		hdr-uart2 = &usart2;
+		hdr-uart3 = &usart1;
+		// PWM
+		mb1-pwm-pin = &tim1_ch1_pe9;
+		mb2-pwm-pin = &tim4_ch1_pd12;
+		mb3-pwm-pin = &tim8_ch1_pc6;	// alt. tim3_ch1_pc6
+		mb4-pwm-pin = &tim3_ch4_pc9;	// alt. tim8_ch4_pc9
+		hdr-pwm1-pin = &tim10_ch1_pb8;	// alt. tim4_ch3_pb8
+		hdr-pwm2-pin = &tim11_ch1_pb9;	// alt. tim4_ch4_pb9
+		hdr-pwm3-pin = &tim9_ch1_pe5;
+		hdr-pwm4-pin = &tim9_ch2_pe6;
+		// INT
+		mb1-int-pin = &analog_pd0;		// shared with MB1
+		mb2-int-pin = &analog_pb2;
+		mb3-int-pin = &analog_pc7;
+		mb4-int-pin = &analog_pb14;
+		hdr-int1-pin = &analog_pd0;		// shared with MB1
+		hdr-int2-pin = &analog_pe1;
+		hdr-int3-pin = &analog_pe3;
+		hdr-int4-pin = &analog_pe4;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		led1: led_0 { label = "L1"; gpios = <&gpioc 8   GPIO_ACTIVE_HIGH>; };
+		led2: led_1 { label = "L2"; gpios = <&gpioa 8   GPIO_ACTIVE_HIGH>; };
+		led3: led_2 { label = "L3"; gpios = <&gpiob 13  GPIO_ACTIVE_HIGH>; };
+		led4: led_3 { label = "L4"; gpios = <&gpiob 5   GPIO_ACTIVE_HIGH>; };
+		led5: led_4 { label = "L5"; gpios = <&gpiob 15  GPIO_ACTIVE_HIGH>; };
+		led6: led_5 { label = "L6"; gpios = <&gpioa 10  GPIO_ACTIVE_HIGH>; };
+	};
+
+	keys {
+		compatible = "gpio-keys";
+		btn1: button_0 { label = "B1"; status = "okay"; gpios = <&gpioe 10 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_0>; };
+		btn2: button_1 { label = "B2"; status = "okay"; gpios = <&gpioe 11 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_1>; };
+		btn3: button_2 { label = "B3"; status = "okay"; gpios = <&gpioe 12 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_2>; };
+		btn4: button_3 { label = "B4"; status = "okay"; gpios = <&gpioe 13 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_3>; };
+		btn5: button_4 { label = "B5"; status = "okay"; gpios = <&gpiob 12 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_4>; };
+		btn6: button_5 { label = "B6"; status = "okay"; gpios = <&gpiod 10 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_5>; };
+	};
+        
+	connectors {
+
+		mb1: mikrobus_1 {
+			compatible = "mikro-bus";
+			#gpio-cells = <2>;
+			gpio-map-mask = <0xffffffff 0xffffffc0>;
+			gpio-map-pass-thru = <0 0x3f>;
+			gpio-map =
+				< 0 0 &gpioc  4 0>,	<16 0 &gpioe  9 0>,	// AN	- PWM
+				< 1 0 &gpioc 15 0>,	<15 0 &gpiod  0 0>,	// RST	- INT
+				< 2 0 &gpioa  4 0>,	<14 0 &gpioa  3 0>,	// CS	- RX
+				< 3 0 &gpioa  5 0>,	<13 0 &gpioa  2 0>,	// SCK	- TX
+				< 4 0 &gpioa  6 0>,	<12 0 &gpiob 10 0>,	// MISO	- SCL
+				< 5 0 &gpioa  7 0>,	<11 0 &gpiob 11 0>;	// MOSI	- SDA
+														// 3.3V	- 5V
+														// GND	- GND
+		};
+
+		mb2: mikrobus_2 {
+			compatible = "mikro-bus";
+			#gpio-cells = <2>;
+			gpio-map-mask = <0xffffffff 0xffffffc0>;
+			gpio-map-pass-thru = <0 0x3f>;
+			gpio-map =
+				< 0 0 &gpioc 5 0>,	<16 0 &gpiod 12 0>,	// AN	- PWM
+				< 1 0 &gpioe 7 0>,	<15 0 &gpiob  2 0>,	// RST	- INT
+				< 2 0 &gpioe 8 0>,	<14 0 &gpiob  7 0>,	// CS	- RX
+				< 3 0 &gpioa 5 0>,	<13 0 &gpiob  6 0>,	// SCK	- TX
+				< 4 0 &gpioa 6 0>,	<12 0 &gpiob 10 0>,	// MISO	- SCL
+				< 5 0 &gpioa 7 0>,	<11 0 &gpiob 11 0>;	// MOSI	- SDA
+										// 3.3V	- 5V
+										// GND	- GND
+		};
+
+		mb3: mikrobus_3 {
+			compatible = "mikro-bus";
+			#gpio-cells = <2>;
+			gpio-map-mask = <0xffffffff 0xffffffc0>;
+			gpio-map-pass-thru = <0 0x3f>;
+			gpio-map =
+				< 0 0 &gpiob  0 0>,	<16 0 &gpioc  6 0>,	// AN	- PWM
+				< 1 0 &gpiod 11 0>,	<15 0 &gpioc  7 0>,	// RST	- INT
+				< 2 0 &gpiod 13 0>,	<14 0 &gpiob  7 0>,	// CS	- RX
+				< 3 0 &gpioa  5 0>,	<13 0 &gpiob  6 0>,	// SCK	- TX
+				< 4 0 &gpioa  6 0>,	<12 0 &gpiob 10 0>,	// MISO	- SCL
+				< 5 0 &gpioa  7 0>,	<11 0 &gpiob 11 0>;	// MOSI	- SDA
+										// 3.3V	- 5V
+										// GND	- GND
+		};
+
+		mb4: mikrobus_4 {
+			compatible = "mikro-bus";
+			#gpio-cells = <2>;
+			gpio-map-mask = <0xffffffff 0xffffffc0>;
+			gpio-map-pass-thru = <0 0x3f>;
+			gpio-map =
+				< 0 0 &gpiob  1 0>,	<16 0 &gpioc  9 0>,	// AN	- PWM
+				< 1 0 &gpiod 14 0>,	<15 0 &gpiob 14 0>,	// RST	- INT
+				< 2 0 &gpiod 15 0>,	<14 0 &gpiod  9 0>,	// CS	- RX
+				< 3 0 &gpioc 10 0>,	<13 0 &gpiod  8 0>,	// SCK	- TX
+				< 4 0 &gpioc 11 0>,	<12 0 &gpiob 10 0>,	// MISO	- SCL
+				< 5 0 &gpioc 12 0>,	<11 0 &gpiob 11 0>;	// MOSI	- SDA
+										// 3.3V	- 5V
+										// GND	- GND
+		};
+
+	};
+
+};

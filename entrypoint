@@ -1,0 +1,17 @@
+#! /bin/bash
+#
+# This entrypoint script will be called everytime a container is started.
+#
+# Author: Kaj Munhoz Arfvidsson
+
+set -e
+
+git config --global --add safe.directory '*'
+
+west update
+
+west zephyr-export
+source /workdir/zephyr/zephyr-env.sh
+
+exec "$@"
+
