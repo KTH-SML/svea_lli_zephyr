@@ -279,6 +279,40 @@
         "overlay": [],
         "extraOverlay": []
       }
+    },
+    "traffic_light": {
+      "rel_path": "Projects/traffic_light",
+      "name": "traffic_light",
+      "buildConfigs": {
+        "build/esp32c3_supermini": {
+          "relBoardDir": "boards",
+          "relBoardSubDir": "../external/zephyr/boards/others/esp32c3_supermini",
+          "board": "esp32c3_supermini",
+          "name": "build/esp32c3_supermini",
+          "westBuildArgs": "",
+          "westBuildCMakeArgs": " -DCONFIG_SPEED_OPTIMIZATIONS=y ",
+          "confFiles": {
+            "config": [],
+            "extraConfig": [],
+            "overlay": [],
+            "extraOverlay": []
+          },
+          "runnerConfigs": {
+            "default": {
+              "runner": "default",
+              "name": "default",
+              "args": ""
+            }
+          }
+        }
+      },
+      "twisterConfigs": {},
+      "confFiles": {
+        "config": [],
+        "extraConfig": [],
+        "overlay": [],
+        "extraOverlay": []
+      }
     }
   }
 }

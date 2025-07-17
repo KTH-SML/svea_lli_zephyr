@@ -17,7 +17,7 @@ LOG_MODULE_REGISTER(control, LOG_LEVEL_INF);
 bool servos_initialized = false;
 bool remote_connected = true;
 bool in_override_mode = true;
-
+bool forward_guess = true; // Guess forward direction
 servo_t servos[SERVO_COUNT] = {
     [SERVO_STEERING] = {.spec = PWM_DT_SPEC_GET(DT_NODELABEL(steeringservo))},
     [SERVO_GEAR] = {.spec = PWM_DT_SPEC_GET(DT_NODELABEL(gearservo))},
@@ -186,6 +186,7 @@ static void control_thread(void *, void *, void *) {
             //             steer, thr, gear, override, override_age, remote_connected, accel, decel);
             //     log_counter = 0;
             // }
+            forward_guess = thr > 1500; // Guess forward direction based on throttle
         }
 
         servo_set_ticks(&servos[SERVO_STEERING].spec, steer);

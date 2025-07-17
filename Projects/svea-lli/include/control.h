@@ -27,6 +27,7 @@ typedef struct {
 extern ros_ctrl_t g_ros_ctrl;
 extern servo_t servos[SERVO_COUNT];
 extern bool remote_connected;
+extern bool forward_guess;
 
 void servo_init(void);
 

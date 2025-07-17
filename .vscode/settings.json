@@ -12,7 +12,14 @@
         "regex": "c",
         "pwm_actuator.h": "c",
         "rclc.h": "c",
-        "watchdog.h": "c"
+        "watchdog.h": "c",
+        "log.h": "c",
+        "int8.h": "c",
+        "bool.h": "c",
+        "socket.h": "c",
+        "poll.h": "c",
+        "int32.h": "c",
+        "twist.h": "c"
     },
     "terminal.integrated.defaultProfile.osx": "Zephyr IDE Terminal"
 }
