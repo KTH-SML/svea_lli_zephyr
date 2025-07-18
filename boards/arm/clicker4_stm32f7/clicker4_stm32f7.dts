@@ -1,7 +1,9 @@
 /dts-v1/;
 
+// Path: zephyr/hal/stm32/dts/...
 #include <st/f7/stm32f767Xi.dtsi>
 #include <st/f7/stm32f767b(g-i)tx-pinctrl.dtsi>
+
 #include <zephyr/dt-bindings/input/input-event-codes.h>
 #include <zephyr/dt-bindings/pwm/pwm.h>
 
@@ -147,9 +149,6 @@ zephyr_udc0: &usbotg_fs {
 
 
 // -------------------------------------------------------------
-// PWM
-
-// -------------------------------------------------------------
 // Board: Clicker 4 for STM32F7
 
 / {
@@ -193,35 +192,68 @@ zephyr_udc0: &usbotg_fs {
 		hdr-pwm2-pin = &tim11_ch1_pb9;	// alt. tim4_ch4_pb9
 		hdr-pwm3-pin = &tim9_ch1_pe5;
 		hdr-pwm4-pin = &tim9_ch2_pe6;
+		mb1-pwm-tmr = &timers1;
+		mb2-pwm-tmr = &timers4;
+		mb3-pwm-tmr = &timers8;
+		mb4-pwm-tmr = &timers3;
+		hdr-pwm1-tmr = &timers10;
+		hdr-pwm2-tmr = &timers11;
+		hdr-pwm34-tmr = &timers9;
 		// INT
-		mb1-int-pin = &analog_pd0;		// shared with MB1
-		mb2-int-pin = &analog_pb2;
-		mb3-int-pin = &analog_pc7;
-		mb4-int-pin = &analog_pb14;
-		hdr-int1-pin = &analog_pd0;		// shared with MB1
-		hdr-int2-pin = &analog_pe1;
-		hdr-int3-pin = &analog_pe3;
-		hdr-int4-pin = &analog_pe4;
+		mb1-int-pin = &mb1_int;		// shared with MB1
+		mb2-int-pin = &mb2_int;
+		mb3-int-pin = &mb3_int;
+		mb4-int-pin = &mb4_int;
+		hdr-int1-pin = &hdr_int1;	// shared with MB1
+		hdr-int2-pin = &hdr_int2;
+		hdr-int3-pin = &hdr_int3;
+		hdr-int4-pin = &hdr_int4;
 	};
 
 	leds {
 		compatible = "gpio-leds";
-		led1: led_0 { label = "L1"; gpios = <&gpioc 8   GPIO_ACTIVE_HIGH>; };
-		led2: led_1 { label = "L2"; gpios = <&gpioa 8   GPIO_ACTIVE_HIGH>; };
-		led3: led_2 { label = "L3"; gpios = <&gpiob 13  GPIO_ACTIVE_HIGH>; };
-		led4: led_3 { label = "L4"; gpios = <&gpiob 5   GPIO_ACTIVE_HIGH>; };
-		led5: led_4 { label = "L5"; gpios = <&gpiob 15  GPIO_ACTIVE_HIGH>; };
-		led6: led_5 { label = "L6"; gpios = <&gpioa 10  GPIO_ACTIVE_HIGH>; };
+		led1: led_1 { gpios = <&gpioc 8   GPIO_ACTIVE_HIGH>; };
+		led2: led_2 { gpios = <&gpioa 8   GPIO_ACTIVE_HIGH>; };
+		led3: led_3 { gpios = <&gpiob 13  GPIO_ACTIVE_HIGH>; };
+		led4: led_4 { gpios = <&gpiob 5   GPIO_ACTIVE_HIGH>; };
+		led5: led_5 { gpios = <&gpiob 15  GPIO_ACTIVE_HIGH>; };
+		led6: led_6 { gpios = <&gpioa 10  GPIO_ACTIVE_HIGH>; };
 	};
 
 	keys {
 		compatible = "gpio-keys";
-		btn1: button_0 { label = "B1"; status = "okay"; gpios = <&gpioe 10 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_0>; };
-		btn2: button_1 { label = "B2"; status = "okay"; gpios = <&gpioe 11 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_1>; };
-		btn3: button_2 { label = "B3"; status = "okay"; gpios = <&gpioe 12 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_2>; };
-		btn4: button_3 { label = "B4"; status = "okay"; gpios = <&gpioe 13 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_3>; };
-		btn5: button_4 { label = "B5"; status = "okay"; gpios = <&gpiob 12 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_4>; };
-		btn6: button_5 { label = "B6"; status = "okay"; gpios = <&gpiod 10 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_5>; };
+
+		btn1: button_1 { status = "okay"; gpios = <&gpioe 10 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_0>; };
+		btn2: button_2 { status = "okay"; gpios = <&gpioe 11 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_1>; };
+		btn3: button_3 { status = "okay"; gpios = <&gpioe 12 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_2>; };
+		btn4: button_4 { status = "okay"; gpios = <&gpioe 13 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_3>; };
+		btn5: button_5 { status = "okay"; gpios = <&gpiob 12 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_4>; };
+		btn6: button_6 { status = "okay"; gpios = <&gpiod 10 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_5>; };
+
+		mb1_int: mb1_interrupt {
+			gpios = <&gpiod  0 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;		// shared with MB1
+		};
+		mb2_int: mb2_interrupt {
+			gpios = <&gpiob  2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+		};
+		mb3_int: mb3_interrupt {
+			gpios = <&gpioc  7 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+		};
+		mb4_int: mb4_interrupt {
+			gpios = <&gpiob 14 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+		};
+		hdr_int1: hdr_interrupt_1 {
+			gpios = <&gpiod  0 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;		// shared with MB1
+		};
+		hdr_int2: hdr_interrupt_2 {
+			gpios = <&gpioe  1 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+		};
+		hdr_int3: hdr_interrupt_3 {
+			gpios = <&gpioe  3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+		};
+		hdr_int4: hdr_interrupt_4 {
+			gpios = <&gpioe  4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+		};
 	};
         
 	connectors {
@@ -254,8 +286,8 @@ zephyr_udc0: &usbotg_fs {
 				< 3 0 &gpioa 5 0>,	<13 0 &gpiob  6 0>,	// SCK	- TX
 				< 4 0 &gpioa 6 0>,	<12 0 &gpiob 10 0>,	// MISO	- SCL
 				< 5 0 &gpioa 7 0>,	<11 0 &gpiob 11 0>;	// MOSI	- SDA
-										// 3.3V	- 5V
-										// GND	- GND
+														// 3.3V	- 5V
+														// GND	- GND
 		};
 
 		mb3: mikrobus_3 {
@@ -270,8 +302,8 @@ zephyr_udc0: &usbotg_fs {
 				< 3 0 &gpioa  5 0>,	<13 0 &gpiob  6 0>,	// SCK	- TX
 				< 4 0 &gpioa  6 0>,	<12 0 &gpiob 10 0>,	// MISO	- SCL
 				< 5 0 &gpioa  7 0>,	<11 0 &gpiob 11 0>;	// MOSI	- SDA
-										// 3.3V	- 5V
-										// GND	- GND
+														// 3.3V	- 5V
+														// GND	- GND
 		};
 
 		mb4: mikrobus_4 {
@@ -286,8 +318,8 @@ zephyr_udc0: &usbotg_fs {
 				< 3 0 &gpioc 10 0>,	<13 0 &gpiod  8 0>,	// SCK	- TX
 				< 4 0 &gpioc 11 0>,	<12 0 &gpiob 10 0>,	// MISO	- SCL
 				< 5 0 &gpioc 12 0>,	<11 0 &gpiob 11 0>;	// MOSI	- SDA
-										// 3.3V	- 5V
-										// GND	- GND
+														// 3.3V	- 5V
+														// GND	- GND
 		};
 
 	};
