@@ -1,0 +1,8 @@
+cat >> modules/lib/micro_ros_zephyr_module/colcon.meta <<'EOF'
+        ,"*": {
+            "cmake-args": [
+                "-DCMAKE_C_FLAGS=-w",
+                "-DCMAKE_CXX_FLAGS=-w"
+            ]
+        }
+EOF

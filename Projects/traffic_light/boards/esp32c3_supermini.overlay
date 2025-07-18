@@ -1,0 +1,33 @@
+/ {
+    aliases {
+        led0 = &led_green;
+        led1 = &led_yellow;
+        led2 = &led_red;
+    };
+
+    leds {
+        compatible = "gpio-leds";
+        led_green: led_green {
+            gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
+            label = "Green LED";
+        };
+        led_yellow: led_yellow {
+            gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>;
+            label = "Yellow LED";
+        };
+        led_red: led_red {
+            gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>;
+            label = "Red LED";
+        };
+    };
+};
+/ {
+    wifi-credentials {
+        ssid = "sml_legacy";
+        psk = "SML4admin.";
+    };
+};
+
+&wifi {
+    status = "okay";
+};
