@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+
 config BOARD_CLICKER4_STM32F7
-	bool "MikroE Clicker 4 for STM32F7 board"
-	depends on SOC_STM32F745XX
+    bool "MikroElektronika Clicker 4 STM32F7 Development Board"
+    depends on SOC_STM32F745XG
+    #select HAS_DTS

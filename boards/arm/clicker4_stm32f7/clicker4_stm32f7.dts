@@ -1,91 +1,114 @@
+/*
+ * Copyright (c) 2024 Your Name
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 /dts-v1/;
-
-// Path: zephyr/hal/stm32/dts/...
-#include <st/f7/stm32f767Xi.dtsi>
-#include <st/f7/stm32f767b(g-i)tx-pinctrl.dtsi>
-
+#include <st/f7/stm32f745Xg.dtsi>
+#include <st/f7/stm32f745v(e-g)tx-pinctrl.dtsi>
 #include <zephyr/dt-bindings/input/input-event-codes.h>
-#include <zephyr/dt-bindings/pwm/pwm.h>
 
+/ {
+    model = "MikroElektronika Clicker 4 STM32F7";
+    compatible = "mikroe,clicker4-stm32f7", "st,stm32f745";
 
-// -------------------------------------------------------------
-// FLASH
+    chosen {
+        zephyr,console = &usart1;
+        zephyr,shell-uart = &usart1;
+        zephyr,sram = &sram0;
+        zephyr,flash = &flash0;
+        zephyr,code-partition = &slot0_partition;
+    };
+    aliases {
+        led0 = &led1;
+    };
+    leds {
+        compatible = "gpio-leds";
+        led1: led_1 {
+            gpios = <&gpioc 8 GPIO_ACTIVE_HIGH>;
+            label = "User LED1";
+        };
+        led2: led_2 {
+            gpios = <&gpioa 8 GPIO_ACTIVE_HIGH>;
+            label = "User LED2";
+        };
+        led3: led_3 {
+            gpios = <&gpiob 13 GPIO_ACTIVE_HIGH>;
+            label = "User LED3";
+        };
+        led4: led_4 {
+            gpios = <&gpiob 5 GPIO_ACTIVE_HIGH>;
+            label = "User LED4";
+        };
+        led5: led_5 {
+            gpios = <&gpiob 15 GPIO_ACTIVE_HIGH>;
+            label = "User LED5";
+        };
+        led6: led_6 {
+            gpios = <&gpioa 10 GPIO_ACTIVE_HIGH>;
+            label = "User LED6";
+        };
+    };
 
-&flash0 {
-	partitions {
-		compatible = "fixed-partitions";
-		#address-cells = <1>;
-		#size-cells = <1>;
+    gpio_keys {
+        compatible = "gpio-keys";
+        button1: button_1 {
+            label = "User BTN1";
+            gpios = <&gpioe 10 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+            zephyr,code = <INPUT_KEY_0>;
+        };
+        button2: button_2 {
+            label = "User BTN2";
+            gpios = <&gpioe 11 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+            zephyr,code = <INPUT_KEY_1>;
+        };
+        button3: button_3 {
+            label = "User BTN3";
+            gpios = <&gpioe 12 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+            zephyr,code = <INPUT_KEY_2>;
+        };
+        button4: button_4 {
+            label = "User BTN4";
+            gpios = <&gpioe 13 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+            zephyr,code = <INPUT_KEY_3>;
+        };
+        button5: button_5 {
+            label = "User BTN5";
+            gpios = <&gpiob 12 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+            zephyr,code = <INPUT_KEY_4>;
+        };
+        button6: button_6 {
+            label = "User BTN6";
+            gpios = <&gpiod 10 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+            zephyr,code = <INPUT_KEY_5>;
+        };
+    };
 
-		/* Sectors 0-1: 64 kB (bootloader) */
-		boot_partition: partition@0 {
-			reg = <0x00000000 DT_SIZE_K(64)>;
-			read-only;
-		};
+    mikrobus_connectors {
+        compatible = "mikrobus-connector";
+        #address-cells = <1>;
+        #size-cells = <0>;
 
-		/* Sectors 2-3: 64 kB (app storage) */
-		storage_partition: partition@10000 {
-			reg = <0x00010000 DT_SIZE_K(64)>;
-		};
+        mikrobus1: connector@0 {
+            reg = <0>;
+            label = "MikroBUS 1";
+        };
 
-		/* Sector 4: 128 kB - left unallocated */
+        mikrobus2: connector@1 {
+            reg = <1>;
+            label = "MikroBUS 2";
+        };
 
-		/* Image 0: 256k x 2 = 512k (Sectors 5-6) */
-		slot0_partition: partition@40000 {
-			reg = <0x00040000 DT_SIZE_K(512)>;
-		};
+        mikrobus3: connector@2 {
+            reg = <2>;
+            label = "MikroBUS 3";
+        };
 
-		/* Image 1: 256k (Sector 7) */
-		slot1_partition: partition@C0000 {
-			reg = <0x000C0000 DT_SIZE_K(256)>;
-		};
-
-		/* Scratch: 128k (Sector 8) */
-		scratch_partition: partition@100000 {
-			reg = <0x00100000 DT_SIZE_K(128)>;
-		};
-	};
-};
-
-
-// -------------------------------------------------------------
-// CLOCK
-
-&clk_lsi {
-	status = "okay";
-};
-
-&clk_hse {
-	clock-frequency = <DT_FREQ_M(25)>; /* 25MHz clock */
-	status = "okay";
-};
-
-&pll {
-    div-m = <25>; /* PLLM: divide HSE by 25 */
-    mul-n = <432>; /* PLLN: multiply by 432 */
-    div-p = <2>; /* PLLP: divide by 2 */
-    div-q = <9>; /* PLLQ: divide by 9 (for USB clock) */
-    clocks = <&clk_hse>;
-    status = "okay";
-};
-
-&rcc {
-	clocks = <&pll>;
-	clock-frequency = <DT_FREQ_M(216)>; /* 216MHz system clock */
-	ahb-prescaler = <1>; /* AHB prescaler */
-	apb1-prescaler = <4>; /* APB1 prescaler */
-	apb2-prescaler = <2>; /* APB2 prescaler */
-	status = "okay";
-};
-
-
-// -------------------------------------------------------------
-// USB
-
-zephyr_udc0: &usbotg_fs {
-    pinctrl-0 = <&usb_otg_fs_dm_pa11 &usb_otg_fs_dp_pa12>;
-    pinctrl-names = "default";
-    status = "okay";
+        mikrobus4: connector@3 {
+            reg = <3>;
+            label = "MikroBUS 4";
+        };
+    };
 
     cdc_acm_uart0: cdc_acm_uart0 {
         compatible = "zephyr,cdc-acm-uart";
@@ -94,234 +117,98 @@ zephyr_udc0: &usbotg_fs {
     };
 };
 
-
-// -------------------------------------------------------------
-// SPI
-
-// SPI controller for MB1, MB2, MB3
-&spi1 {
-	pinctrl-0 = <&spi1_sck_pa5 &spi1_miso_pa6 &spi1_mosi_pa7>;
-	pinctrl-names = "default";
-	cs-gpios = 
-		<&gpioa  4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
-		<&gpioh  2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
-		<&gpiod 13 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+&clk_hse {
+    clock-frequency = <DT_FREQ_M(25)>;  /* 25MHz external crystal */
+    status = "okay";
 };
 
-// SPI controller for MB4
-&spi3 {
-	pinctrl-0 = <&spi3_sck_pc10 &spi3_miso_pc11 &spi3_mosi_pc12>;
-	pinctrl-names = "default";
-	cs-gpios = <&gpiod 15 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+&pll {
+    div-m = <25>;
+    mul-n = <336>;
+    div-p = <2>;    /* PLLP: 336/2 = 168MHz (SYSCLK) */
+    div-q = <7>;    /* PLLQ: 336/7 = 48MHz (USB, SDMMC) */
+    clocks = <&clk_hse>;
+    status = "okay";
 };
 
-
-// -------------------------------------------------------------
-// I2C
-
-// I2C controller for MB1, MB2, MB3, MB4, HDR
-&i2c2 {
-	pinctrl-0 = <&i2c2_scl_pb10 &i2c2_sda_pb11>;
-	pinctrl-names = "default";
+&rcc {
+    clocks = <&pll>;
+    clock-frequency = <DT_FREQ_M(168)>;
+    ahb-prescaler = <1>;  /* HCLK = SYSCLK = 168MHz */
+    apb1-prescaler = <4>; /* PCLK1 = HCLK/4 = 42MHz */
+    apb2-prescaler = <2>; /* PCLK2 = HCLK/2 = 84MHz */
 };
 
+&flash0 {
+    partitions {
+        compatible = "fixed-partitions";
+        #address-cells = <1>;
+        #size-cells = <1>;
 
-// -------------------------------------------------------------
-// UART
+        boot_partition: partition@0 {
+            label = "mcuboot";
+            reg = <0x00000000 DT_SIZE_K(64)>;
+            read-only;
+        };
 
-&usart2 {
-	pinctrl-0 = <&usart2_tx_pa2 &usart2_rx_pa3>;
-	pinctrl-names = "default";
-	current-speed = <115200>;
+        slot0_partition: partition@10000 {
+            label = "image-0";
+            reg = <0x00010000 DT_SIZE_K(512)>;
+        };
+
+        slot1_partition: partition@90000 {
+            label = "image-1";
+            reg = <0x00090000 DT_SIZE_K(448)>;
+        };
+
+        storage_partition: partition@100000 {
+            label = "storage";
+            reg = <0x00100000 DT_SIZE_K(64)>;
+        };
+    };
 };
 
+/* USB OTG FS */
+&usbotg_fs {
+    pinctrl-0 = <&usb_otg_fs_dm_pa11 &usb_otg_fs_dp_pa12>;
+    pinctrl-names = "default";
+    status = "okay";
+};
+
+/* UART1 (Console) - Connected to ST-Link VCP */
 &usart1 {
-	pinctrl-0 = <&usart1_tx_pb6 &usart1_rx_pb7>;
-	pinctrl-names = "default";
-	current-speed = <115200>;
+    pinctrl-0 = <&usart1_tx_pb6 &usart1_rx_pb7>;
+    pinctrl-names = "default";
+    current-speed = <115200>;
+    status = "okay";
 };
 
-&usart3 {
-	pinctrl-0 = <&usart3_tx_pd8 &usart3_rx_pd9>;
-	pinctrl-names = "default";
-	current-speed = <115200>;
+/* UART2 - Available on headers */
+&usart2 {
+    pinctrl-0 = <&usart2_tx_pa2 &usart2_rx_pa3>;
+    pinctrl-names = "default";
+    current-speed = <115200>;
+    status = "okay";
 };
 
+/* I2C2 - Shared across mikroBUS sockets */
+&i2c2 {
+    pinctrl-0 = <&i2c2_scl_pb10 &i2c2_sda_pb11>;
+    pinctrl-names = "default";
+    clock-frequency = <I2C_BITRATE_FAST>;
+    status = "okay";
+};
 
-// -------------------------------------------------------------
-// Board: Clicker 4 for STM32F7
+/* SPI1 - mikroBUS 1-3 */
+&spi1 {
+    pinctrl-0 = <&spi1_sck_pa5 &spi1_miso_pa6 &spi1_mosi_pa7>;
+    pinctrl-names = "default";
+    status = "okay";
+};
 
-/ {
-	model = "MikroElektronika Clicker 4 for STM32";
-	compatible = "mikroe,clicker4-stm32", "st,stm32f767";
-	
-	chosen {
-			zephyr,sram = &sram0;
-			zephyr,flash = &flash0;
-			zephyr,code-partition = &slot0_partition;
-			// zephyr,console = &cdc_acm_uart0; for usb port
-			zephyr,console = &usart1; // for MD2, connect logic analyzer
-	};
-
-	aliases {
-		// SPI
-		mb1-spi = &spi1;
-		mb2-spi = &spi1;
-		mb3-spi = &spi1;
-		mb4-spi = &spi3;
-		hdr-spi1 = &spi3;
-		// I2C
-		mb1-i2c = &i2c2;
-		mb2-i2c = &i2c2;
-		mb3-i2c = &i2c2;
-		mb4-i2c = &i2c2;
-		hdr-i2c1 = &i2c2;
-		// UART
-		mb1-uart = &usart2;
-		mb2-uart = &usart1;
-		mb3-uart = &usart1;
-		mb4-uart = &usart3;
-		hdr-uart2 = &usart2;
-		hdr-uart3 = &usart1;
-		// PWM
-		mb1-pwm-pin = &tim1_ch1_pe9;
-		mb2-pwm-pin = &tim4_ch1_pd12;
-		mb3-pwm-pin = &tim8_ch1_pc6;	// alt. tim3_ch1_pc6
-		mb4-pwm-pin = &tim3_ch4_pc9;	// alt. tim8_ch4_pc9
-		hdr-pwm1-pin = &tim10_ch1_pb8;	// alt. tim4_ch3_pb8
-		hdr-pwm2-pin = &tim11_ch1_pb9;	// alt. tim4_ch4_pb9
-		hdr-pwm3-pin = &tim9_ch1_pe5;
-		hdr-pwm4-pin = &tim9_ch2_pe6;
-		mb1-pwm-tmr = &timers1;
-		mb2-pwm-tmr = &timers4;
-		mb3-pwm-tmr = &timers8;
-		mb4-pwm-tmr = &timers3;
-		hdr-pwm1-tmr = &timers10;
-		hdr-pwm2-tmr = &timers11;
-		hdr-pwm34-tmr = &timers9;
-		// INT
-		mb1-int-pin = &mb1_int;		// shared with MB1
-		mb2-int-pin = &mb2_int;
-		mb3-int-pin = &mb3_int;
-		mb4-int-pin = &mb4_int;
-		hdr-int1-pin = &hdr_int1;	// shared with MB1
-		hdr-int2-pin = &hdr_int2;
-		hdr-int3-pin = &hdr_int3;
-		hdr-int4-pin = &hdr_int4;
-	};
-
-	leds {
-		compatible = "gpio-leds";
-		led1: led_1 { gpios = <&gpioc 8   GPIO_ACTIVE_HIGH>; };
-		led2: led_2 { gpios = <&gpioa 8   GPIO_ACTIVE_HIGH>; };
-		led3: led_3 { gpios = <&gpiob 13  GPIO_ACTIVE_HIGH>; };
-		led4: led_4 { gpios = <&gpiob 5   GPIO_ACTIVE_HIGH>; };
-		led5: led_5 { gpios = <&gpiob 15  GPIO_ACTIVE_HIGH>; };
-		led6: led_6 { gpios = <&gpioa 10  GPIO_ACTIVE_HIGH>; };
-	};
-
-	keys {
-		compatible = "gpio-keys";
-
-		btn1: button_1 { status = "okay"; gpios = <&gpioe 10 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_0>; };
-		btn2: button_2 { status = "okay"; gpios = <&gpioe 11 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_1>; };
-		btn3: button_3 { status = "okay"; gpios = <&gpioe 12 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_2>; };
-		btn4: button_4 { status = "okay"; gpios = <&gpioe 13 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_3>; };
-		btn5: button_5 { status = "okay"; gpios = <&gpiob 12 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_4>; };
-		btn6: button_6 { status = "okay"; gpios = <&gpiod 10 GPIO_ACTIVE_LOW>; zephyr,code = <INPUT_KEY_5>; };
-
-		mb1_int: mb1_interrupt {
-			gpios = <&gpiod  0 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;		// shared with MB1
-		};
-		mb2_int: mb2_interrupt {
-			gpios = <&gpiob  2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
-		};
-		mb3_int: mb3_interrupt {
-			gpios = <&gpioc  7 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
-		};
-		mb4_int: mb4_interrupt {
-			gpios = <&gpiob 14 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
-		};
-		hdr_int1: hdr_interrupt_1 {
-			gpios = <&gpiod  0 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;		// shared with MB1
-		};
-		hdr_int2: hdr_interrupt_2 {
-			gpios = <&gpioe  1 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
-		};
-		hdr_int3: hdr_interrupt_3 {
-			gpios = <&gpioe  3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
-		};
-		hdr_int4: hdr_interrupt_4 {
-			gpios = <&gpioe  4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
-		};
-	};
-        
-	connectors {
-
-		mb1: mikrobus_1 {
-			compatible = "mikro-bus";
-			#gpio-cells = <2>;
-			gpio-map-mask = <0xffffffff 0xffffffc0>;
-			gpio-map-pass-thru = <0 0x3f>;
-			gpio-map =
-				< 0 0 &gpioc  4 0>,	<16 0 &gpioe  9 0>,	// AN	- PWM
-				< 1 0 &gpioc 15 0>,	<15 0 &gpiod  0 0>,	// RST	- INT
-				< 2 0 &gpioa  4 0>,	<14 0 &gpioa  3 0>,	// CS	- RX
-				< 3 0 &gpioa  5 0>,	<13 0 &gpioa  2 0>,	// SCK	- TX
-				< 4 0 &gpioa  6 0>,	<12 0 &gpiob 10 0>,	// MISO	- SCL
-				< 5 0 &gpioa  7 0>,	<11 0 &gpiob 11 0>;	// MOSI	- SDA
-														// 3.3V	- 5V
-														// GND	- GND
-		};
-
-		mb2: mikrobus_2 {
-			compatible = "mikro-bus";
-			#gpio-cells = <2>;
-			gpio-map-mask = <0xffffffff 0xffffffc0>;
-			gpio-map-pass-thru = <0 0x3f>;
-			gpio-map =
-				< 0 0 &gpioc 5 0>,	<16 0 &gpiod 12 0>,	// AN	- PWM
-				< 1 0 &gpioe 7 0>,	<15 0 &gpiob  2 0>,	// RST	- INT
-				< 2 0 &gpioe 8 0>,	<14 0 &gpiob  7 0>,	// CS	- RX
-				< 3 0 &gpioa 5 0>,	<13 0 &gpiob  6 0>,	// SCK	- TX
-				< 4 0 &gpioa 6 0>,	<12 0 &gpiob 10 0>,	// MISO	- SCL
-				< 5 0 &gpioa 7 0>,	<11 0 &gpiob 11 0>;	// MOSI	- SDA
-														// 3.3V	- 5V
-														// GND	- GND
-		};
-
-		mb3: mikrobus_3 {
-			compatible = "mikro-bus";
-			#gpio-cells = <2>;
-			gpio-map-mask = <0xffffffff 0xffffffc0>;
-			gpio-map-pass-thru = <0 0x3f>;
-			gpio-map =
-				< 0 0 &gpiob  0 0>,	<16 0 &gpioc  6 0>,	// AN	- PWM
-				< 1 0 &gpiod 11 0>,	<15 0 &gpioc  7 0>,	// RST	- INT
-				< 2 0 &gpiod 13 0>,	<14 0 &gpiob  7 0>,	// CS	- RX
-				< 3 0 &gpioa  5 0>,	<13 0 &gpiob  6 0>,	// SCK	- TX
-				< 4 0 &gpioa  6 0>,	<12 0 &gpiob 10 0>,	// MISO	- SCL
-				< 5 0 &gpioa  7 0>,	<11 0 &gpiob 11 0>;	// MOSI	- SDA
-														// 3.3V	- 5V
-														// GND	- GND
-		};
-
-		mb4: mikrobus_4 {
-			compatible = "mikro-bus";
-			#gpio-cells = <2>;
-			gpio-map-mask = <0xffffffff 0xffffffc0>;
-			gpio-map-pass-thru = <0 0x3f>;
-			gpio-map =
-				< 0 0 &gpiob  1 0>,	<16 0 &gpioc  9 0>,	// AN	- PWM
-				< 1 0 &gpiod 14 0>,	<15 0 &gpiob 14 0>,	// RST	- INT
-				< 2 0 &gpiod 15 0>,	<14 0 &gpiod  9 0>,	// CS	- RX
-				< 3 0 &gpioc 10 0>,	<13 0 &gpiod  8 0>,	// SCK	- TX
-				< 4 0 &gpioc 11 0>,	<12 0 &gpiob 10 0>,	// MISO	- SCL
-				< 5 0 &gpioc 12 0>,	<11 0 &gpiob 11 0>;	// MOSI	- SDA
-														// 3.3V	- 5V
-														// GND	- GND
-		};
-
-	};
-
+/* SPI3 - mikroBUS 4 */
+&spi3 {
+    pinctrl-0 = <&spi3_sck_pc10 &spi3_miso_pc11 &spi3_mosi_pc12>;
+    pinctrl-names = "default";
+    status = "okay";
 };

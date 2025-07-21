@@ -1,4 +1,3 @@
-
 config BOARD_CLICKER4_STM32F7
 	select SOC_STM32F745XX
 
