@@ -126,12 +126,12 @@ uint16_t wheel_right_ticks(void) { return count(&w[1]); }
 
 /* ── micro‑ROS odometry publisher (window‑based) ----------------------- */
 #include "ros_iface.h"
-#include <geometry_msgs/msg/twist.h>
+#include <geometry_msgs/msg/twist_with_covariance_stamped.h> // Use CovarianceStamped
 
 #define VELOCITY_SCALE (DIST_PER_TICK) /* m per tick          */
 #define FACTOR (VELOCITY_SCALE * (1000.0f / WINDOW_MS))
 
-static geometry_msgs__msg__Twist odom_msg;
+static geometry_msgs__msg__TwistWithCovarianceStamped odom_msg; // Change type
 static struct k_thread odom_thread_data;
 K_THREAD_STACK_DEFINE(odom_stack, 1024);
 
@@ -140,13 +140,30 @@ static void odom_thread(void *a, void *b, void *c) {
         k_sleep(K_MSEC(100));
 
     for (;;) {
-        k_sleep(K_MSEC(10)); // 100 Hz
+        k_sleep(K_MSEC(1)); // 100 Hz
 
         float vL = wheel_left_ticks() * FACTOR;
         float vR = wheel_right_ticks() * FACTOR;
 
-        odom_msg.linear.x = 0.5f * (vL + vR) * (forward_guess ? 1.0f : -1.0f);
-        odom_msg.angular.z = (vR - vL);
+        odom_msg.twist.twist.linear.x = 0.5f * (vL + vR) * (forward_guess ? 1.0f : -1.0f);
+        odom_msg.twist.twist.angular.z = (vR - vL);
+
+        // Set covariance: 0.1 along diagonal, rest zero
+        for (int i = 0; i < 36; i++)
+            odom_msg.twist.covariance[i] = 0;
+        odom_msg.twist.covariance[0] = 0.1;  // linear.x
+        odom_msg.twist.covariance[7] = 0.1;  // linear.y
+        odom_msg.twist.covariance[14] = 0.1; // linear.z
+        odom_msg.twist.covariance[21] = 0.1; // angular.x
+        odom_msg.twist.covariance[28] = 0.1; // angular.y
+        odom_msg.twist.covariance[35] = 0.1; // angular.z
+
+        odom_msg.header.stamp.sec = ros_iface_epoch_millis() / 1000;
+        odom_msg.header.stamp.nanosec = ros_iface_epoch_nanos();
+
+        strncpy(odom_msg.header.frame_id.data, "wheel_encoder", odom_msg.header.frame_id.capacity);
+        odom_msg.header.frame_id.size = strlen("wheel_encoder");
+        odom_msg.header.frame_id.capacity = odom_msg.header.frame_id.size + 1;
 
         rcl_publish(&encoders_pub, &odom_msg, NULL);
     }
@@ -156,5 +173,5 @@ void wheel_enc_start_odom_thread(void) {
     k_thread_create(&odom_thread_data, odom_stack,
                     K_THREAD_STACK_SIZEOF(odom_stack),
                     odom_thread, NULL, NULL, NULL,
-                    5, 0, K_NO_WAIT);
+                    6, 0, K_NO_WAIT);
 }

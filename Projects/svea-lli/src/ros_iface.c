@@ -55,6 +55,13 @@ rcl_publisher_t imu_pub;
 // Encoder Publisher
 rcl_publisher_t encoders_pub;
 
+// Time synchronization variables
+static int64_t synced_epoch_ns = 0;
+static int64_t synced_epoch_ms = 0;
+static uint64_t synced_uptime_ms = 0;
+static struct k_thread time_sync_thread_data;
+K_THREAD_STACK_DEFINE(time_sync_stack, 512);
+
 // Map pulse [1000,2000] to int8 [-127,127]
 static inline int8_t pulse_to_int8(int32_t us) {
     if (us < 1000)
@@ -91,6 +98,25 @@ static void diff_cb(const void *msg) {
     bool value = ((std_msgs__msg__Bool *)msg)->data;
     LOG_DBG("Received diff command: %s", value ? "true" : "false");
     g_ros_ctrl.diff = value;
+}
+
+// Sync time thread: updates virtual clock every second
+static void time_sync_thread(void *a, void *b, void *c) {
+    while (!ros_initialized) {
+        k_sleep(K_MSEC(100));
+    }
+    while (1) {
+
+        if (rmw_uros_epoch_synchronized()) {
+            synced_epoch_ns = rmw_uros_epoch_nanos();
+            synced_epoch_ms = rmw_uros_epoch_millis();
+
+            synced_uptime_ms = k_uptime_get();
+        } else {
+            rmw_uros_sync_session(1000);
+        }
+        k_sleep(K_MSEC(10000));
+    }
 }
 
 static void ros_iface_thread(void *a, void *b, void *c) {
@@ -178,7 +204,7 @@ static void ros_iface_thread(void *a, void *b, void *c) {
             continue;
         }
 
-        rc = rclc_publisher_init_best_effort(&encoders_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist), "/lli/sensor/encoders");
+        rc = rclc_publisher_init_best_effort(&encoders_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, TwistWithCovarianceStamped), "/lli/sensor/encoders");
         if (rc != RCL_RET_OK) {
             LOG_ERR("rclc_publisher_init_best_effort (pub_encoders) failed: %d", rc);
             rcl_node_fini(&node);
@@ -264,8 +290,9 @@ static void ros_iface_thread(void *a, void *b, void *c) {
         // If all succeeded, break out of retry loop
         break;
     }
-
+    rmw_uros_sync_session(1000);
     LOG_INF("ROS iface thread started");
+
     ros_initialized = true;
     const uint32_t pub_period_ms = 50; // Publish every 50ms
     uint64_t last_pub_time = k_uptime_get();
@@ -313,8 +340,25 @@ static void ros_iface_thread(void *a, void *b, void *c) {
     }
 }
 
+// Getter for virtual clock (milliseconds)
+int32_t ros_iface_epoch_millis(void) {
+    uint64_t now_ms = k_uptime_get();
+    return (int32_t)(synced_epoch_ms + (now_ms - synced_uptime_ms));
+}
+
+// Getter for virtual clock (nanoseconds)
+int32_t ros_iface_epoch_nanos(void) {
+    uint64_t now_ms = k_uptime_get();
+    return (int32_t)(synced_epoch_ns + ((now_ms - synced_uptime_ms) * 1000000));
+}
+
+// Call this in ros_iface_init
 void ros_iface_init(void) {
     k_thread_create(&ros_thread, ros_stack, K_THREAD_STACK_SIZEOF(ros_stack),
                     ros_iface_thread, NULL, NULL, NULL,
                     5, 0, K_NO_WAIT);
+
+    k_thread_create(&time_sync_thread_data, time_sync_stack, K_THREAD_STACK_SIZEOF(time_sync_stack),
+                    time_sync_thread, NULL, NULL, NULL,
+                    7, 0, K_NO_WAIT);
 }

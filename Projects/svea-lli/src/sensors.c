@@ -1,5 +1,6 @@
 #include "sensors.h"
 #include "ros_iface.h"
+#include <rmw_microros/rmw_microros.h>
 #include <sensor_msgs/msg/imu.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/sensor.h>
@@ -55,6 +56,34 @@ void sensors_thread(void *p1, void *p2, void *p3) {
             imu_msg.angular_velocity.x = sensor_value_to_double(&gyro[0]);
             imu_msg.angular_velocity.y = sensor_value_to_double(&gyro[1]);
             imu_msg.angular_velocity.z = sensor_value_to_double(&gyro[2]);
+
+            imu_msg.header.stamp.sec = ros_iface_epoch_millis() / 1000;
+            imu_msg.header.stamp.nanosec = ros_iface_epoch_nanos();
+
+            strncpy(imu_msg.header.frame_id.data, "imu", imu_msg.header.frame_id.capacity);
+            imu_msg.header.frame_id.size = strlen("imu");
+            imu_msg.header.frame_id.capacity = imu_msg.header.frame_id.size + 1;
+
+            // Example: set diagonal variances, rest zero
+            imu_msg.orientation_covariance[0] = -1; // No orientation estimate
+            for (int i = 1; i < 9; i++)
+                imu_msg.orientation_covariance[i] = 0;
+
+            imu_msg.angular_velocity_covariance[0] = 0.01; // X variance
+            imu_msg.angular_velocity_covariance[4] = 0.01; // Y variance
+            imu_msg.angular_velocity_covariance[8] = 0.01; // Z variance
+            for (int i = 0; i < 9; i++) {
+                if (i != 0 && i != 4 && i != 8)
+                    imu_msg.angular_velocity_covariance[i] = 0;
+            }
+
+            imu_msg.linear_acceleration_covariance[0] = 0.1; // X variance
+            imu_msg.linear_acceleration_covariance[4] = 0.1; // Y variance
+            imu_msg.linear_acceleration_covariance[8] = 0.1; // Z variance
+            for (int i = 0; i < 9; i++) {
+                if (i != 0 && i != 4 && i != 8)
+                    imu_msg.linear_acceleration_covariance[i] = 0;
+            }
 
             if (ros_initialized) {
                 rcl_ret_t rc = rcl_publish(&imu_pub, &imu_msg, NULL);
