@@ -57,8 +57,8 @@ void sensors_thread(void *p1, void *p2, void *p3) {
             imu_msg.angular_velocity.y = sensor_value_to_double(&gyro[1]);
             imu_msg.angular_velocity.z = sensor_value_to_double(&gyro[2]);
 
-            imu_msg.header.stamp.sec = ros_iface_epoch_millis() / 1000;
-            imu_msg.header.stamp.nanosec = ros_iface_epoch_nanos();
+            imu_msg.header.stamp.sec = (int32_t)(ros_iface_epoch_millis() / 1000ULL);
+            imu_msg.header.stamp.nanosec = (uint32_t)(ros_iface_epoch_nanos() % 1000000000ULL);
 
             strncpy(imu_msg.header.frame_id.data, "imu", imu_msg.header.frame_id.capacity);
             imu_msg.header.frame_id.size = strlen("imu");
@@ -95,6 +95,6 @@ void sensors_thread(void *p1, void *p2, void *p3) {
             LOG_WRN("Failed to fetch sensor sample");
         }
 
-        k_sleep(K_MSEC(1));
+        k_sleep(K_MSEC(5));
     }
 }

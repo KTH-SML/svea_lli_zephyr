@@ -24,7 +24,7 @@ extern bool ros_initialized;
 extern rcl_publisher_t imu_pub;
 extern rcl_publisher_t encoders_pub;
 
-int32_t ros_iface_epoch_millis(void);
-int32_t ros_iface_epoch_nanos(void);
+uint64_t ros_iface_epoch_millis(void);
+uint64_t ros_iface_epoch_nanos(void);
 
 #endif // ROS_IFACE_H

@@ -60,7 +60,7 @@ static int64_t synced_epoch_ns = 0;
 static int64_t synced_epoch_ms = 0;
 static uint64_t synced_uptime_ms = 0;
 static struct k_thread time_sync_thread_data;
-K_THREAD_STACK_DEFINE(time_sync_stack, 512);
+K_THREAD_STACK_DEFINE(time_sync_stack, 2048);
 
 // Map pulse [1000,2000] to int8 [-127,127]
 static inline int8_t pulse_to_int8(int32_t us) {
@@ -100,22 +100,31 @@ static void diff_cb(const void *msg) {
     g_ros_ctrl.diff = value;
 }
 
+static uint64_t epoch_off_ns; /* agent_epoch ‑ local_uptime */
+static atomic_t epoch_locked = ATOMIC_INIT(0);
 // Sync time thread: updates virtual clock every second
 static void time_sync_thread(void *a, void *b, void *c) {
-    while (!ros_initialized) {
+    while (!ros_initialized)
         k_sleep(K_MSEC(100));
-    }
+
     while (1) {
+        rmw_uros_sync_session(200);
 
-        if (rmw_uros_epoch_synchronized()) {
-            synced_epoch_ns = rmw_uros_epoch_nanos();
-            synced_epoch_ms = rmw_uros_epoch_millis();
+        if (rmw_uros_epoch_synchronized() &&
+            !atomic_test_and_set_bit(&epoch_locked, 0)) {
 
-            synced_uptime_ms = k_uptime_get();
-        } else {
-            rmw_uros_sync_session(1000);
+            uint64_t agent_ns = rmw_uros_epoch_nanos();
+            uint64_t up_ns = k_uptime_get() * 1000000ULL;
+
+            /* disable IRQs: atomic on 32‑bit CPU */
+            unsigned int key = irq_lock();
+            epoch_off_ns = agent_ns - up_ns;
+            irq_unlock(key);
+
+            LOG_INF("Time locked to agent, offset = %lld ns",
+                    (long long)epoch_off_ns);
         }
-        k_sleep(K_MSEC(10000));
+        k_sleep(K_SECONDS(1)); /* lower bus traffic */
     }
 }
 
@@ -340,16 +349,21 @@ static void ros_iface_thread(void *a, void *b, void *c) {
     }
 }
 
-// Getter for virtual clock (milliseconds)
-int32_t ros_iface_epoch_millis(void) {
-    uint64_t now_ms = k_uptime_get();
-    return (int32_t)(synced_epoch_ms + (now_ms - synced_uptime_ms));
+uint64_t ros_iface_epoch_millis(void) {
+    unsigned int key = irq_lock(); // atomic copy
+    uint64_t off = epoch_off_ns;
+    irq_unlock(key);
+
+    return k_uptime_get() + off / 1000000ULL;
 }
 
-// Getter for virtual clock (nanoseconds)
-int32_t ros_iface_epoch_nanos(void) {
-    uint64_t now_ms = k_uptime_get();
-    return (int32_t)(synced_epoch_ns + ((now_ms - synced_uptime_ms) * 1000000));
+uint64_t ros_iface_epoch_nanos(void) /* new helper: epoch ns */
+{
+    unsigned int key = irq_lock(); /* atomic copy       */
+    uint64_t off = epoch_off_ns;
+    irq_unlock(key);
+
+    return k_uptime_get() * 1000000ULL + off;
 }
 
 // Call this in ros_iface_init
@@ -357,8 +371,10 @@ void ros_iface_init(void) {
     k_thread_create(&ros_thread, ros_stack, K_THREAD_STACK_SIZEOF(ros_stack),
                     ros_iface_thread, NULL, NULL, NULL,
                     5, 0, K_NO_WAIT);
+    k_thread_name_set(&ros_thread, "ros_iface");
 
     k_thread_create(&time_sync_thread_data, time_sync_stack, K_THREAD_STACK_SIZEOF(time_sync_stack),
                     time_sync_thread, NULL, NULL, NULL,
-                    7, 0, K_NO_WAIT);
+                    4, 0, K_NO_WAIT);
+    k_thread_name_set(&time_sync_thread_data, "time_sync");
 }
