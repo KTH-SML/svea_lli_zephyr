@@ -23,6 +23,9 @@ LOG_MODULE_REGISTER(wheel_enc, LOG_LEVEL_INF);
 #define MAX_SPEED 3.0f      /* m/s  (top speed)                   */
 #define MIN_SPEED 0.10f     /* m/s  (lowest speed to measure well)*/
 
+#define WHEELBASE 0.32f
+
+#define CALIBRATION_FACTOR 0.93f /* factor to scale ticks to m/s     */
 /* ── compile‑time geometry helpers ------------------------------------ */
 #define WHEEL_CIRC (M_PI * WHEEL_DIAM)             /* m / revolution    */
 #define DIST_PER_TICK (WHEEL_CIRC / TICKS_PER_REV) /* m / edge          */
@@ -133,20 +136,19 @@ uint16_t wheel_right_ticks(void) { return count(&w[1]); }
 
 static geometry_msgs__msg__TwistWithCovarianceStamped odom_msg; // Change type
 static struct k_thread odom_thread_data;
-K_THREAD_STACK_DEFINE(odom_stack, 1024);
+K_THREAD_STACK_DEFINE(odom_stack, 2048);
 
 static void odom_thread(void *a, void *b, void *c) {
     while (!ros_initialized)
         k_sleep(K_MSEC(100));
 
     for (;;) {
-        k_sleep(K_MSEC(1)); // 100 Hz
 
-        float vL = wheel_left_ticks() * FACTOR;
-        float vR = wheel_right_ticks() * FACTOR;
+        float vL = wheel_left_ticks() * FACTOR * CALIBRATION_FACTOR;
+        float vR = wheel_right_ticks() * FACTOR * CALIBRATION_FACTOR;
 
         odom_msg.twist.twist.linear.x = 0.5f * (vL + vR) * (forward_guess ? 1.0f : -1.0f);
-        odom_msg.twist.twist.angular.z = (vR - vL);
+        odom_msg.twist.twist.angular.z = (vL - vR) / WHEELBASE / 2 * (forward_guess ? 1.0f : -1.0f);
 
         // Set covariance: 0.1 along diagonal, rest zero
         for (int i = 0; i < 36; i++)
@@ -158,14 +160,15 @@ static void odom_thread(void *a, void *b, void *c) {
         odom_msg.twist.covariance[28] = 0.1; // angular.y
         odom_msg.twist.covariance[35] = 0.1; // angular.z
 
-        odom_msg.header.stamp.sec = ros_iface_epoch_millis() / 1000;
-        odom_msg.header.stamp.nanosec = ros_iface_epoch_nanos();
+        odom_msg.header.stamp.sec = (int32_t)(ros_iface_epoch_millis() / 1000ULL);
+        odom_msg.header.stamp.nanosec = (uint32_t)(ros_iface_epoch_nanos() % 1000000000ULL);
 
         strncpy(odom_msg.header.frame_id.data, "wheel_encoder", odom_msg.header.frame_id.capacity);
         odom_msg.header.frame_id.size = strlen("wheel_encoder");
         odom_msg.header.frame_id.capacity = odom_msg.header.frame_id.size + 1;
 
         rcl_publish(&encoders_pub, &odom_msg, NULL);
+        k_sleep(K_MSEC(5));
     }
 }
 
