@@ -113,6 +113,23 @@ static inline uint16_t count(struct wheel_ctx *c) {
     return c->len;
 }
 
+static inline float speed(struct wheel_ctx *c) {
+    unsigned int key = irq_lock();
+    uint16_t n = c->len;
+    uint32_t t0 = n ? c->times[0] : 0;
+    uint32_t t1 = n ? c->times[n - 1] : 0;
+    irq_unlock(key);
+
+    if (n < 2 || t1 == t0) /* not enough data */
+        return 0.0f;
+
+    float dt = (t1 - t0) * 1e-3f;           /* ms → s */
+    float v = (n - 1) * DIST_PER_TICK / dt; /* m s⁻¹ */
+    if (fabsf(v) < MIN_SPEED)
+        return 0.0f;
+    return v;
+}
+
 void wheel_enc_init(void) {
     for (int i = 0; i < 2; i++) {
         gpio_pin_configure_dt(&w[i].gpio, GPIO_INPUT | GPIO_PULL_UP);
@@ -127,12 +144,15 @@ void wheel_enc_init(void) {
 uint16_t wheel_left_ticks(void) { return count(&w[0]); }
 uint16_t wheel_right_ticks(void) { return count(&w[1]); }
 
+float wheel_left_speed(void) {
+    return speed(&w[0]) * CALIBRATION_FACTOR; /* m/s */
+}
+float wheel_right_speed(void) {
+    return speed(&w[1]) * CALIBRATION_FACTOR; /* m/s */
+}
 /* ── micro‑ROS odometry publisher (window‑based) ----------------------- */
 #include "ros_iface.h"
 #include <geometry_msgs/msg/twist_with_covariance_stamped.h> // Use CovarianceStamped
-
-#define VELOCITY_SCALE (DIST_PER_TICK) /* m per tick          */
-#define FACTOR (VELOCITY_SCALE * (1000.0f / WINDOW_MS))
 
 static geometry_msgs__msg__TwistWithCovarianceStamped odom_msg; // Change type
 static struct k_thread odom_thread_data;
@@ -144,11 +164,11 @@ static void odom_thread(void *a, void *b, void *c) {
 
     for (;;) {
 
-        float vL = wheel_left_ticks() * FACTOR * CALIBRATION_FACTOR;
-        float vR = wheel_right_ticks() * FACTOR * CALIBRATION_FACTOR;
+        float vL = wheel_left_speed();
+        float vR = wheel_right_speed();
 
         odom_msg.twist.twist.linear.x = 0.5f * (vL + vR) * (forward_guess ? 1.0f : -1.0f);
-        odom_msg.twist.twist.angular.z = (vL - vR) / WHEELBASE / 2 * (forward_guess ? 1.0f : -1.0f);
+        odom_msg.twist.twist.angular.z = ((vL - vR) / WHEELBASE) * (forward_guess ? 1.0f : -1.0f) * 2; // IDK why we need to multiply by 2 but it works
 
         // Set covariance: 0.1 along diagonal, rest zero
         for (int i = 0; i < 36; i++)

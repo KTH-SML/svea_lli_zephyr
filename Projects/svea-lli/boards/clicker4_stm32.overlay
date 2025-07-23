@@ -16,8 +16,8 @@
                      <&mb1  1 GPIO_ACTIVE_HIGH>;
         accel-odr = <8>;
         gyro-odr = <8>;
-        accel-range = <2>;
-        gyro-range = <125>;
+        accel-range = <4>;
+        gyro-range = <250>;
         reg = <0x6b>;
     };
 };
