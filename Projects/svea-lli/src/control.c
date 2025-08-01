@@ -186,7 +186,7 @@ static void control_thread(void *, void *, void *) {
             //             steer, thr, gear, override, override_age, remote_connected, accel, decel);
             //     log_counter = 0;
             // }
-            forward_guess = thr > 1500; // Guess forward direction based on throttle
+            forward_guess = thr > 1450; // Guess forward direction based on throttle, TODO better handling with stopping
         }
 
         servo_set_ticks(&servos[SERVO_STEERING].spec, steer);
