@@ -1,6 +1,7 @@
 /* src/control.c  –  fast, non-blocking servo output -------------------- */
 #include "control.h"
-#include "rc_input.h" /* rc_get_pulse_us() prototype        */
+#include "rc_input.h"  /* rc_get_pulse_us() prototype        */
+#include "ros_iface.h" /* ros_get_command() prototype       */
 
 #include <stdlib.h>       // <-- Add this line
 #include <stm32_ll_tim.h> /* low-level TIM helpers               */
@@ -197,7 +198,7 @@ static void control_thread(void *, void *, void *) {
                 g_ros_ctrl.steering = (int8_t)((int32_t)steer - 1500) * 127 / 500;
                 g_ros_ctrl.throttle = (int8_t)((int32_t)thr - 1500) * 127 / 500;
                 g_ros_ctrl.high_gear = (gear > 1500);
-            } else {
+            } else if (state == ROS_AGENT_CONNECTED) {
                 // Use signed int8 from g_ros_ctrl, map to us
                 steer = int8_to_us(g_ros_ctrl.steering);
                 thr = int8_to_us(g_ros_ctrl.throttle);
