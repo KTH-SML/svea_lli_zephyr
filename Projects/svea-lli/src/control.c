@@ -103,6 +103,41 @@ static inline int32_t clamp_throttle(int32_t value, int32_t prev, int32_t max_ac
     return value;
 }
 
+// Place these static variables at file scope (top of file, after global variables)
+static uint64_t forward_start_us = 0;
+static uint64_t reverse_start_us = 0;
+
+static void update_forward_guess(uint32_t thr) {
+    const int threshold_us = 50;             // 50 us away from neutral
+    const uint64_t required_time_us = 10000; // 10 ms required in one direction
+
+    uint64_t now_us = k_ticks_to_us_floor64(k_uptime_ticks());
+
+    if (thr > 1500 + threshold_us) {
+        // Going forward
+        if (forward_start_us == 0) {
+            forward_start_us = now_us;
+        }
+        reverse_start_us = 0;
+        if ((now_us - forward_start_us) >= required_time_us) {
+            forward_guess = true;
+        }
+    } else if (thr < 1500 - threshold_us) {
+        // Going reverse
+        if (reverse_start_us == 0) {
+            reverse_start_us = now_us;
+        }
+        forward_start_us = 0;
+        if ((now_us - reverse_start_us) >= required_time_us) {
+            forward_guess = false;
+        }
+    } else {
+        // Near neutral, reset both timers
+        forward_start_us = 0;
+        reverse_start_us = 0;
+    }
+}
+
 static void control_thread(void *, void *, void *) {
     while (!servos_initialized) {
         k_sleep(K_MSEC(10));
@@ -186,7 +221,7 @@ static void control_thread(void *, void *, void *) {
             //             steer, thr, gear, override, override_age, remote_connected, accel, decel);
             //     log_counter = 0;
             // }
-            forward_guess = thr > 1450; // Guess forward direction based on throttle, TODO better handling with stopping
+            update_forward_guess(thr);
         }
 
         servo_set_ticks(&servos[SERVO_STEERING].spec, steer);
