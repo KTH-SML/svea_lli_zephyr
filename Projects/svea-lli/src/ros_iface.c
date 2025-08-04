@@ -30,7 +30,7 @@ LOG_MODULE_REGISTER(ros_iface, LOG_LEVEL_INF);
 ros_ctrl_t g_ros_ctrl = {0};
 #define ROS_STACK_SIZE 4096
 
-bool ros_initialized = false;
+bool ros_connected = false;
 enum ros_states state = ROS_WAITING_AGENT;
 
 static K_THREAD_STACK_DEFINE(ros_stack, ROS_STACK_SIZE);
@@ -111,7 +111,7 @@ static void time_sync_thread(void *a, void *b, void *c) {
             k_sleep(K_SECONDS(1));
             continue;
         }
-        rmw_ret_t rc = rmw_uros_sync_session(200);
+        rmw_ret_t rc = rmw_uros_sync_session(1000);
         if (rc != RMW_RET_OK) {
             state = ROS_AGENT_DISCONNECTED;
             LOG_WRN("Failed to sync session: %d", rc);
@@ -232,15 +232,16 @@ static void ros_iface_thread(void *a, void *b, void *c) {
         zephyr_transport_write,
         zephyr_transport_read);
 
-    ros_initialized = false;
+    ros_connected = false;
 
     const uint32_t pub_period_ms = 50;
     uint64_t last_pub_time = 0;
 
     while (1) {
-        ros_initialized = false;
+
         switch (state) {
         case ROS_WAITING_AGENT:
+            ros_connected = false;
             if (rmw_uros_ping_agent(100, 1) == RMW_RET_OK) {
                 state = ROS_AGENT_AVAILABLE;
                 LOG_INF("micro-ROS agent available");
@@ -251,10 +252,11 @@ static void ros_iface_thread(void *a, void *b, void *c) {
             break;
 
         case ROS_AGENT_AVAILABLE:
+            ros_connected = false;
             if (create_ros_entities()) {
                 state = ROS_AGENT_CONNECTED;
                 LOG_INF("micro-ROS entities created");
-                ros_initialized = false;
+                ros_connected = false;
                 last_pub_time = k_uptime_get();
             } else {
                 state = ROS_WAITING_AGENT;
@@ -266,7 +268,7 @@ static void ros_iface_thread(void *a, void *b, void *c) {
 
         case ROS_AGENT_CONNECTED:
             // Assume connected; spin executor and publish at regular intervals
-            ros_initialized = true;
+            ros_connected = true;
             rclc_executor_spin_some(&executor, 10);
             k_msleep(1);
 
@@ -306,7 +308,7 @@ static void ros_iface_thread(void *a, void *b, void *c) {
                 if (!publish_ok) {
                     LOG_ERR("Publish failed, assuming agent disconnected");
                     // destroy_ros_entities();
-                    ros_initialized = false;
+                    ros_connected = false;
                     state = ROS_AGENT_DISCONNECTED;
                 }
             }
@@ -314,8 +316,9 @@ static void ros_iface_thread(void *a, void *b, void *c) {
 
         case ROS_AGENT_DISCONNECTED:
             LOG_INF("micro-ROS agent disconnected, destroying entities");
+            g_ros_ctrl.throttle = 0; // just in case
             destroy_ros_entities();
-            ros_initialized = false;
+            ros_connected = false;
             state = ROS_WAITING_AGENT;
             LOG_INF("Destroyed micro-ROS entities, waiting for agent");
             k_msleep(1000);

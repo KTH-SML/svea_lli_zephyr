@@ -18,7 +18,7 @@ typedef struct {
 
 void ros_iface_init(void);
 void ros_get_command(ros_command_t *cmd);
-extern bool ros_initialized;
+extern bool ros_connected;
 
 // Sensors
 extern rcl_publisher_t imu_pub;
