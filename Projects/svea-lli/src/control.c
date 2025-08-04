@@ -107,9 +107,10 @@ static inline int32_t clamp_throttle(int32_t value, int32_t prev, int32_t max_ac
 static uint64_t forward_start_us = 0;
 static uint64_t reverse_start_us = 0;
 
+// Not used for anything but to update the forward_guess, right now only used for encoder, assumes now fast change in direction
 static void update_forward_guess(uint32_t thr) {
     const int threshold_us = 50;             // 50 us away from neutral
-    const uint64_t required_time_us = 10000; // 10 ms required in one direction
+    const uint64_t required_time_us = 21000; // 21 ms required in one direction, aka a bit more than 2 periods
 
     uint64_t now_us = k_ticks_to_us_floor64(k_uptime_ticks());
 
