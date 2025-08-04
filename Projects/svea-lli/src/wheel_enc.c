@@ -193,11 +193,15 @@ static void odom_thread(void *a, void *b, void *c) {
         odom_msg.header.stamp.sec = (int32_t)(ms / 1000ULL);
         odom_msg.header.stamp.nanosec = (uint32_t)(ros_iface_epoch_nanos() % 1000000000ULL);
 
-        const char *frame = "wheel_encoder";
-        strncpy(odom_msg.header.frame_id.data, frame, odom_msg.header.frame_id.capacity);
-        odom_msg.header.frame_id.size = strlen(frame); /* keep capacity unchanged */
-
-        rcl_publish(&encoders_pub, &odom_msg, NULL);
+        // const char *frame = "wheel_encoder";
+        //  strncpy(odom_msg.header.frame_id.data, frame, odom_msg.header.frame_id.capacity);
+        //  odom_msg.header.frame_id.size = strlen(frame); /* keep capacity unchanged */
+        if (state == ROS_AGENT_CONNECTED) {
+            rc_channel_t rc = rcl_publish(&encoders_pub, &odom_msg, NULL);
+            if (rc != RCL_RET_OK) {
+                LOG_ERR("encoder publish failed: %d", rc);
+            }
+        }
         k_sleep(K_MSEC(5));
     }
 }

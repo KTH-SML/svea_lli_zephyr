@@ -27,10 +27,13 @@ void sensors_thread(void *p1, void *p2, void *p3) {
 
     imu_dev = DEVICE_DT_GET(DT_NODELABEL(ism330dlc));
 
-    while (!device_is_ready(imu_dev) && !ros_initialized) {
+    while (!device_is_ready(imu_dev)) {
         LOG_DBG("IMU device not ready, retrying...");
         k_sleep(K_MSEC(200));
     }
+
+    sensor_msgs__msg__Imu__init(&imu_msg);
+    rosidl_runtime_c__String__assign(&imu_msg.header.frame_id, "imu");
 
     LOG_INF("IMU device ready");
     ARG_UNUSED(p1);
@@ -60,9 +63,9 @@ void sensors_thread(void *p1, void *p2, void *p3) {
             imu_msg.header.stamp.sec = (int32_t)(ros_iface_epoch_millis() / 1000ULL);
             imu_msg.header.stamp.nanosec = (uint32_t)(ros_iface_epoch_nanos() % 1000000000ULL);
 
-            strncpy(imu_msg.header.frame_id.data, "imu", imu_msg.header.frame_id.capacity);
-            imu_msg.header.frame_id.size = strlen("imu");
-            imu_msg.header.frame_id.capacity = imu_msg.header.frame_id.size + 1;
+            // strncpy(imu_msg.header.frame_id.data, "imu", imu_msg.header.frame_id.capacity);
+            // imu_msg.header.frame_id.size = strlen("imu");
+            // imu_msg.header.frame_id.capacity = imu_msg.header.frame_id.size + 1;
 
             // Example: set diagonal variances, rest zero
             imu_msg.orientation_covariance[0] = -1; // No orientation estimate
@@ -85,7 +88,7 @@ void sensors_thread(void *p1, void *p2, void *p3) {
                     imu_msg.linear_acceleration_covariance[i] = 0;
             }
 
-            if (ros_initialized) {
+            if (state == ROS_AGENT_CONNECTED) {
                 rcl_ret_t rc = rcl_publish(&imu_pub, &imu_msg, NULL);
                 if (rc != RCL_RET_OK) {
                     LOG_ERR("IMU publish failed: %d", rc);
