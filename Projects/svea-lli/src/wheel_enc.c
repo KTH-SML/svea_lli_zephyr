@@ -166,8 +166,8 @@ static void odom_thread(void *a, void *b, void *c) {
     ARG_UNUSED(b);
     ARG_UNUSED(c);
 
-    while (!ros_initialized)
-        k_sleep(K_MSEC(100));
+     geometry_msgs__msg__TwistWithCovarianceStamped__init(&odom_msg);
+    rosidl_runtime_c__String__assign(&odom_msg.header.frame_id, "wheel_encoder");
 
     for (;;) {
         float vL = wheel_left_speed();
