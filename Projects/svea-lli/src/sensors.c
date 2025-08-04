@@ -43,61 +43,63 @@ void sensors_thread(void *p1, void *p2, void *p3) {
     LOG_INF("Sensors thread started");
 
     while (1) {
-        if (sensor_sample_fetch(imu_dev) == 0) {
-            struct sensor_value accel[3], gyro[3];
+        if (state == ROS_AGENT_CONNECTED) {
+            if (sensor_sample_fetch(imu_dev) == 0) {
 
-            sensor_channel_get(imu_dev, SENSOR_CHAN_ACCEL_X, &accel[0]);
-            sensor_channel_get(imu_dev, SENSOR_CHAN_ACCEL_Y, &accel[1]);
-            sensor_channel_get(imu_dev, SENSOR_CHAN_ACCEL_Z, &accel[2]);
-            sensor_channel_get(imu_dev, SENSOR_CHAN_GYRO_X, &gyro[0]);
-            sensor_channel_get(imu_dev, SENSOR_CHAN_GYRO_Y, &gyro[1]);
-            sensor_channel_get(imu_dev, SENSOR_CHAN_GYRO_Z, &gyro[2]);
+                struct sensor_value accel[3], gyro[3];
 
-            imu_msg.linear_acceleration.x = sensor_value_to_double(&accel[0]);
-            imu_msg.linear_acceleration.y = sensor_value_to_double(&accel[1]);
-            imu_msg.linear_acceleration.z = sensor_value_to_double(&accel[2]);
-            imu_msg.angular_velocity.x = sensor_value_to_double(&gyro[0]);
-            imu_msg.angular_velocity.y = sensor_value_to_double(&gyro[1]);
-            imu_msg.angular_velocity.z = sensor_value_to_double(&gyro[2]);
+                sensor_channel_get(imu_dev, SENSOR_CHAN_ACCEL_X, &accel[0]);
+                sensor_channel_get(imu_dev, SENSOR_CHAN_ACCEL_Y, &accel[1]);
+                sensor_channel_get(imu_dev, SENSOR_CHAN_ACCEL_Z, &accel[2]);
+                sensor_channel_get(imu_dev, SENSOR_CHAN_GYRO_X, &gyro[0]);
+                sensor_channel_get(imu_dev, SENSOR_CHAN_GYRO_Y, &gyro[1]);
+                sensor_channel_get(imu_dev, SENSOR_CHAN_GYRO_Z, &gyro[2]);
 
-            imu_msg.header.stamp.sec = (int32_t)(ros_iface_epoch_millis() / 1000ULL);
-            imu_msg.header.stamp.nanosec = (uint32_t)(ros_iface_epoch_nanos() % 1000000000ULL);
+                imu_msg.linear_acceleration.x = sensor_value_to_double(&accel[0]);
+                imu_msg.linear_acceleration.y = sensor_value_to_double(&accel[1]);
+                imu_msg.linear_acceleration.z = sensor_value_to_double(&accel[2]);
+                imu_msg.angular_velocity.x = sensor_value_to_double(&gyro[0]);
+                imu_msg.angular_velocity.y = sensor_value_to_double(&gyro[1]);
+                imu_msg.angular_velocity.z = sensor_value_to_double(&gyro[2]);
 
-            // strncpy(imu_msg.header.frame_id.data, "imu", imu_msg.header.frame_id.capacity);
-            // imu_msg.header.frame_id.size = strlen("imu");
-            // imu_msg.header.frame_id.capacity = imu_msg.header.frame_id.size + 1;
+                imu_msg.header.stamp.sec = (int32_t)(ros_iface_epoch_millis() / 1000ULL);
+                imu_msg.header.stamp.nanosec = (uint32_t)(ros_iface_epoch_nanos() % 1000000000ULL);
 
-            // Example: set diagonal variances, rest zero
-            imu_msg.orientation_covariance[0] = -1; // No orientation estimate
-            for (int i = 1; i < 9; i++)
-                imu_msg.orientation_covariance[i] = 0;
+                // strncpy(imu_msg.header.frame_id.data, "imu", imu_msg.header.frame_id.capacity);
+                // imu_msg.header.frame_id.size = strlen("imu");
+                // imu_msg.header.frame_id.capacity = imu_msg.header.frame_id.size + 1;
 
-            imu_msg.angular_velocity_covariance[0] = 0.01; // X variance
-            imu_msg.angular_velocity_covariance[4] = 0.01; // Y variance
-            imu_msg.angular_velocity_covariance[8] = 0.01; // Z variance
-            for (int i = 0; i < 9; i++) {
-                if (i != 0 && i != 4 && i != 8)
-                    imu_msg.angular_velocity_covariance[i] = 0;
-            }
+                // Example: set diagonal variances, rest zero
+                imu_msg.orientation_covariance[0] = -1; // No orientation estimate
+                for (int i = 1; i < 9; i++)
+                    imu_msg.orientation_covariance[i] = 0;
 
-            imu_msg.linear_acceleration_covariance[0] = 0.1; // X variance
-            imu_msg.linear_acceleration_covariance[4] = 0.1; // Y variance
-            imu_msg.linear_acceleration_covariance[8] = 0.1; // Z variance
-            for (int i = 0; i < 9; i++) {
-                if (i != 0 && i != 4 && i != 8)
-                    imu_msg.linear_acceleration_covariance[i] = 0;
-            }
+                imu_msg.angular_velocity_covariance[0] = 0.01; // X variance
+                imu_msg.angular_velocity_covariance[4] = 0.01; // Y variance
+                imu_msg.angular_velocity_covariance[8] = 0.01; // Z variance
+                for (int i = 0; i < 9; i++) {
+                    if (i != 0 && i != 4 && i != 8)
+                        imu_msg.angular_velocity_covariance[i] = 0;
+                }
 
-            if (state == ROS_AGENT_CONNECTED) {
+                imu_msg.linear_acceleration_covariance[0] = 0.1; // X variance
+                imu_msg.linear_acceleration_covariance[4] = 0.1; // Y variance
+                imu_msg.linear_acceleration_covariance[8] = 0.1; // Z variance
+                for (int i = 0; i < 9; i++) {
+                    if (i != 0 && i != 4 && i != 8)
+                        imu_msg.linear_acceleration_covariance[i] = 0;
+                }
+
                 rcl_ret_t rc = rcl_publish(&imu_pub, &imu_msg, NULL);
                 if (rc != RCL_RET_OK) {
                     LOG_ERR("IMU publish failed: %d", rc);
                 }
+            } else {
+                LOG_WRN("Failed to fetch sensor sample");
             }
         } else {
-            LOG_WRN("Failed to fetch sensor sample");
+            LOG_DBG("Sensors thread waiting for agent connection");
         }
-
-        k_sleep(K_MSEC(5));
+        k_sleep(K_MSEC(3));
     }
 }

@@ -31,6 +31,7 @@ ros_ctrl_t g_ros_ctrl = {0};
 #define ROS_STACK_SIZE 4096
 
 bool ros_initialized = false;
+enum ros_states state = ROS_WAITING_AGENT;
 
 static K_THREAD_STACK_DEFINE(ros_stack, ROS_STACK_SIZE);
 static struct k_thread ros_thread;
@@ -106,12 +107,17 @@ static atomic_t epoch_locked = ATOMIC_INIT(0);
 static void time_sync_thread(void *a, void *b, void *c) {
 
     while (1) {
-        if (state != ROS_AGENT_CONNECTED) {
+        if (ROS_AGENT_CONNECTED != state) {
+            k_sleep(K_SECONDS(1));
+            continue;
+        }
+        rmw_ret_t rc = rmw_uros_sync_session(200);
+        if (rc != RMW_RET_OK) {
+            state = ROS_AGENT_DISCONNECTED;
+            LOG_WRN("Failed to sync session: %d", rc);
             k_sleep(K_MSEC(500));
             continue;
         }
-        rmw_uros_sync_session(200);
-
         if (rmw_uros_epoch_synchronized() &&
             !atomic_test_and_set_bit(&epoch_locked, 0)) {
 
@@ -205,13 +211,14 @@ fail_node:
 }
 
 static void destroy_ros_entities(void) {
+    /* disable the reliable erase handshake */
+    rmw_uros_set_context_entity_destroy_session_timeout(
+        rcl_context_get_rmw_context(&support.context), 0);
+
     rclc_executor_fini(&executor);
     rcl_node_fini(&node);
     rclc_support_fini(&support);
 }
-
-// --- Replace ros_iface_thread with a robust state machine ---
-enum ros_states state = ROS_WAITING_AGENT;
 
 static void ros_iface_thread(void *a, void *b, void *c) {
     LOG_INF("ros_iface_thread: started");
@@ -239,7 +246,7 @@ static void ros_iface_thread(void *a, void *b, void *c) {
                 LOG_INF("micro-ROS agent available");
             } else {
                 LOG_INF("Waiting for micro-ROS agent...");
-                k_msleep(1000);
+                k_msleep(500);
             }
             break;
 
@@ -298,7 +305,7 @@ static void ros_iface_thread(void *a, void *b, void *c) {
 
                 if (!publish_ok) {
                     LOG_ERR("Publish failed, assuming agent disconnected");
-                    destroy_ros_entities();
+                    // destroy_ros_entities();
                     ros_initialized = false;
                     state = ROS_AGENT_DISCONNECTED;
                 }
@@ -306,6 +313,7 @@ static void ros_iface_thread(void *a, void *b, void *c) {
             break;
 
         case ROS_AGENT_DISCONNECTED:
+            LOG_INF("micro-ROS agent disconnected, destroying entities");
             destroy_ros_entities();
             ros_initialized = false;
             state = ROS_WAITING_AGENT;

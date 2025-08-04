@@ -166,43 +166,44 @@ static void odom_thread(void *a, void *b, void *c) {
     ARG_UNUSED(b);
     ARG_UNUSED(c);
 
-     geometry_msgs__msg__TwistWithCovarianceStamped__init(&odom_msg);
+    geometry_msgs__msg__TwistWithCovarianceStamped__init(&odom_msg);
     rosidl_runtime_c__String__assign(&odom_msg.header.frame_id, "wheel_encoder");
 
     for (;;) {
-        float vL = wheel_left_speed();
-        float vR = wheel_right_speed();
-
-        bool fwd = forward_guess;
-
-        odom_msg.twist.twist.linear.x = 0.5f * (vL + vR) * (fwd ? 1.f : -1.f);
-        /* 2× gain compensates empirically for skid-steer slip */
-        odom_msg.twist.twist.angular.z = ((vL - vR) / WHEELBASE) *
-                                         (fwd ? 1.f : -1.f) * 2.f;
-
-        /* diagonal covariance = 0.1, rest 0 */
-        memset(odom_msg.twist.covariance, 0, sizeof(odom_msg.twist.covariance));
-        odom_msg.twist.covariance[0] =
-            odom_msg.twist.covariance[7] =
-                odom_msg.twist.covariance[14] =
-                    odom_msg.twist.covariance[21] =
-                        odom_msg.twist.covariance[28] =
-                            odom_msg.twist.covariance[35] = 0.1f;
-
-        uint64_t ms = ros_iface_epoch_millis();
-        odom_msg.header.stamp.sec = (int32_t)(ms / 1000ULL);
-        odom_msg.header.stamp.nanosec = (uint32_t)(ros_iface_epoch_nanos() % 1000000000ULL);
-
-        // const char *frame = "wheel_encoder";
-        //  strncpy(odom_msg.header.frame_id.data, frame, odom_msg.header.frame_id.capacity);
-        //  odom_msg.header.frame_id.size = strlen(frame); /* keep capacity unchanged */
         if (state == ROS_AGENT_CONNECTED) {
+            float vL = wheel_left_speed();
+            float vR = wheel_right_speed();
+
+            bool fwd = forward_guess;
+
+            odom_msg.twist.twist.linear.x = 0.5f * (vL + vR) * (fwd ? 1.f : -1.f);
+            /* 2× gain compensates empirically for skid-steer slip */
+            odom_msg.twist.twist.angular.z = ((vL - vR) / WHEELBASE) *
+                                             (fwd ? 1.f : -1.f) * 2.f;
+
+            /* diagonal covariance = 0.1, rest 0 */
+            memset(odom_msg.twist.covariance, 0, sizeof(odom_msg.twist.covariance));
+            odom_msg.twist.covariance[0] =
+                odom_msg.twist.covariance[7] =
+                    odom_msg.twist.covariance[14] =
+                        odom_msg.twist.covariance[21] =
+                            odom_msg.twist.covariance[28] =
+                                odom_msg.twist.covariance[35] = 0.1f;
+
+            uint64_t ms = ros_iface_epoch_millis();
+            odom_msg.header.stamp.sec = (int32_t)(ms / 1000ULL);
+            odom_msg.header.stamp.nanosec = (uint32_t)(ros_iface_epoch_nanos() % 1000000000ULL);
+
+            // const char *frame = "wheel_encoder";
+            //  strncpy(odom_msg.header.frame_id.data, frame, odom_msg.header.frame_id.capacity);
+            //  odom_msg.header.frame_id.size = strlen(frame); /* keep capacity unchanged */
+
             rc_channel_t rc = rcl_publish(&encoders_pub, &odom_msg, NULL);
             if (rc != RCL_RET_OK) {
                 LOG_ERR("encoder publish failed: %d", rc);
             }
         }
-        k_sleep(K_MSEC(5));
+        k_sleep(K_MSEC(3));
     }
 }
 
