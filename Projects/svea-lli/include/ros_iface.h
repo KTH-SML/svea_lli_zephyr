@@ -27,4 +27,13 @@ extern rcl_publisher_t encoders_pub;
 uint64_t ros_iface_epoch_millis(void);
 uint64_t ros_iface_epoch_nanos(void);
 
+enum ros_states {
+    ROS_WAITING_AGENT,
+    ROS_AGENT_AVAILABLE,
+    ROS_AGENT_CONNECTED,
+    ROS_AGENT_DISCONNECTED
+};
+
+extern enum ros_states state;
+
 #endif // ROS_IFACE_H
