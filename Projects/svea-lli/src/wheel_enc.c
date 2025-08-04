@@ -203,7 +203,7 @@ static void odom_thread(void *a, void *b, void *c) {
                 LOG_ERR("encoder publish failed: %d", rc);
             }
         }
-        k_sleep(K_MSEC(3));
+        k_sleep(K_MSEC(5));
     }
 }
 

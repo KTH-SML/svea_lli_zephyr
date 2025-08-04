@@ -100,6 +100,6 @@ void sensors_thread(void *p1, void *p2, void *p3) {
         } else {
             LOG_DBG("Sensors thread waiting for agent connection");
         }
-        k_sleep(K_MSEC(3));
+        k_sleep(K_MSEC(5));
     }
 }
