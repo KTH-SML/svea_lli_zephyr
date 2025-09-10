@@ -42,6 +42,7 @@ static void app_wdt_setup(void) {
 
 int main(void) {
     LOG_INF("SVEA LLI starting");
+    printf("BRUH MAN");
     k_sleep(K_SECONDS(1)); // Allow time for logging to initialize
     app_wdt_setup();
     k_sleep(K_SECONDS(1)); // Allow time for watchdog setup

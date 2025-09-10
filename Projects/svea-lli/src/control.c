@@ -29,11 +29,8 @@ servo_t servos[SERVO_COUNT] = {
 void servo_init(void) {
     /* Let the Zephyr driver set up every timer & pin exactly once */
     for (int i = 0; i < SERVO_COUNT; ++i) {
-        pwm_set_cycles(servos[i].spec.dev,
-                       servos[i].spec.channel,
-                       servos[i].spec.period,
-                       0,
-                       0);
+        /* Initialize with 0 ns pulse to avoid 16-bit overflow warnings */
+        pwm_set_pulse_dt(&servos[i].spec, 0);
     }
     servos_initialized = true;
 }

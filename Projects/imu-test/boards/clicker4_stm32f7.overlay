@@ -1,0 +1,33 @@
+/* Minimal overlay for IMU I2C test on clicker4_stm32f7 */
+
+&i2c2 {
+    status = "okay";
+    clock-frequency = <I2C_BITRATE_STANDARD>;
+
+    icm42670p: icm42670p@68 {
+        compatible = "invensense,icm42670p";
+        reg = <0x68>;
+        label = "ICM42670";
+        /* Required properties */
+        gyro-hz = <100>;
+        accel-hz = <100>;
+        accel-fs = <16>;
+        gyro-fs = <2000>;
+        status = "okay";
+    };
+};
+
+&usart1 {
+    current-speed = <115200>;
+};
+
+/ {
+    aliases {
+        imu = &icm42670p;
+    };
+    chosen {
+        zephyr,console = &usart1;
+        zephyr,shell-uart = &usart1;
+    };
+};
+

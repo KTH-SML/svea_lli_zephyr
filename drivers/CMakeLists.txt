@@ -1,1 +1,1 @@
-add_subdirectory(st_ism330dlc)
+#add_subdirectory(st_ism330dlc)

@@ -110,10 +110,88 @@
         };
     };
 
-    cdc_acm_uart0: cdc_acm_uart0 {
-        compatible = "zephyr,cdc-acm-uart";
-        label = "CDC_ACM_0";
+
+    connectors {
+        /* Positions (standard mikroBUS):
+        *  0 AN, 1 RST, 2 CS, 3 SCK, 4 MISO, 5 MOSI,
+        * 11 SDA, 12 SCL, 13 TX, 14 RX, 15 INT, 16 PWM
+        */
+        mb1: mikrobus_1 {
+            compatible = "mikro-bus";
+            #gpio-cells = <2>;
+            gpio-map-mask = <0xffffffff 0xffffffc0>;
+            gpio-map-pass-thru = <0 0x3f>;
+            gpio-map =
+                < 0 0 &gpioc  4 0>,  <16 0 &gpioe  9 0>,   /* AN  PC4 | PWM PE9  */
+                < 1 0 &gpioc 15 0>,  <15 0 &gpiod  0 0>,   /* RST PC15| INT PD0  */
+                < 2 0 &gpioa  4 0>,  <14 0 &gpioa  3 0>,   /* CS  PA4 | RX  PA3  */
+                < 3 0 &gpioa  5 0>,  <13 0 &gpioa  2 0>,   /* SCK PA5 | TX  PA2  */
+                < 4 0 &gpioa  6 0>,  <12 0 &gpiob 10 0>,   /* MISO PA6| SCL PB10 */
+                < 5 0 &gpioa  7 0>,  <11 0 &gpiob 11 0>;   /* MOSI PA7| SDA PB11 */
+        };
+
+        mb2: mikrobus_2 {
+            compatible = "mikro-bus";
+            #gpio-cells = <2>;
+            gpio-map-mask = <0xffffffff 0xffffffc0>;
+            gpio-map-pass-thru = <0 0x3f>;
+            gpio-map =
+                < 0 0 &gpioc  5 0>,  <16 0 &gpiod 12 0>,   /* AN  PC5 | PWM PD12 */
+                < 1 0 &gpiob  2 0>,  <15 0 &gpiob  2 0>,   /* RST PB2 | INT PB2* */
+                < 2 0 &gpiod 13 0>,  <14 0 &gpiob  7 0>,   /* CS  PD13| RX  PB7  */
+                < 3 0 &gpioa  5 0>,  <13 0 &gpiob  6 0>,   /* SCK PA5 | TX  PB6  */
+                < 4 0 &gpioa  6 0>,  <12 0 &gpiob 10 0>,   /* MISO PA6| SCL PB10 */
+                < 5 0 &gpioa  7 0>,  <11 0 &gpiob 11 0>;   /* MOSI PA7| SDA PB11 */
+            /* *INT on PB2 matches the board drawing. If your card needs a distinct
+            * INT pin, move it here and your overlay won’t change. */
+        };
+
+        mb3: mikrobus_3 {
+            compatible = "mikro-bus";
+            #gpio-cells = <2>;
+            gpio-map-mask = <0xffffffff 0xffffffc0>;
+            gpio-map-pass-thru = <0 0x3f>;
+            gpio-map =
+                < 0 0 &gpiob  0 0>,  <16 0 &gpioc  6 0>,   /* AN  PB0 | PWM PC6  */
+                < 1 0 &gpiod 11 0>,  <15 0 &gpioc  7 0>,   /* RST PD11| INT PC7  */
+                < 2 0 &gpiod 13 0>,  <14 0 &gpioe  7 0>,   /* CS  PD13| RX  PE7  */
+                < 3 0 &gpioa  5 0>,  <13 0 &gpiob  6 0>,   /* SCK PA5 | TX  PB6  */
+                < 4 0 &gpioa  6 0>,  <12 0 &gpiob 10 0>,   /* MISO PA6| SCL PB10 */
+                < 5 0 &gpioa  7 0>,  <11 0 &gpiob 11 0>;   /* MOSI PA7| SDA PB11 */
+        };
+
+        mb4: mikrobus_4 {
+            compatible = "mikro-bus";
+            #gpio-cells = <2>;
+            gpio-map-mask = <0xffffffff 0xffffffc0>;
+            gpio-map-pass-thru = <0 0x3f>;
+            gpio-map =
+                < 0 0 &gpiob  1 0>,  <16 0 &gpioc  9 0>,   /* AN  PB1 | PWM PC9  */
+                < 1 0 &gpiod 14 0>,  <15 0 &gpiob  4 0>,   /* RST PD14| INT PB4  */
+                < 2 0 &gpiod 15 0>,  <14 0 &gpiod  9 0>,   /* CS  PD15| RX  PD9  */
+                < 3 0 &gpioc 10 0>,  <13 0 &gpiod  8 0>,   /* SCK PC10| TX  PD8  */
+                < 4 0 &gpioc 11 0>,  <12 0 &gpiob 10 0>,   /* MISO PC11| SCL PB10*/
+                < 5 0 &gpioc 12 0>,  <11 0 &gpiob 11 0>;   /* MOSI PC12| SDA PB11*/
+        };
+    };
+};
+
+/* CN1: OTG FS on PA11/PA12, VBUS sense on PA9 */
+&usbotg_fs {
+    status = "okay";
+    pinctrl-names = "default";
+    /* if your pinctrl header has vbus, keep it; otherwise drop that phandle */
+    pinctrl-0 = <&usb_otg_fs_dm_pa11 &usb_otg_fs_dp_pa12 &usb_otg_fs_vbus_pa9>;
+
+    zephyr_udc0: usb_device {
+        compatible = "zephyr,usb-device";
         status = "okay";
+
+        cdc_acm_uart0: cdc_acm_uart0 {
+            compatible = "zephyr,cdc-acm-uart";
+            label = "CDC_ACM_0";
+            status = "okay";
+        };
     };
 };
 
@@ -175,15 +253,15 @@
     status = "okay";
 };
 
-/* UART1 (Console) - Connected to ST-Link VCP */
+/* UART1 (Console) - Connected to ST-Link VCP, is labelled UART2 on board for some reason*/
 &usart1 {
-    pinctrl-0 = <&usart1_tx_pb6 &usart1_rx_pb7>;
-    pinctrl-names = "default";
-    current-speed = <115200>;
-    status = "okay";
-};
+	pinctrl-0 = <&usart1_tx_pb6 &usart1_rx_pb7>;
+	pinctrl-names = "default";
+	current-speed = <115200>;
+	status = "okay";
+}; // MB2
 
-/* UART2 - Available on headers */
+/* UART2 - Available on headers, labelled UART3 on board*/
 &usart2 {
     pinctrl-0 = <&usart2_tx_pa2 &usart2_rx_pa3>;
     pinctrl-names = "default";
@@ -212,3 +290,5 @@
     pinctrl-names = "default";
     status = "okay";
 };
+
+

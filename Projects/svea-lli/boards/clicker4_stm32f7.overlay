@@ -1,4 +1,4 @@
-&cdc_acm_uart0 {
+&cdc_acm_uart0 { // For mikroros
     current-speed = <115200>;
 };
 
@@ -6,19 +6,40 @@
     current-speed = <115200>;
 };
 
+&usart2 {
+    status = "okay";
+
+    current-speed = <100000>;
+    parity = "even";
+    stop-bits = "2";
+    rx-invert;              /* SBUS is inverted */
+    /* optional: hw-flow-control = "none"; */
+};
+
 &i2c2 {
     status = "okay";
-    clock-frequency = <I2C_BITRATE_FAST>;
-    imu: ism330dlc@6b {
+    clock-frequency = <I2C_BITRATE_STANDARD>;
+    icm42670: icm42670@68 {
+        compatible = "invensense,icm42670p";
+        reg = <0x68>;
+        label = "ICM42670";
+        /* Required properties with legal values */
+        gyro-hz = <800>;        /* pick 200 / 400 / 800 / 1600 */
+        accel-hz = <800>;       /* pick 100 / 200 / 400 / 800 / 1600 */
+        accel-fs = <16>;        /* full scale in g */
+        gyro-fs = <2000>;       /* full scale in dps */
+
         status = "okay";
-        compatible = "st,ism330dlc";
-        drdy-gpios = <&mb1 15 GPIO_ACTIVE_HIGH>,
-                     <&mb1  1 GPIO_ACTIVE_HIGH>;
-        accel-odr = <8>;
-        gyro-odr = <8>;
-        accel-range = <4>;
-        gyro-range = <250>;
-        reg = <0x6b>;
+    };
+};
+
+/* Ensure MB4 CS is held high at boot so ICM42670 latches I2C mode */
+&gpiod {
+    mb4_cs_high: mb4_cs_high {
+        gpio-hog;
+        gpios = <15 GPIO_ACTIVE_HIGH>;
+        output-high;
+        line-name = "mb4_cs_i2c";
     };
 };
 
@@ -30,36 +51,27 @@
 
 /* Pinmux definitions - silkscreen label in comments */
 &pinctrl {
-    tim1_ch1_pe9: tim1_ch1_pe9    { pinmux = <STM32_PINMUX('E', 9, AF1)>;  }; // P1
+    /* PWM outputs mapping: PB8=P1, PB9=P2, PE5=P3, PE6=P4 */
+    tim4_ch3_pb8: tim4_ch3_pb8    { pinmux = <STM32_PINMUX('B', 8, AF2)>;  }; // PB8 -> TIM4_CH3
+    tim4_ch4_pb9: tim4_ch4_pb9    { pinmux = <STM32_PINMUX('B', 9, AF2)>;  }; // PB9 -> TIM4_CH4
+    tim9_ch1_pe5: tim9_ch1_pe5    { pinmux = <STM32_PINMUX('E', 5, AF3)>;  }; // PE5 -> TIM9_CH1
+    tim9_ch2_pe6: tim9_ch2_pe6    { pinmux = <STM32_PINMUX('E', 6, AF3)>;  }; // PE6 -> TIM9_CH2
 
-    tim2_ch4_pb11: tim2_ch4_pb11   { pinmux = <STM32_PINMUX('B', 11, AF1)>; }; // P3
-    tim12_ch1_ph6: tim12_ch1_ph6   { pinmux = <STM32_PINMUX('H', 6, AF9)>;  }; // P4
-    tim3_ch1_pa6: tim3_ch1_pa6    { pinmux = <STM32_PINMUX('A', 6, AF2)>;  }; // MISO1
+    /* Other pins kept as-is if still in use elsewhere */
+    tim1_ch1_pe9: tim1_ch1_pe9    { pinmux = <STM32_PINMUX('E', 9, AF1)>;  };
+    tim12_ch1_ph6: tim12_ch1_ph6  { pinmux = <STM32_PINMUX('H', 6, AF9)>;  };
+    tim3_ch1_pa6: tim3_ch1_pa6    { pinmux = <STM32_PINMUX('A', 6, AF2)>;  };
     tim3_ch2_pa7: tim3_ch2_pa7    { pinmux = <STM32_PINMUX('A', 7, AF2)>;  };
-    tim4_ch3_pb8: tim4_ch3_pb8    { pinmux = <STM32_PINMUX('B', 8, AF2)>;  }; // SCL1
-    tim5_ch1_ph10: tim5_ch1_ph10   { pinmux = <STM32_PINMUX('H', 10, AF2)>; }; // P5
-    tim15_ch1_pe4: tim15_ch1_pe4   { pinmux = <STM32_PINMUX('E', 4,  AF2)>; };
-    tim9_ch1_pa2: tim9_ch1_pa2    { pinmux = <STM32_PINMUX('A', 2, AF3)>;  }; // TX1 (silkscreen), TX2 (datasheet)
-    tim11_ch4_pb9: tim11_ch4_pb9   { pinmux = <STM32_PINMUX('B', 9, AF2)>;  bias-disable;}; // NEW ESC
-    tim2_ch1_pa5: tim2_ch1_pa5 { pinmux = <STM32_PINMUX('A', 5, AF1)>; }; // P11 (PA5, TIM2_CH1, SCK1)
-
-    tim2_ch2_pa1: tim2_ch2_pa1 { pinmux = <STM32_PINMUX('A', 1, AF1)>; }; // SCK1 (silkscreen), SCL1 (datasheet)
-
-    //tim14_ch1_pf14: tim14_ch1_pf14 { pinmux = <STM32_PINMUX('F', 14, AF9)>; }; // new ESC out
-
+    tim5_ch1_ph10: tim5_ch1_ph10  { pinmux = <STM32_PINMUX('H', 10, AF2)>; };
+    tim15_ch1_pe4: tim15_ch1_pe4  { pinmux = <STM32_PINMUX('E', 4,  AF2)>; };
+    tim2_ch1_pa5: tim2_ch1_pa5    { pinmux = <STM32_PINMUX('A', 5, AF1)>; };
+    tim2_ch2_pa1: tim2_ch2_pa1    { pinmux = <STM32_PINMUX('A', 1, AF1)>; };
 };
 
 /* PWM Output timers - silkscreen label in comments */
+/* TIM2 no longer used for PWM on PB10/PB11 to avoid I2C2 conflict */
 &timers2 {
     status = "okay";
-    st,prescaler = <107>;
-    pwm2: pwm {
-        compatible = "st,stm32-pwm";
-        status = "okay";
-        #pwm-cells = <3>;
-        pinctrl-0 = <&tim2_ch3_pb10 &tim2_ch4_pb11 &tim2_ch1_pa5 &tim2_ch2_pa1>; // P2, P3, P11, PA1
-        pinctrl-names = "default";
-    };
 };
 
 &timers4 {
@@ -69,7 +81,7 @@
         compatible = "st,stm32-pwm";
         status = "okay";
         #pwm-cells = <3>;
-        pinctrl-0 = <&tim11_ch4_pb9>;
+        pinctrl-0 = <&tim4_ch3_pb8 &tim4_ch4_pb9>; // PB8=P1, PB9=P2
         pinctrl-names = "default";
     };
 };
@@ -104,11 +116,11 @@
 &timers9 {
     status = "okay";
     st,prescaler = <215>;
-    pwm9_in: pwm {
+    pwm9: pwm {
         compatible = "st,stm32-pwm";
         status = "okay";
         #pwm-cells = <3>;
-        pinctrl-0 = <&tim9_ch1_pa2>; // TX1 (silkscreen), TX2 (datasheet)
+        pinctrl-0 = <&tim9_ch1_pe5 &tim9_ch2_pe6>; // PE5=P3, PE6=P4
         pinctrl-names = "default";
     };
 };
@@ -133,31 +145,32 @@
     // Servo output nodes - silkscreen label in comments
     steeringservo: servo {
         compatible = "pwm-servo";
-        pwms = <&pwm2 2 10000000 PWM_POLARITY_NORMAL>; // P1
+        pwms = <&pwm4 3 10000000 PWM_POLARITY_NORMAL>; // P1 -> PB8 TIM4_CH3
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
     gearservo: gear_servo {
         compatible = "pwm-servo";
-        pwms = <&pwm2 4 10000000 PWM_POLARITY_NORMAL>; // P3
+        pwms = <&pwm9 1 10000000 PWM_POLARITY_NORMAL>; // P3 -> PE5 TIM9_CH1
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
     throttleesc: throttle_esc {
         compatible = "pwm-servo";
-        pwms = <&pwm4 4 10000000 PWM_POLARITY_NORMAL>; // P4
+        pwms = <&pwm9 2 10000000 PWM_POLARITY_NORMAL>; // P4 -> PE6 TIM9_CH2
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
     diffservo: diff_servo {
         compatible = "pwm-servo";
-        pwms = <&pwm2 3 10000000 PWM_POLARITY_NORMAL>; // P2
+        pwms = <&pwm4 4 10000000 PWM_POLARITY_NORMAL>; // P2 -> PB9 TIM4_CH4
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
     diffservorear: diff_servo_rear {
         compatible = "pwm-servo";
-        pwms = <&pwm2 1 10000000 PWM_POLARITY_NORMAL>; // P11 (PA5, TIM2_CH1, SCK1)
+        /* Unused now: map to neutral on PB8 if needed or drop */
+        pwms = <&pwm4 3 10000000 PWM_POLARITY_NORMAL>;
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
@@ -186,29 +199,16 @@
 
 / {
     chosen {
-        zephyr,console = &usart3;
-        zephyr,shell-uart = &usart3;
+        zephyr,console = &usart1;
+        zephyr,shell-uart = &usart1;
     };
 
     aliases {
-        /* PWM capture inputs (RC receiver) - silkscreen label in comments */
-        rc-steer    = &pwm3_in;   // MISO1
-        rc-high-gear     = &pwm9_in;   // TX1 (silkscreen), TX2 (datasheet)
-        rc-throttle = &pwm5_in;   // P5
-        rc-override = &pwm12_in;   // SCL1
-
-        /* PWM outputs (servos/ESC) - silkscreen label in comments */
-        // steeringservo = &servo;           // P1
-        // gearservo = &gear_servo;          // P3
-        // throttleesc = &throttle_esc;      // P4
-        // diffservo = &diff_servo;          // P2
-        // diffservorear = &diff_servo_rear; // PA5, TIM2_CH1, SCK1
+        /* RC PWM capture aliases removed: using SBUS on USART2 instead */
 
         wheel-left-gpio  = &wheel_left;
         wheel-right-gpio = &wheel_right;
-        //wheel-right = &timers13;
-
+        imu = &icm42670;
         watchdog0 = &iwdg;
     };
 };
-

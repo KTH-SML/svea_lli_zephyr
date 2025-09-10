@@ -20,5 +20,6 @@ target_sources(app PRIVATE
     src/rc_input.c
     src/ros_iface.c
     src/sensors.c
+    src/imu_reset.c
     src/wheel_enc.c
 )
