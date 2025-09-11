@@ -26,6 +26,10 @@ static inline uint32_t map_sbus_to_us(uint16_t v) {
 }
 
 static void sbus_thread(void *, void *, void *) {
+    /* Ensure UART is initialized before polling */
+    while (uart2 == NULL || !device_is_ready(uart2)) {
+        k_sleep(K_MSEC(10));
+    }
     uint8_t buf[25];
     size_t idx = 0;
     for (;;) {
@@ -65,7 +69,9 @@ static void sbus_thread(void *, void *, void *) {
     }
 }
 
-K_THREAD_DEFINE(sbus_tid, 1024, sbus_thread, NULL, NULL, NULL, 4, 0, 0);
+/* Defer thread creation until rc_input_init(), after UART2 is ready */
+static K_THREAD_STACK_DEFINE(sbus_stack, 1024);
+static struct k_thread sbus_thread_data;
 
 void rc_input_init(void) {
     uart2 = DEVICE_DT_GET(DT_NODELABEL(usart2));
@@ -74,6 +80,10 @@ void rc_input_init(void) {
         return;
     }
     LOG_INF("RC input: SBUS on USART2");
+    k_thread_create(&sbus_thread_data, sbus_stack, K_THREAD_STACK_SIZEOF(sbus_stack),
+                    sbus_thread, NULL, NULL, NULL,
+                    4, 0, K_NO_WAIT);
+    k_thread_name_set(&sbus_thread_data, "sbus_tid");
 }
 
 uint32_t rc_get_pulse_us(rc_channel_t ch) {

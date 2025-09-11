@@ -39,27 +39,9 @@ void sensors_thread(void *p1, void *p2, void *p3) {
      * wait until the device reports ready. If PM is enabled, try a
      * resume action to re-probe once or twice if needed.
      */
+    /* Wait for driver readiness without forcing PM transitions. */
     while (!device_is_ready(dev)) {
         LOG_WRN("IMU device not ready yet; waiting...");
-
-        /* PM semantics: RESUME only runs from SUSPENDED->ACTIVE.
-         * After a failed init, the PM state is still ACTIVE (default),
-         * so RESUME returns -EALREADY and does nothing. Force the
-         * state machine via SUSPEND first, then RESUME.
-         */
-        enum pm_device_state st;
-        int rc = pm_device_state_get(dev, &st);
-        if (rc == 0) {
-            if (st == PM_DEVICE_STATE_ACTIVE) {
-                int rc_sus = pm_device_action_run(dev, PM_DEVICE_ACTION_SUSPEND);
-                LOG_WRN("pm_device_action_run(SUSPEND) rc=%d", rc_sus);
-            }
-            int rc_res = pm_device_action_run(dev, PM_DEVICE_ACTION_RESUME);
-            LOG_WRN("pm_device_action_run(RESUME) rc=%d", rc_res);
-        } else {
-            LOG_WRN("pm_device_state_get rc=%d", rc);
-        }
-
         k_sleep(K_MSEC(100));
     }
     imu_dev = dev;
@@ -143,4 +125,3 @@ void sensors_thread(void *p1, void *p2, void *p3) {
         k_sleep(K_MSEC(5));
     }
 }
-
