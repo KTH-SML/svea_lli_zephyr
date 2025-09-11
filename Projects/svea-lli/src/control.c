@@ -47,21 +47,19 @@ static inline void servo_set_ticks(const struct pwm_dt_spec *s, uint16_t t_us) {
     uint32_t t_ns = t_us * 1000; // Convert microseconds to nanoseconds
     pwm_set_pulse_dt(s, t_ns);
 }
-/* ───── 3. control thread – barebones, no filtering ─────────────────── */
-#define OVERRIDE_AGE_DISCONNECT_US 15000
-#define RECONNECT_WINDOW_MS 500
-#define LOOP_MS 25                          // 400 Hz control loop
-#define ROS_THROTTLE_AGE_TIMEOUT_US 1000000 // 1 seconds max age for ROS throttle command
+/* ───── 3. control thread – readable, explicit conditions ───────────── */
+#define LOOP_MS 25                          // 40 Hz
 
-#define ACCELERATION_CLAMP_LIMIT_US 1000 // 1 ms max change per loop
+// Neutral/safe outputs
+#define SERVO_NEUTRAL_US 1500
+#define GEAR_HIGH_US     1100
+#define GEAR_LOW_US      1900
 
-// Throttle ramp: time (ms) to go from 1000us to 1500us (500us change)
-#define THROTTLE_RAMP_DELTA_US 500
-#define THROTTLE_RAMP_TIME_MS 500
-
-// New: Deceleration clamp (towards 1500us)
-#define THROTTLE_DECEL_DELTA_US 500
-#define THROTTLE_DECEL_TIME_MS 200
+// Throttle ramp profile
+#define THROTTLE_RAMP_DELTA_US 500   // change to consider (us)
+#define THROTTLE_RAMP_TIME_MS  500   // time to make that change (ms)
+#define THROTTLE_DECEL_DELTA_US 500  // decel towards neutral
+#define THROTTLE_DECEL_TIME_MS  200
 
 // Remove old pulse_to_us, use new int8 mapping
 static inline uint32_t int8_to_us(int8_t val) {
@@ -107,93 +105,72 @@ static void control_thread(void *, void *, void *) {
 
     LOG_INF("Control thread started, servos initialized.");
 
-    int log_counter = 0;
-    int reconnect_counter = 0;
-    int reconnect_samples = RECONNECT_WINDOW_MS / LOOP_MS;
-
-    uint32_t prev_thr = 1500; // Start at neutral
-    uint32_t diff = 1100;
-    uint32_t diff_rear = 1900;
-
+    uint32_t prev_thr = SERVO_NEUTRAL_US; // Start at neutral
+    uint32_t diff = 1000;      // default diff positions
+    uint32_t diff_rear = 2000;
     g_ros_ctrl.diff = true;
 
-    // Calculate max allowed step per loop
+    // Per-loop ramp limits (us per loop)
     const int32_t max_thr_accel = (THROTTLE_RAMP_DELTA_US * LOOP_MS) / THROTTLE_RAMP_TIME_MS;
     const int32_t max_thr_decel = (THROTTLE_DECEL_DELTA_US * LOOP_MS) / THROTTLE_DECEL_TIME_MS;
 
     for (;;) {
-        uint64_t loop_start_us = k_ticks_to_us_floor64(k_uptime_ticks());
+        const uint64_t loop_start_us = k_ticks_to_us_floor64(k_uptime_ticks());
 
-        uint32_t override_age = rc_get_age_us(RC_OVERRIDE);
+        // 1) Connection + override state
+        remote_connected = rc_input_connected();
+        in_override_mode = rc_get_pulse_us(RC_OVERRIDE) > SERVO_NEUTRAL_US;
 
-        uint32_t steer = 0;
-        uint32_t thr = 1500;
-        uint32_t gear = 0;
-        uint32_t override = 0;
+        // 2) Decide command sources and compute targets
+        uint32_t steer = SERVO_NEUTRAL_US;
+        uint32_t thr   = SERVO_NEUTRAL_US;
+        uint32_t gear  = GEAR_LOW_US;
 
-        // Disconnect if override age exceeds threshold
-        if (override_age > OVERRIDE_AGE_DISCONNECT_US) {
-            remote_connected = false;
-            reconnect_counter = 0; // reset reconnect averaging
+        if (!remote_connected) {
+            // Disconnected: null all primary outputs
+            steer = SERVO_NEUTRAL_US;
+            thr   = SERVO_NEUTRAL_US;
+            gear  = GEAR_LOW_US;
+        } else if (in_override_mode) {
+            // Remote relay
+            steer = rc_get_pulse_us(RC_STEER);
+            thr   = rc_get_pulse_us(RC_THROTTLE);
+            gear  = (rc_get_pulse_us(RC_HIGH_GEAR) > SERVO_NEUTRAL_US) ? GEAR_HIGH_US : GEAR_LOW_US;
+
+            // Also update ROS shadow for visibility/tools
+            g_ros_ctrl.steering  = (int8_t)(((int32_t)steer - SERVO_NEUTRAL_US) * 127 / 500);
+            g_ros_ctrl.throttle  = (int8_t)(((int32_t)thr   - SERVO_NEUTRAL_US) * 127 / 500);
+            g_ros_ctrl.high_gear = (gear == GEAR_HIGH_US);
         } else {
-            // If currently disconnected, check for reconnection
-            if (!remote_connected) {
-                reconnect_counter++;
-                if (reconnect_counter >= reconnect_samples) {
-                    // If we've seen reconnect_samples consecutive "good" ages, reconnect
-                    remote_connected = true;
-                    reconnect_counter = 0;
-                }
-            }
-        }
-        in_override_mode = rc_get_pulse_us(RC_OVERRIDE) > 1500;
-
-        if (remote_connected) {
-            if (in_override_mode) {
-                steer = rc_get_pulse_us(RC_STEER);
-                thr = rc_get_pulse_us(RC_THROTTLE);
-                gear = (rc_get_pulse_us(RC_HIGH_GEAR) > 1500) ? 1100 : 1900;
-
-                // Update g_ros_ctrl with current remote values
-                g_ros_ctrl.steering = (int8_t)((int32_t)steer - 1500) * 127 / 500;
-                g_ros_ctrl.throttle = (int8_t)((int32_t)thr - 1500) * 127 / 500;
-                g_ros_ctrl.high_gear = (gear > 1500);
-            } else {
-                // Use signed int8 from g_ros_ctrl, map to us
-                steer = int8_to_us(g_ros_ctrl.steering);
-                thr = int8_to_us(g_ros_ctrl.throttle);
-                gear = g_ros_ctrl.high_gear ? 1900 : 1100;
-                diff = g_ros_ctrl.diff ? 2000 : 1000;
-                diff_rear = g_ros_ctrl.diff ? 1000 : 2000;
-            }
-
-            // Double ramp rates if gear is high
-            int32_t accel = max_thr_accel;
-            int32_t decel = max_thr_decel;
-            if (gear < 1500) { // When in high gear, decrease ramp rates
-                accel /= 2;
-                decel /= 1;
-            }
-
-            thr = clamp_throttle(thr, prev_thr, accel, decel);
-            prev_thr = thr;
-
-            // if (log_counter++ >= 25) { // Log every 500ms
-            //     LOG_INF("steer %u us  throttle %u us  gear %u us  override %u us  override_age %u us remote_connected %d  max_thr_accel %d  max_thr_decel %d",
-            //             steer, thr, gear, override, override_age, remote_connected, accel, decel);
-            //     log_counter = 0;
-            // }
-            forward_guess = thr > 1450; // Guess forward direction based on throttle, TODO better handling with stopping
+            // ROS control (remote is present but override is off)
+            steer = int8_to_us(g_ros_ctrl.steering);
+            thr   = int8_to_us(g_ros_ctrl.throttle);
+            gear  = g_ros_ctrl.high_gear ? GEAR_LOW_US : GEAR_HIGH_US; // keep legacy polarity
+            diff       = g_ros_ctrl.diff ? 2000 : 1000;
+            diff_rear  = g_ros_ctrl.diff ? 1000 : 2000;
         }
 
+        // 3) Apply throttle ramping (accel/decel)
+        int32_t accel = max_thr_accel;
+        int32_t decel = max_thr_decel;
+        if (gear == GEAR_HIGH_US) {
+            // In high gear, be gentler on accel
+            accel /= 2;
+        }
+        thr = clamp_throttle(thr, prev_thr, accel, decel);
+        prev_thr = thr;
+        forward_guess = thr > 1450; // simple heuristic
+
+        // 4) Write outputs
         servo_set_ticks(&servos[SERVO_STEERING].spec, steer);
         servo_set_ticks(&servos[SERVO_THROTTLE].spec, thr);
         servo_set_ticks(&servos[SERVO_GEAR].spec, gear);
         servo_set_ticks(&servos[SERVO_DIFF].spec, diff);
         servo_set_ticks(&servos[SERVO_DIFF_REAR].spec, diff_rear);
 
-        uint64_t elapsed_us = k_ticks_to_us_floor64(k_uptime_ticks()) - loop_start_us;
-        int32_t sleep_time = LOOP_MS * 1000 - elapsed_us;
+        // 5) Keep the loop period
+        const uint64_t elapsed_us = k_ticks_to_us_floor64(k_uptime_ticks()) - loop_start_us;
+        const int32_t sleep_time = (int32_t)(LOOP_MS * 1000) - (int32_t)elapsed_us;
         if (sleep_time > 0) {
             k_sleep(K_USEC(sleep_time));
         }

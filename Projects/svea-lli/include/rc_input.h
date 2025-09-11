@@ -20,3 +20,6 @@ void rc_input_debug_dump(void);
 uint32_t rc_get_capture_raw(rc_channel_t ch);
 uint32_t rc_get_age_us(rc_channel_t ch);
 uint32_t rc_get_pulse_us(rc_channel_t ch);
+
+/* Returns true if fresh SBUS data has been received recently. */
+bool rc_input_connected(void);

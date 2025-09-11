@@ -121,3 +121,10 @@ static void rc_debug_thread(void *a, void *b, void *c)
 }
 
 /* (moved to top of file before rc_input_init) */
+
+bool rc_input_connected(void)
+{
+    /* Consider link lost if we haven't seen a frame in 250 ms */
+    const uint32_t age_ms = k_uptime_get_32() - last_frame_ms;
+    return age_ms <= 250U;
+}
