@@ -35,15 +35,13 @@ void sensors_thread(void *p1, void *p2, void *p3) {
 
     
     const struct device *dev = DEVICE_DT_GET(DT_ALIAS(imu));
-    /* The driver initializes itself at POST_KERNEL; app should only
-     * wait until the device reports ready. If PM is enabled, try a
-     * resume action to re-probe once or twice if needed.
-     */
-    /* Wait for driver readiness without forcing PM transitions. */
-    while (!device_is_ready(dev)) {
-        LOG_WRN("IMU device not ready yet; waiting...");
-        k_sleep(K_MSEC(100));
-    }
+    
+    // The imu has a tendency to get stuck, instead of figuring out the root cause or proper solution, we just reboot if it is not ready
+    if (!device_is_ready(dev)) {
+        LOG_WRN("IMU device not ready yet; rebooting...");
+        k_sleep(K_MSEC(1000));
+        sys_reboot(SYS_REBOOT_COLD);
+        }
     imu_dev = dev;
 
         LOG_INF("IMU device ready: %s", imu_dev->name);
