@@ -19,7 +19,10 @@
         "socket.h": "c",
         "poll.h": "c",
         "int32.h": "c",
-        "twist.h": "c"
+        "twist.h": "c",
+        "icm42x70.h": "c",
+        "sensor.h": "c",
+        "kernel.h": "c"
     },
     "terminal.integrated.defaultProfile.osx": "Zephyr IDE Terminal"
 }

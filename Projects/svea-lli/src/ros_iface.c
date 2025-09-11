@@ -3,6 +3,7 @@
 #include "rc_input.h"
 
 #include <geometry_msgs/msg/twist.h>
+#include <geometry_msgs/msg/twist_with_covariance_stamped.h>
 #include <rcl/rcl.h>
 #include <rclc/executor.h>
 #include <rclc/rclc.h>

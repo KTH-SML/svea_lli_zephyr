@@ -18,28 +18,19 @@
 
 &i2c2 {
     status = "okay";
-    clock-frequency = <I2C_BITRATE_STANDARD>;
+    clock-frequency = <I2C_BITRATE_STANDARD>; // Somethings weird with it, fast only works with too aggressive a pullup
     icm42670: icm42670@68 {
         compatible = "invensense,icm42670p";
         reg = <0x68>;
         label = "ICM42670";
+        //int_gpio = <&mb4 14 GPIO_ACTIVE_HIGH>; 
         /* Required properties with legal values */
         gyro-hz = <800>;        /* pick 200 / 400 / 800 / 1600 */
         accel-hz = <800>;       /* pick 100 / 200 / 400 / 800 / 1600 */
-        accel-fs = <16>;        /* full scale in g */
+        accel-fs = <8>;        /* full scale in g */
         gyro-fs = <2000>;       /* full scale in dps */
 
         status = "okay";
-    };
-};
-
-/* Ensure MB4 CS is held high at boot so ICM42670 latches I2C mode */
-&gpiod {
-    mb4_cs_high: mb4_cs_high {
-        gpio-hog;
-        gpios = <15 GPIO_ACTIVE_HIGH>;
-        output-high;
-        line-name = "mb4_cs_i2c";
     };
 };
 
