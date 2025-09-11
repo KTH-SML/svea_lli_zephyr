@@ -253,7 +253,7 @@
     status = "okay";
 };
 
-/* UART1 (Console) - Connected to ST-Link VCP, is labelled UART2 on board for some reason*/
+/* UART1 (Console) - Connected to ST-Link VCP, is labelled UART3 on board for some reason*/
 &usart1 {
 	pinctrl-0 = <&usart1_tx_pb6 &usart1_rx_pb7>;
 	pinctrl-names = "default";
@@ -261,7 +261,7 @@
 	status = "okay";
 }; // MB2
 
-/* UART2 - Available on headers, labelled UART3 on board*/
+/* UART2 - Available on headers, labelled UART2 on board*/
 &usart2 {
     pinctrl-0 = <&usart2_tx_pa2 &usart2_rx_pa3>;
     pinctrl-names = "default";

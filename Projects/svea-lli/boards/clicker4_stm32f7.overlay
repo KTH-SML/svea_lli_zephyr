@@ -6,14 +6,44 @@
     current-speed = <115200>;
 };
 
+/* For input event codes used by futaba,sbus */
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+
 &usart2 {
     status = "okay";
 
+    /* The SBUS driver configures 100000/8E2 at runtime; these are harmless */
     current-speed = <100000>;
     parity = "even";
     stop-bits = "2";
     rx-invert;              /* SBUS is inverted */
     /* optional: hw-flow-control = "none"; */
+
+    /* Map SBUS channels to input events: 1=steer, 2=throttle, 6=gear, 5=override */
+    sbus0: sbus {
+        compatible = "futaba,sbus";
+        status = "okay";
+        ch1_steer: ch1 {
+            channel = <1>;
+            type = <INPUT_EV_ABS>;
+            zephyr,code = <INPUT_ABS_X>;
+        };
+        ch2_throttle: ch2 {
+            channel = <2>;
+            type = <INPUT_EV_ABS>;
+            zephyr,code = <INPUT_ABS_Y>;
+        };
+        ch5_override: ch5 {
+            channel = <5>;
+            type = <INPUT_EV_ABS>;
+            zephyr,code = <INPUT_ABS_RX>;
+        };
+        ch6_gear: ch6 {
+            channel = <6>;
+            type = <INPUT_EV_ABS>;
+            zephyr,code = <INPUT_ABS_RY>;
+        };
+    };
 };
 
 &i2c2 {
@@ -173,16 +203,15 @@
         compatible = "gpio-keys";
         status = "okay";
         wheel_left: wheel_left {
-            compatible = "wheel-encoder-key";
+            /* gpio-keys child: require zephyr,code */
             gpios = <&gpioc 0 GPIO_ACTIVE_HIGH>;
+            zephyr,code = <INPUT_KEY_0>;
             label = "WHEEL_LEFT";
-            debounce-us = <1000>;
         };
         wheel_right: wheel_right {
-            compatible = "wheel-encoder-key";
             gpios = <&gpioi 10 GPIO_ACTIVE_HIGH>;
+            zephyr,code = <INPUT_KEY_1>;
             label = "WHEEL_RIGHT";
-            debounce-us = <1000>;
         };
     };
 };

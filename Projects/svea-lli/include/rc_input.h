@@ -13,6 +13,9 @@ typedef enum {
 /* Initialize SBUS (USART2) RC input */
 void rc_input_init(void);
 
+/* Print SBUS debug information (raw channels, mapped us, age). */
+void rc_input_debug_dump(void);
+
 // Returns the latest captured pulse width (timer ticks) for the channel
 uint32_t rc_get_capture_raw(rc_channel_t ch);
 uint32_t rc_get_age_us(rc_channel_t ch);
