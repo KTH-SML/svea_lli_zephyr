@@ -12,10 +12,14 @@ LOG_MODULE_REGISTER(rc_input_hw, LOG_LEVEL_INF);
 static uint16_t sbus_raw[16];
 static uint32_t last_frame_ms;
 
+// Servos expect values in microseconds (1000-2000)
+// SBUS sends values in range ~172-1811 (typical, may vary slightly
 static inline uint32_t map_sbus_to_us(uint16_t v) {
-    if ((int)v <= 172) return 1000;
-    if (v >= 1811) return 2000;
-    return 1000 + (uint32_t)(v - 172) * 1000U / (1811 - 172);
+    // Clamp input to valid SBUS range
+    if ((int)v < 172) v = 172;
+    if (v > 1811) v = 1811;
+    // Linear mapping from [172, 1811] -> [1000, 2000]
+    return 1000 + ((uint32_t)(v - 172) * 1000U) / (1811 - 172);
 }
 
 static void sbus_input_cb(struct input_event *evt, void *user_data)
@@ -105,10 +109,12 @@ uint32_t rc_get_age_us(rc_channel_t ch) {
 }
 
 void rc_input_debug_dump(void) {
-    LOG_INF("SBUS raw ch1=%u ch2=%u ch5=%u ch6=%u us[steer=%u thr=%u gear=%u ovr=%u]\n",
+    uint32_t age_us = rc_get_age_us(RC_STEER);
+    LOG_INF("SBUS raw ch1=%u ch2=%u ch5=%u ch6=%u us[steer=%u thr=%u gear=%u ovr=%u] age=%u us\n",
            sbus_raw[0], sbus_raw[1], sbus_raw[4], sbus_raw[5],
            map_sbus_to_us(sbus_raw[0]), map_sbus_to_us(sbus_raw[1]),
-           map_sbus_to_us(sbus_raw[5]), map_sbus_to_us(sbus_raw[4]));
+           map_sbus_to_us(sbus_raw[5]), map_sbus_to_us(sbus_raw[4]),
+           age_us);
 }
 
 /* Simple periodic debug printer thread */
