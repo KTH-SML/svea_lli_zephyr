@@ -59,7 +59,7 @@
         accel-hz = <800>;       /* pick 100 / 200 / 400 / 800 / 1600 */
         accel-fs = <8>;        /* full scale in g */
         gyro-fs = <2000>;       /* full scale in dps */
-
+zephyr,deferred-init;
         status = "okay";
     };
 
@@ -157,6 +157,19 @@
     };
 };
 
+/* TIM15 is not present on STM32F745; use TIM1 instead for rear diff (PE9 TIM1_CH1) */
+&timers1 {
+    status = "okay";
+    st,prescaler = <215>;
+    pwm1: pwm {
+        compatible = "st,stm32-pwm";
+        status = "okay";
+        #pwm-cells = <3>;
+        pinctrl-0 = <&tim1_ch1_pe9>;
+        pinctrl-names = "default";
+    };
+};
+
 &timers5 {
     status = "okay";
     st,prescaler = <107>;
@@ -195,32 +208,32 @@
     // Servo output nodes - silkscreen label in comments
     steeringservo: servo {
         compatible = "pwm-servo";
-        pwms = <&pwm4 3 10000000 PWM_POLARITY_NORMAL>; // P1 -> PB8 TIM4_CH3
-        min-pulse = <PWM_USEC(1000)>;
-        max-pulse = <PWM_USEC(2100)>;
-    };
-    gearservo: gear_servo {
-        compatible = "pwm-servo";
-        pwms = <&pwm9 1 10000000 PWM_POLARITY_NORMAL>; // P3 -> PE5 TIM9_CH1
+        pwms = <&pwm9 1 10000000 PWM_POLARITY_NORMAL>; // steer -> PE5 TIM9_CH1
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
     throttleesc: throttle_esc {
         compatible = "pwm-servo";
-        pwms = <&pwm9 2 10000000 PWM_POLARITY_NORMAL>; // P4 -> PE6 TIM9_CH2
+        pwms = <&pwm9 2 10000000 PWM_POLARITY_NORMAL>; // throttle -> PE6 TIM9_CH2
+        min-pulse = <PWM_USEC(1000)>;
+        max-pulse = <PWM_USEC(2100)>;
+    };
+    gearservo: gear_servo {
+        compatible = "pwm-servo";
+        pwms = <&pwm4 4 10000000 PWM_POLARITY_NORMAL>; // speed -> PB9 TIM4_CH4
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
     diffservo: diff_servo {
         compatible = "pwm-servo";
-        pwms = <&pwm4 4 10000000 PWM_POLARITY_NORMAL>; // P2 -> PB9 TIM4_CH4
+        pwms = <&pwm4 3 10000000 PWM_POLARITY_NORMAL>; // diff front -> PB8 TIM4_CH3
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
     diffservorear: diff_servo_rear {
         compatible = "pwm-servo";
-        /* Unused now: map to neutral on PB8 if needed or drop */
-        pwms = <&pwm4 3 10000000 PWM_POLARITY_NORMAL>;
+        status = "okay";
+        pwms = <&pwm1 1 10000000 PWM_POLARITY_NORMAL>; // rear diff -> PE9 TIM1_CH1
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
