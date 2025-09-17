@@ -65,8 +65,7 @@ void rc_input_init(void) {
      */
     LOG_INF("RC input: futaba,sbus callback registered");
     /* Start periodic debug printer */
-    return; 
-    
+
     k_thread_create(&rc_dbg_thread_data, rc_dbg_stack, K_THREAD_STACK_SIZEOF(rc_dbg_stack),
                     rc_debug_thread, NULL, NULL, NULL,
                     5, 0, K_NO_WAIT);
