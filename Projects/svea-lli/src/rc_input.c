@@ -110,20 +110,14 @@ uint32_t rc_get_capture_raw(rc_channel_t ch) {
     }
 }
 
-uint32_t rc_get_age_us(rc_channel_t ch) {
-    ARG_UNUSED(ch);
-    uint32_t now = k_uptime_get_32();
-    uint32_t last = last_frame_ms;
-    return (now - last) * 1000U;
-}
-
 void rc_input_debug_dump(void) {
-    uint32_t age_us = rc_get_age_us(RC_STEER);
-    LOG_INF("SBUS raw ch1=%u ch2=%u ch5=%u ch6=%u us[steer=%u thr=%u gear=%u ovr=%u] age=%u us\n",
+    rc_override_mode_t mode = rc_get_override_mode();
+    const char *mstr = (mode == RC_OVERRIDE_ROS) ? "ROS" : (mode == RC_OVERRIDE_MUTE) ? "MUTE" : "FULL";
+    LOG_INF("SBUS raw ch1=%u ch2=%u ch5=%u ch6=%u us[steer=%u thr=%u gear=%u ovr=%u mode=%s] age=%u us\n",
            sbus_raw[0], sbus_raw[1], sbus_raw[4], sbus_raw[5],
            map_sbus_to_us(sbus_raw[0]), map_sbus_to_us(sbus_raw[1]),
-           map_sbus_to_us(sbus_raw[5]), map_sbus_to_us(sbus_raw[4]),
-           age_us);
+           map_sbus_to_us(sbus_raw[5]), map_sbus_to_us(sbus_raw[4]), mstr,
+           k_uptime_get_32() - last_frame_ms);
 }
 
 /* Simple periodic debug printer thread */
@@ -143,4 +137,21 @@ bool rc_input_connected(void)
     /* Consider link lost if we haven't seen a frame in 250 ms */
     const uint32_t age_ms = k_uptime_get_32() - last_frame_ms;
     return age_ms <= 250U;
+}
+
+// Classify override channel into three discrete modes using wide bands
+// Low  -> ROS control
+// Mid  -> Override engaged, but mute outputs (PWM=0)
+// High -> Full manual override passthrough
+rc_override_mode_t rc_get_override_mode(void)
+{
+    uint32_t us = rc_get_pulse_us(RC_OVERRIDE);
+    // Narrower bands: <1400=ROS, 1400..1600=MUTE, >1600=FULL
+    if (us < 1400U) {
+        return RC_OVERRIDE_ROS;
+    } else if (us <= 1600U) {
+        return RC_OVERRIDE_MUTE;
+    } else {
+        return RC_OVERRIDE_REMOTE;
+    }
 }

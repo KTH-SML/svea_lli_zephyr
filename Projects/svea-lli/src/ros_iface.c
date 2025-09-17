@@ -320,12 +320,12 @@ static void ros_iface_thread(void *a, void *b, void *c) {
                 int32_t steer_us = rc_get_pulse_us(RC_STEER);
                 int32_t throttle_us = rc_get_pulse_us(RC_THROTTLE);
                 uint32_t gear_us = rc_get_pulse_us(RC_HIGH_GEAR);
-                uint32_t override_us = rc_get_pulse_us(RC_OVERRIDE);
 
                 msg_steer.data = pulse_to_int8(steer_us);
                 msg_throttle.data = pulse_to_int8(throttle_us);
                 msg_gear.data = pulse_to_bool(gear_us);
-                msg_override.data = pulse_to_bool(override_us);
+                // Treat both MUTE and FULL as override engaged
+                msg_override.data = (rc_get_override_mode() != RC_OVERRIDE_ROS);
 
                 rcl_ret_t rc;
                 rc = rcl_publish(&pub_steer, &msg_steer, NULL);
