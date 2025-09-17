@@ -15,6 +15,8 @@ LOG_MODULE_REGISTER(bms_task, CONFIG_LOG_DEFAULT_LEVEL);
 static Bms g_bms;
 
 static void print_bms_status(const Bms *bms) {
+    return;
+
     printf("\n--- BMS Telemetry ---\n");
     static const char *state_names[] = {"OFF", "CHG", "DIS", "NORMAL", "SHUTDOWN"};
     printf("State: %s (%u)  |  SoC: %.1f %%  |  Full: %d  Empty: %d\n",
