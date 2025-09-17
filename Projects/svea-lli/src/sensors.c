@@ -22,7 +22,6 @@ static sensor_msgs__msg__Imu imu_msg;
 
 void sensors_init(void) {
     LOG_INF("Initializing sensors");
-    return;
     //k_sleep(K_MSEC(500)); // Wait a bit for system to stabilize
     k_thread_create(&sensors_thread_data, sensors_stack, K_THREAD_STACK_SIZEOF(sensors_stack),
                     sensors_thread, NULL, NULL, NULL,
@@ -38,10 +37,11 @@ void sensors_thread(void *p1, void *p2, void *p3) {
     const struct device *dev = DEVICE_DT_GET(DT_ALIAS(imu));
     
     // The imu has a tendency to get stuck, instead of figuring out the root cause or proper solution, we just reboot if it is not ready
-    if (!device_is_ready(dev)) {
-        LOG_WRN("IMU device not ready yet; rebooting...");
-        k_sleep(K_MSEC(1000));
-        sys_reboot(SYS_REBOOT_COLD);
+    while (!device_is_ready(dev)) {
+        
+        k_sleep(K_MSEC(100));
+        int rc = device_init(dev);
+        LOG_INF("IMU device_init returned %d", rc);
         }
     imu_dev = dev;
 
