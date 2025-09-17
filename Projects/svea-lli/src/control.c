@@ -55,9 +55,9 @@ static inline void servo_set_ticks(const struct pwm_dt_spec *s, uint16_t t_us) {
 #define GEAR_HIGH_US     1100
 #define GEAR_LOW_US      1900
 
-// Throttle ramp profile
+// Throttle ramp profile, prevents overcurrent trips but shouldn't be noticable
 #define THROTTLE_RAMP_DELTA_US 500   // change to consider (us)
-#define THROTTLE_RAMP_TIME_MS  500   // time to make that change (ms)
+#define THROTTLE_RAMP_TIME_MS  100   // time to make that change (ms)
 #define THROTTLE_DECEL_DELTA_US 500  // decel towards neutral
 #define THROTTLE_DECEL_TIME_MS  200
 
@@ -136,7 +136,7 @@ static void control_thread(void *, void *, void *) {
             steer = rc_get_pulse_us(RC_STEER);
             thr   = rc_get_pulse_us(RC_THROTTLE);
             gear  = (rc_get_pulse_us(RC_HIGH_GEAR) > SERVO_NEUTRAL_US) ? GEAR_HIGH_US : GEAR_LOW_US;
-
+            
             // Also update ROS shadow for visibility/tools
             g_ros_ctrl.steering  = (int8_t)(((int32_t)steer - SERVO_NEUTRAL_US) * 127 / 500);
             g_ros_ctrl.throttle  = (int8_t)(((int32_t)thr   - SERVO_NEUTRAL_US) * 127 / 500);
