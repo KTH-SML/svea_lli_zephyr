@@ -2,3 +2,8 @@
     path = modules/lib/micro_ros_zephyr_module
     url = https://github.com/micro-ROS/micro_ros_zephyr_module.git
     branch = jazzy
+
+[submodule "modules/lib/svea-bms"]
+    path = modules/lib/svea-bms
+    url = https://github.com/KTH-SML/svea-bms/
+    branch = main
