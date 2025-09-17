@@ -79,7 +79,16 @@ void rc_input_init(void) {
 uint32_t rc_get_pulse_us(rc_channel_t ch) {
     switch (ch) {
     case RC_STEER:     return map_sbus_to_us(sbus_raw[0]); /* ch1 */
-    case RC_THROTTLE:  return map_sbus_to_us(sbus_raw[1]); /* ch2 */
+    case RC_THROTTLE: {
+        /* Invert throttle around center (1500us) and clamp to [1000,2000] */
+        uint32_t us = map_sbus_to_us(sbus_raw[1]); /* ch2 */
+        if (us < 1000U) us = 1000U;
+        if (us > 2000U) us = 2000U;
+        uint32_t inv = 3000U - us; /* 1000<->2000, 1500 stays */
+        if (inv < 1000U) inv = 1000U;
+        if (inv > 2000U) inv = 2000U;
+        return inv;
+    }
     case RC_HIGH_GEAR: return map_sbus_to_us(sbus_raw[5]); /* ch6 */
     case RC_OVERRIDE:  return map_sbus_to_us(sbus_raw[4]); /* ch5 */
     default: return 1500;
