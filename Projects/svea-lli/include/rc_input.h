@@ -1,6 +1,8 @@
 #pragma once
 
 #include <stdint.h>
+#include <stdbool.h>
+#include <stdbool.h>
 
 typedef enum {
     RC_STEER = 0,

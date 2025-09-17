@@ -22,6 +22,7 @@ static sensor_msgs__msg__Imu imu_msg;
 
 void sensors_init(void) {
     LOG_INF("Initializing sensors");
+    return;
     //k_sleep(K_MSEC(500)); // Wait a bit for system to stabilize
     k_thread_create(&sensors_thread_data, sensors_stack, K_THREAD_STACK_SIZEOF(sensors_stack),
                     sensors_thread, NULL, NULL, NULL,

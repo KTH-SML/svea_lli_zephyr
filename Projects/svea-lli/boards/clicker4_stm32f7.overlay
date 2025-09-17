@@ -62,6 +62,17 @@
 
         status = "okay";
     };
+
+    /* Battery monitor (TI bq769x0 family) on I2C2 */
+    bq769x0: bq769x0@8 {
+        compatible = "ti,bq769x0";
+        reg = <0x08>;
+        /* ALERT pin from BMS IC to MCU GPIO (adjust to your wiring) */
+        alert-gpios = <&gpioa 8 GPIO_ACTIVE_HIGH>;
+        /* Precharge control (BQ76200 PCHG) connected to PD2 */
+        pchg-gpios = <&gpiod 2 GPIO_ACTIVE_HIGH>;
+        status = "okay";
+    };
 };
 
 &iwdg {
@@ -163,6 +174,24 @@
 
 
 / {
+    /* Board-specific constants expected by BMS lib */
+    pcb {
+        compatible = "bms";
+        /* Adjust these to your pack and shunt */
+        num-cells-max = <5>;              /* e.g. 3S-5S bq76920 */
+        num-thermistors-max = <0>;        /* set 0/1/2/3 matching your wiring */
+        current-max = <20>;               /* A, informational */
+        shunt-res = <4000>;               /* mOhm in milli (e.g. 4 mOhm => 4000) */
+        type = "CustomPack";
+        version-str = "svea-v0.1";
+        version-num = <1>;
+    };
+
+    /* TS1 wake control GPIO for the BMS IC (used by wake_chip.c) */
+    zephyr,user {
+        ts1_wake_gpios = <&gpiob 1 GPIO_ACTIVE_HIGH>; /* adjust to your wiring */
+    };
+
     // Servo output nodes - silkscreen label in comments
     steeringservo: servo {
         compatible = "pwm-servo";
@@ -201,9 +230,8 @@
 / {
     wheel_encoders: wheel_encoders {
         compatible = "gpio-keys";
-        status = "okay";
+        status = "disabled"; /* Using timer capture, not gpio-keys */
         wheel_left: wheel_left {
-            /* gpio-keys child: require zephyr,code */
             gpios = <&gpioc 0 GPIO_ACTIVE_HIGH>;
             zephyr,code = <INPUT_KEY_0>;
             label = "WHEEL_LEFT";

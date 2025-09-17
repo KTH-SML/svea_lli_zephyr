@@ -48,7 +48,7 @@ static void sbus_input_cb(struct input_event *evt, void *user_data)
     uint32_t now = k_uptime_get_32();
     if ((now - last_pr_ms) > 100U) {
         last_pr_ms = now;
-        printk("SBUS evt: type=%u code=%u val=%d\n", evt->type, evt->code, evt->value);
+        //printk("SBUS evt: type=%u code=%u val=%d\n", evt->type, evt->code, evt->value);
     }
 }
 
@@ -65,6 +65,8 @@ void rc_input_init(void) {
      */
     LOG_INF("RC input: futaba,sbus callback registered");
     /* Start periodic debug printer */
+    return; 
+    
     k_thread_create(&rc_dbg_thread_data, rc_dbg_stack, K_THREAD_STACK_SIZEOF(rc_dbg_stack),
                     rc_debug_thread, NULL, NULL, NULL,
                     5, 0, K_NO_WAIT);
