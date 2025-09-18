@@ -1,9 +1,8 @@
-board_runner_args(openocd
-  "--cmd-pre-init=source [find interface/cmsis-dap.cfg]"
-  "--cmd-pre-init=transport select swd"
-  "--cmd-pre-init=adapter speed 400"                 # be conservative on first attach
-  "--cmd-pre-init=reset_config srst_only srst_nogate connect_assert_srst"
-  "--cmd-pre-init=source [find target/stm32f7x.cfg]"
-  "--cmd-pre-init=cortex_m reset_config sysresetreq" # use SYSRESETREQ for init
+board_runner_args(pyocd
+  "--target=stm32f745vg"
+  "--frequency=10000"
+  "--flash-opt=-O connect_mode=under-reset"
 )
+
+include(${ZEPHYR_BASE}/boards/common/pyocd.board.cmake)
 include(${ZEPHYR_BASE}/boards/common/openocd.board.cmake)

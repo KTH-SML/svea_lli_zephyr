@@ -1,5 +1,12 @@
 &cdc_acm_uart0 {
     current-speed = <115200>;
+    bq769x0: bq769x0@8 {
+        compatible = "ti,bq769x0";
+        reg = <0x08>;
+        alert-gpios = <&gpioa 8 GPIO_ACTIVE_HIGH>;
+        pchg-gpios = <&gpiod 2 GPIO_ACTIVE_HIGH>;
+        status = "okay";
+    };
 };
 
 &usart1 {
@@ -19,6 +26,7 @@
         accel-range = <4>;
         gyro-range = <250>;
         reg = <0x6b>;
+        label = "ISM330DLC";
     };
 };
 
@@ -27,6 +35,7 @@
 };
 
 #include <zephyr/dt-bindings/pwm/pwm.h>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
 
 /* Pinmux definitions - silkscreen label in comments */
 &pinctrl {
@@ -165,18 +174,34 @@
 
 
 / {
+    /* Board-specific DT data used by BMS and wake_chip */
+    pcb {
+        compatible = "bms";
+        num-cells-max = <5>;
+        num-thermistors-max = <0>;
+        current-max = <20>;
+        shunt-res = <4000>;
+        type = "CustomPack";
+        version-str = "svea-v0.1";
+        version-num = <1>;
+    };
+
+    zephyr,user {
+        ts1_wake_gpios = <&gpiob 1 GPIO_ACTIVE_HIGH>;
+    };
+
     wheel_encoders: wheel_encoders {
         compatible = "gpio-keys";
-        status = "okay";
+        status = "disabled";
         wheel_left: wheel_left {
-            compatible = "wheel-encoder-key";
             gpios = <&gpioc 0 GPIO_ACTIVE_HIGH>;
+            zephyr,code = <INPUT_KEY_0>;
             label = "WHEEL_LEFT";
             debounce-us = <1000>;
         };
         wheel_right: wheel_right {
-            compatible = "wheel-encoder-key";
             gpios = <&gpioi 10 GPIO_ACTIVE_HIGH>;
+            zephyr,code = <INPUT_KEY_1>;
             label = "WHEEL_RIGHT";
             debounce-us = <1000>;
         };
@@ -208,7 +233,7 @@
         wheel-right-gpio = &wheel_right;
         //wheel-right = &timers13;
 
+        imu = &imu;
         watchdog0 = &iwdg;
     };
 };
-

@@ -17,7 +17,17 @@ LOG_MODULE_REGISTER(control, LOG_LEVEL_INF);
 bool servos_initialized = false;
 bool remote_connected = true;
 bool in_override_mode = true;
-bool forward_guess = true; // Guess forward direction
+bool forward_guess = true;     // Guess forward direction
+static bool diff_state = true; // persistent diff state (true = engaged)
+static inline bool diff_next_state(bool current) {
+    if (rc_consume_diff_toggle_event()) {
+        bool next = !current;
+        g_ros_ctrl.diff = next; // keep ROS shadow in sync
+        LOG_INF("Diff toggled to %s", next ? "ENGAGED" : "DISENGAGED");
+        return next;
+    }
+    return current;
+}
 servo_t servos[SERVO_COUNT] = {
     [SERVO_STEERING] = {.spec = PWM_DT_SPEC_GET(DT_NODELABEL(steeringservo))},
     [SERVO_GEAR] = {.spec = PWM_DT_SPEC_GET(DT_NODELABEL(gearservo))},
@@ -31,35 +41,41 @@ void servo_init(void) {
     for (int i = 0; i < SERVO_COUNT; ++i) {
         /* Initialize with 0 ns pulse to avoid 16-bit overflow warnings */
         pwm_set_pulse_dt(&servos[i].spec, 0);
+        if (!device_is_ready(servos[i].spec.dev)) {
+            LOG_ERR("Servo %d PWM device not ready");
+        }
     }
     servos_initialized = true;
 }
 static inline void servo_set_ticks(const struct pwm_dt_spec *s, uint16_t t_us) {
-    // Clamp t_us to [1000, 2000] (1-2 ms)
-    // if (t_us == 0) {
-    //     pwm_set_pulse_dt(s, 0);
-    //     return;
-    // }
-    // if (t_us < 1000)
-    //     t_us = 1000;
-    // if (t_us > 2000)
-    //     t_us = 2000;
     uint32_t t_ns = t_us * 1000; // Convert microseconds to nanoseconds
-    pwm_set_pulse_dt(s, t_ns);
+
+    int err = pwm_set_pulse_dt(s, t_ns);
+    if (err) {
+        LOG_ERR("PWM set failed: %d", err);
+    }
 }
 /* ───── 3. control thread – readable, explicit conditions ───────────── */
 #define LOOP_MS 25 // 40 Hz
 
 // Neutral/safe outputs
 #define SERVO_NEUTRAL_US 1500
+
+// Gear positions
 #define GEAR_HIGH_US 1100
 #define GEAR_LOW_US 1900
+
+// Diff positions (front/rear) when engaged vs. open
+#define DIFF_ENGAGED_FRONT_US 1900
+#define DIFF_ENGAGED_REAR_US 1100
+#define DIFF_OPEN_FRONT_US 1100
+#define DIFF_OPEN_REAR_US 1900
 
 // Throttle ramp profile, prevents overcurrent trips but shouldn't be noticable
 #define THROTTLE_RAMP_DELTA_US 500  // change to consider (us)
 #define THROTTLE_RAMP_TIME_MS 100   // time to make that change (ms)
 #define THROTTLE_DECEL_DELTA_US 500 // decel towards neutral
-#define THROTTLE_DECEL_TIME_MS 200
+#define THROTTLE_DECEL_TIME_MS 200  // time to make that change (ms)
 
 // Remove old pulse_to_us, use new int8 mapping
 static inline uint32_t int8_to_us(int8_t val) {
@@ -106,9 +122,7 @@ static void control_thread(void *, void *, void *) {
     LOG_INF("Control thread started, servos initialized.");
 
     uint32_t prev_thr = SERVO_NEUTRAL_US; // Start at neutral
-    uint32_t diff = 1000;                 // default diff positions
-    uint32_t diff_rear = 2000;
-    g_ros_ctrl.diff = true;
+    g_ros_ctrl.diff = diff_state;
 
     // Per-loop ramp limits (us per loop)
     const int32_t max_thr_accel = (THROTTLE_RAMP_DELTA_US * LOOP_MS) / THROTTLE_RAMP_TIME_MS;
@@ -119,44 +133,91 @@ static void control_thread(void *, void *, void *) {
 
         // 1) Connection + override state (three-way)
         remote_connected = rc_input_connected();
+        // TODO: ros_connected
         rc_override_mode_t override_mode = rc_get_override_mode();
         in_override_mode = (override_mode != RC_OVERRIDE_ROS); // for ros publish
 
-        // 2) Decide command sources and compute targets
-        uint32_t steer = SERVO_NEUTRAL_US;
-        uint32_t thr = SERVO_NEUTRAL_US;
-        uint32_t gear = GEAR_LOW_US;
+        // 2) Decide command sources
+        // - Compute booleans first (like gear), then map to pulses together
+        uint32_t steer_us = SERVO_NEUTRAL_US;
+        uint32_t thr_us = SERVO_NEUTRAL_US;
+        bool high_gear = false;
+        bool diff_engaged = diff_state; // start from persisted state
+        uint32_t gear_us = GEAR_LOW_US;
+        uint32_t diff_front_us = DIFF_OPEN_FRONT_US;
+        uint32_t diff_rear_us = DIFF_OPEN_REAR_US;
         bool mute_outputs = false;
 
         if (!remote_connected) {
             // Disconnected: null all primary outputs
-            steer = SERVO_NEUTRAL_US;
-            thr = SERVO_NEUTRAL_US;
-            gear = GEAR_LOW_US;
+            steer_us = SERVO_NEUTRAL_US;
+            thr_us = SERVO_NEUTRAL_US;
+            high_gear = false;
+            diff_engaged = false;
         } else {
             switch (override_mode) {
             case RC_OVERRIDE_REMOTE:
                 // Manual override passthrough
-                steer = rc_get_pulse_us(RC_STEER);
-                thr = rc_get_pulse_us(RC_THROTTLE);
-                gear = (rc_get_pulse_us(RC_HIGH_GEAR) > SERVO_NEUTRAL_US) ? GEAR_HIGH_US : GEAR_LOW_US;
-                // Update ROS shadow for visibility/tools
-                g_ros_ctrl.steering = (int8_t)(((int32_t)steer - SERVO_NEUTRAL_US) * 127 / 500);
-                g_ros_ctrl.throttle = (int8_t)(((int32_t)thr - SERVO_NEUTRAL_US) * 127 / 500);
-                g_ros_ctrl.high_gear = (gear == GEAR_HIGH_US);
+                steer_us = rc_get_pulse_us(RC_STEER);
+                thr_us = rc_get_pulse_us(RC_THROTTLE);
+                high_gear = (rc_get_pulse_us(RC_HIGH_GEAR) > SERVO_NEUTRAL_US);
+                // Update ROS shadow for better transition in case ros agent is off
+                g_ros_ctrl.steering = (int8_t)(((int32_t)steer_us - SERVO_NEUTRAL_US) * 127 / 500);
+                g_ros_ctrl.throttle = (int8_t)(((int32_t)thr_us - SERVO_NEUTRAL_US) * 127 / 500);
+                g_ros_ctrl.high_gear = high_gear;
+                // Diff next state from latched RC event
+                diff_state = diff_next_state(diff_state);
+                diff_engaged = diff_state;
+
+                gear_us = high_gear ? GEAR_HIGH_US : GEAR_LOW_US;
+                if (diff_engaged) {
+                    diff_front_us = DIFF_ENGAGED_FRONT_US;
+                    diff_rear_us = DIFF_ENGAGED_REAR_US;
+                } else {
+                    diff_front_us = DIFF_OPEN_FRONT_US;
+                    diff_rear_us = DIFF_OPEN_REAR_US;
+                }
+
                 break;
             case RC_OVERRIDE_MUTE:
                 // Override engaged, but mute all outputs
                 mute_outputs = true;
+                // Allow diff toggle while muted so it takes effect when unmuted
+                diff_state = diff_next_state(diff_state);
+                diff_engaged = diff_state;
+
+                steer_us = 0;
+                thr_us = 0;
+                gear_us = 0;
+                diff_front_us = 0;
+                diff_rear_us = 0;
+
                 break;
             case RC_OVERRIDE_ROS:
-            default:
+                // TODO ADD CHECK IF ROS IS ACTIVE, OTHERWISE FALLBACK TO MANUAL
                 // ROS control
-                steer = int8_to_us(g_ros_ctrl.steering);
-                thr = int8_to_us(g_ros_ctrl.throttle);
-                gear = g_ros_ctrl.high_gear ? GEAR_LOW_US : GEAR_HIGH_US; // keep legacy polarity
-                diff = g_ros_ctrl.diff ? 2000 : 1000;
-                diff_rear = g_ros_ctrl.diff ? 1000 : 2000;
+                steer_us = int8_to_us(g_ros_ctrl.steering);
+                thr_us = int8_to_us(g_ros_ctrl.throttle);
+                high_gear = g_ros_ctrl.high_gear;
+
+                gear_us = high_gear ? GEAR_HIGH_US : GEAR_LOW_US;
+
+                // Track ROS diff state when in ROS mode
+                diff_state = g_ros_ctrl.diff;
+                // Also allow CH4 to toggle diff even in ROS mode
+                diff_state = diff_next_state(diff_state);
+                diff_engaged = diff_state;
+
+                if (diff_engaged) {
+                    diff_front_us = DIFF_ENGAGED_FRONT_US;
+                    diff_rear_us = DIFF_ENGAGED_REAR_US;
+                } else {
+                    diff_front_us = DIFF_OPEN_FRONT_US;
+                    diff_rear_us = DIFF_OPEN_REAR_US;
+                }
+                break;
+            default:
+                // Use defaults
                 break;
             }
         }
@@ -165,29 +226,23 @@ static void control_thread(void *, void *, void *) {
         if (!mute_outputs) {
             int32_t accel = max_thr_accel;
             int32_t decel = max_thr_decel;
-            if (gear == GEAR_HIGH_US) {
+            if (gear_us == GEAR_HIGH_US) {
                 // In high gear, be gentler on accel
                 accel /= 2;
             }
-            thr = clamp_throttle(thr, prev_thr, accel, decel);
-            prev_thr = thr;
-            forward_guess = thr > 1450; // simple heuristic
-        } else {
-            // Keep prev_thr as-is so ramp resumes smoothly after unmute
-            steer = 0;
-            thr = 0;
-            gear = 0;
-            diff = 0;
-            diff_rear = 0;
+            thr_us = clamp_throttle(thr_us, prev_thr, accel, decel);
+            prev_thr = thr_us;
+            forward_guess = thr_us > 1450; // simple heuristic
         }
 
         // 4) Write outputs
-        servo_set_ticks(&servos[SERVO_STEERING].spec, steer);
-        servo_set_ticks(&servos[SERVO_THROTTLE].spec, thr);
-        servo_set_ticks(&servos[SERVO_GEAR].spec, gear);
-        servo_set_ticks(&servos[SERVO_DIFF].spec, diff);
-        servo_set_ticks(&servos[SERVO_DIFF_REAR].spec, diff_rear);
+        servo_set_ticks(&servos[SERVO_STEERING].spec, steer_us);
+        servo_set_ticks(&servos[SERVO_THROTTLE].spec, thr_us);
+        servo_set_ticks(&servos[SERVO_GEAR].spec, gear_us);
+        servo_set_ticks(&servos[SERVO_DIFF].spec, diff_front_us);
+        servo_set_ticks(&servos[SERVO_DIFF_REAR].spec, diff_rear_us);
 
+  
         // 5) Keep the loop period
         const uint64_t elapsed_us = k_ticks_to_us_floor64(k_uptime_ticks()) - loop_start_us;
         const int32_t sleep_time = (int32_t)(LOOP_MS * 1000) - (int32_t)elapsed_us;

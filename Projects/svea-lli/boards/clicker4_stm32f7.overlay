@@ -9,9 +9,11 @@
 /* For input event codes used by futaba,sbus */
 #include <zephyr/dt-bindings/input/input-event-codes.h>
 
+
+
 &usart2 {
     status = "okay";
-
+    pinctrl-0 = <&usart2_rx_pa3>;
     /* The SBUS driver configures 100000/8E2 at runtime; these are harmless */
     current-speed = <100000>;
     parity = "even";
@@ -19,7 +21,7 @@
     rx-invert;              /* SBUS is inverted */
     /* optional: hw-flow-control = "none"; */
 
-    /* Map SBUS channels to input events: 1=steer, 2=throttle, 6=gear, 5=override */
+    /* Map SBUS channels to input events: 1=steer, 2=throttle, 4=diff_button, 6=gear, 5=override */
     sbus0: sbus {
         compatible = "futaba,sbus";
         status = "okay";
@@ -32,6 +34,11 @@
             channel = <2>;
             type = <INPUT_EV_ABS>;
             zephyr,code = <INPUT_ABS_Y>;
+        };
+        ch4_diff_button: ch4 {
+            channel = <4>;
+            type = <INPUT_EV_ABS>;
+            zephyr,code = <INPUT_ABS_Z>;
         };
         ch5_override: ch5 {
             channel = <5>;
@@ -75,31 +82,18 @@ zephyr,deferred-init;
     };
 };
 
+/ {
+    aliases {
+        imu = &icm42670;
+    };
+};
+
 &iwdg {
     status = "okay";
 };
 
 #include <zephyr/dt-bindings/pwm/pwm.h>
-
-/* Pinmux definitions - silkscreen label in comments */
-&pinctrl {
-    /* PWM outputs mapping: PB8=P1, PB9=P2, PE5=P3, PE6=P4 */
-    tim4_ch3_pb8: tim4_ch3_pb8    { pinmux = <STM32_PINMUX('B', 8, AF2)>;  }; // PB8 -> TIM4_CH3
-    tim4_ch4_pb9: tim4_ch4_pb9    { pinmux = <STM32_PINMUX('B', 9, AF2)>;  }; // PB9 -> TIM4_CH4
-    tim9_ch1_pe5: tim9_ch1_pe5    { pinmux = <STM32_PINMUX('E', 5, AF3)>;  }; // PE5 -> TIM9_CH1
-    tim9_ch2_pe6: tim9_ch2_pe6    { pinmux = <STM32_PINMUX('E', 6, AF3)>;  }; // PE6 -> TIM9_CH2
-
-    /* Other pins kept as-is if still in use elsewhere */
-    tim1_ch1_pe9: tim1_ch1_pe9    { pinmux = <STM32_PINMUX('E', 9, AF1)>;  };
-    tim12_ch1_ph6: tim12_ch1_ph6  { pinmux = <STM32_PINMUX('H', 6, AF9)>;  };
-    tim3_ch1_pa6: tim3_ch1_pa6    { pinmux = <STM32_PINMUX('A', 6, AF2)>;  };
-    tim3_ch2_pa7: tim3_ch2_pa7    { pinmux = <STM32_PINMUX('A', 7, AF2)>;  };
-    tim5_ch1_ph10: tim5_ch1_ph10  { pinmux = <STM32_PINMUX('H', 10, AF2)>; };
-    tim15_ch1_pe4: tim15_ch1_pe4  { pinmux = <STM32_PINMUX('E', 4,  AF2)>; };
-    tim2_ch1_pa5: tim2_ch1_pa5    { pinmux = <STM32_PINMUX('A', 5, AF1)>; };
-    tim2_ch2_pa1: tim2_ch2_pa1    { pinmux = <STM32_PINMUX('A', 1, AF1)>; };
-};
-
+// #include <st/f7/stm32f745i(e-g)tx-pinctrl.dtsi>
 /* PWM Output timers - silkscreen label in comments */
 /* TIM2 no longer used for PWM on PB10/PB11 to avoid I2C2 conflict */
 &timers2 {
@@ -113,7 +107,7 @@ zephyr,deferred-init;
         compatible = "st,stm32-pwm";
         status = "okay";
         #pwm-cells = <3>;
-        pinctrl-0 = <&tim4_ch3_pb8 &tim4_ch4_pb9>; // PB8=P1, PB9=P2
+        pinctrl-0 = < &tim4_ch4_pb9>; // PB9 (Servo P2) via TIM4_CH4
         pinctrl-names = "default";
     };
 };
@@ -122,28 +116,17 @@ zephyr,deferred-init;
 &timers3 {
     status = "okay";
     st,prescaler = <107>;
-    pwm3_in: pwm {
+    pwm3: pwm {
         compatible = "st,stm32-pwm";
         status = "okay";
         #pwm-cells = <3>;
-        pinctrl-0 = <&tim3_ch1_pa6>; // MISO1
+        pinctrl-0 = <&tim3_ch2_pb5>; // PB5 (mikroBUS MISO1)
         pinctrl-names = "default";
     };
 };
 
 
-&timers12 {
-    status = "okay";
-    st,prescaler = <107>;
 
-    pwm12_in: pwm {
-        compatible = "st,stm32-pwm";
-        status = "okay";
-        #pwm-cells = <3>;
-        pinctrl-0 = <&tim12_ch1_ph6>;   // PH6 (P4) now capture
-        pinctrl-names = "default";
-    };
-};
 
 &timers9 {
     status = "okay";
@@ -152,7 +135,7 @@ zephyr,deferred-init;
         compatible = "st,stm32-pwm";
         status = "okay";
         #pwm-cells = <3>;
-        pinctrl-0 = <&tim9_ch1_pe5 &tim9_ch2_pe6>; // PE5=P3, PE6=P4
+        pinctrl-0 = < &tim9_ch1_pe5 &tim9_ch2_pe6>; // PE5 (Servo P3) TIM9_CH1, PE6 (Servo P4) TIM9_CH2
         pinctrl-names = "default";
     };
 };
@@ -165,19 +148,19 @@ zephyr,deferred-init;
         compatible = "st,stm32-pwm";
         status = "okay";
         #pwm-cells = <3>;
-        pinctrl-0 = <&tim1_ch1_pe9>;
+        pinctrl-0 = <&tim1_ch1_pe9 &tim1_ch4_pe14>; // PE9 (unused reserve), PE14 (Diff front)
         pinctrl-names = "default";
     };
 };
 
 &timers5 {
     status = "okay";
-    st,prescaler = <107>;
-    pwm5_in: pwm {
+    st,prescaler = <215>;
+    pwm5: pwm {
         compatible = "st,stm32-pwm";
         status = "okay";
         #pwm-cells = <3>;
-        pinctrl-0 = <&tim5_ch1_ph10>; // P5
+        pinctrl-0 = <&tim5_ch3_pa2>; // PA2 (Servo P5) via TIM5_CH3
         pinctrl-names = "default";
     };
 };
@@ -205,16 +188,18 @@ zephyr,deferred-init;
         ts1_wake_gpios = <&gpiob 1 GPIO_ACTIVE_HIGH>; /* adjust to your wiring */
     };
 
+
+    throttleesc: throttle_esc {
+        compatible = "pwm-servo";
+        pwms = <&pwm9 2 10000000 PWM_POLARITY_NORMAL>; // throttle -> PE6 TIM9_CH2
+        min-pulse = <PWM_USEC(1000)>;
+        max-pulse = <PWM_USEC(2100)>;
+    };
+
     // Servo output nodes - silkscreen label in comments
     steeringservo: servo {
         compatible = "pwm-servo";
         pwms = <&pwm9 1 10000000 PWM_POLARITY_NORMAL>; // steer -> PE5 TIM9_CH1
-        min-pulse = <PWM_USEC(1000)>;
-        max-pulse = <PWM_USEC(2100)>;
-    };
-    throttleesc: throttle_esc {
-        compatible = "pwm-servo";
-        pwms = <&pwm9 2 10000000 PWM_POLARITY_NORMAL>; // throttle -> PE6 TIM9_CH2
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
@@ -226,14 +211,14 @@ zephyr,deferred-init;
     };
     diffservo: diff_servo {
         compatible = "pwm-servo";
-        pwms = <&pwm4 3 10000000 PWM_POLARITY_NORMAL>; // diff front -> PB8 TIM4_CH3
+        pwms = <&pwm1 4 10000000 PWM_POLARITY_NORMAL>; // diff front -> PE14 TIM1_CH4
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
     diffservorear: diff_servo_rear {
         compatible = "pwm-servo";
         status = "okay";
-        pwms = <&pwm1 1 10000000 PWM_POLARITY_NORMAL>; // rear diff -> PE9 TIM1_CH1
+        pwms = <&pwm5 3 10000000 PWM_POLARITY_NORMAL>; // rear diff -> PA2 TIM5_CH3
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };

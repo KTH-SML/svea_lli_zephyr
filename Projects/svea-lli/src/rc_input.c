@@ -1,29 +1,33 @@
 /* rc_input.c – SBUS via Zephyr input (futaba,sbus) */
 
 #include "rc_input.h"
+#include <string.h>
+#include <zephyr/input/input.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/atomic.h>
 #include <zephyr/sys/printk.h>
-#include <zephyr/input/input.h>
-#include <string.h>
 
 LOG_MODULE_REGISTER(rc_input_hw, LOG_LEVEL_INF);
 
 static uint16_t sbus_raw[16];
 static uint32_t last_frame_ms;
+static atomic_t diff_toggle_ev = ATOMIC_INIT(0);
+static bool last_ch4_high = false;
 
 // Servos expect values in microseconds (1000-2000)
 // SBUS sends values in range ~172-1811 (typical, may vary slightly
 static inline uint32_t map_sbus_to_us(uint16_t v) {
     // Clamp input to valid SBUS range
-    if ((int)v < 172) v = 172;
-    if (v > 1811) v = 1811;
+    if ((int)v < 172)
+        v = 172;
+    if (v > 1811)
+        v = 1811;
     // Linear mapping from [172, 1811] -> [1000, 2000]
     return 1000 + ((uint32_t)(v - 172) * 1000U) / (1811 - 172);
 }
 
-static void sbus_input_cb(struct input_event *evt, void *user_data)
-{
+static void sbus_input_cb(struct input_event *evt, void *user_data) {
     ARG_UNUSED(user_data);
 
     /* Update last frame time on any sbus event */
@@ -36,15 +40,37 @@ static void sbus_input_cb(struct input_event *evt, void *user_data)
     /* Map codes from overlay to sbus_raw indices:
      * INPUT_ABS_X  -> ch1 (steering)
      * INPUT_ABS_Y  -> ch2 (throttle)
+     * INPUT_ABS_Z  -> ch4 (diff toggle button)
      * INPUT_ABS_RX -> ch5 (override)
      * INPUT_ABS_RY -> ch6 (gear)
      */
     switch (evt->code) {
-    case INPUT_ABS_X:  sbus_raw[0] = evt->value; break;  /* ch1 */
-    case INPUT_ABS_Y:  sbus_raw[1] = evt->value; break;  /* ch2 */
-    case INPUT_ABS_RX: sbus_raw[4] = evt->value; break;  /* ch5 */
-    case INPUT_ABS_RY: sbus_raw[5] = evt->value; break;  /* ch6 */
-    default: break;
+    case INPUT_ABS_X:
+        sbus_raw[0] = evt->value;
+        break; /* ch1 */
+    case INPUT_ABS_Y:
+        sbus_raw[1] = evt->value;
+        break; /* ch2 */
+    case INPUT_ABS_Z: {
+        sbus_raw[3] = evt->value; /* ch4 */
+
+        bool high = sbus_raw[3] > 500U;
+        printk("obama");
+        if (high && !last_ch4_high) {
+            atomic_or(&diff_toggle_ev, 1);
+        }
+        last_ch4_high = high;
+        break;
+    }
+    case INPUT_ABS_RX:
+        sbus_raw[4] = evt->value;
+        break; /* ch5 */
+    case INPUT_ABS_RY:
+        sbus_raw[5] = evt->value;
+        break; /* ch6 */
+    default:
+        // If we didnt get one of these somethings up and it should not count as a legit frame
+        return;
     }
 
     /* Throttled event print to verify callback activity */
@@ -52,7 +78,7 @@ static void sbus_input_cb(struct input_event *evt, void *user_data)
     uint32_t now = k_uptime_get_32();
     if ((now - last_pr_ms) > 100U) {
         last_pr_ms = now;
-        //printk("SBUS evt: type=%u code=%u val=%d\n", evt->type, evt->code, evt->value);
+        // printk("SBUS evt: type=%u code=%u val=%d\n", evt->type, evt->code, evt->value);
     }
 }
 
@@ -78,20 +104,30 @@ void rc_input_init(void) {
 
 uint32_t rc_get_pulse_us(rc_channel_t ch) {
     switch (ch) {
-    case RC_STEER:     return map_sbus_to_us(sbus_raw[0]); /* ch1 */
+    case RC_STEER:
+        return map_sbus_to_us(sbus_raw[0]); /* ch1 */
     case RC_THROTTLE: {
         /* Invert throttle around center (1500us) and clamp to [1000,2000] */
         uint32_t us = map_sbus_to_us(sbus_raw[1]); /* ch2 */
-        if (us < 1000U) us = 1000U;
-        if (us > 2000U) us = 2000U;
+        if (us < 1000U)
+            us = 1000U;
+        if (us > 2000U)
+            us = 2000U;
         uint32_t inv = 3000U - us; /* 1000<->2000, 1500 stays */
-        if (inv < 1000U) inv = 1000U;
-        if (inv > 2000U) inv = 2000U;
+        if (inv < 1000U)
+            inv = 1000U;
+        if (inv > 2000U)
+            inv = 2000U;
         return inv;
     }
-    case RC_HIGH_GEAR: return map_sbus_to_us(sbus_raw[5]); /* ch6 */
-    case RC_OVERRIDE:  return map_sbus_to_us(sbus_raw[4]); /* ch5 */
-    default: return 1500;
+    case RC_HIGH_GEAR:
+        return map_sbus_to_us(sbus_raw[5]); /* ch6 */
+    case RC_OVERRIDE:
+        return map_sbus_to_us(sbus_raw[4]); /* ch5 */
+    case RC_DIFF_TOGGLE:
+        return map_sbus_to_us(sbus_raw[3]); /* ch4 */
+    default:
+        return 1500;
     }
 }
 
@@ -100,40 +136,32 @@ uint32_t rc_get_period_us(rc_channel_t idx) {
     return 0;
 }
 
-uint32_t rc_get_capture_raw(rc_channel_t ch) {
-    switch (ch) {
-    case RC_STEER:     return sbus_raw[0]; /* ch1 */
-    case RC_THROTTLE:  return sbus_raw[1]; /* ch2 */
-    case RC_HIGH_GEAR: return sbus_raw[5]; /* ch6 */
-    case RC_OVERRIDE:  return sbus_raw[4]; /* ch5 */
-    default: return 0;
-    }
-}
-
 void rc_input_debug_dump(void) {
     rc_override_mode_t mode = rc_get_override_mode();
-    const char *mstr = (mode == RC_OVERRIDE_ROS) ? "ROS" : (mode == RC_OVERRIDE_MUTE) ? "MUTE" : "FULL";
-    LOG_INF("SBUS raw ch1=%u ch2=%u ch5=%u ch6=%u us[steer=%u thr=%u gear=%u ovr=%u mode=%s] age=%u us\n",
-           sbus_raw[0], sbus_raw[1], sbus_raw[4], sbus_raw[5],
-           map_sbus_to_us(sbus_raw[0]), map_sbus_to_us(sbus_raw[1]),
-           map_sbus_to_us(sbus_raw[5]), map_sbus_to_us(sbus_raw[4]), mstr,
-           k_uptime_get_32() - last_frame_ms);
+    const char *mstr = (mode == RC_OVERRIDE_ROS) ? "ROS" : (mode == RC_OVERRIDE_MUTE) ? "MUTE"
+                                                                                      : "FULL";
+    // Print ch4_diff_button as raw value and mapped to us
+    LOG_INF("SBUS raw ch1=%u ch2=%u ch4=%u ch5=%u ch6=%u us[steer=%u thr=%u diff=%u gear=%u ovr=%u mode=%s] age=%u us\n",
+            sbus_raw[0], sbus_raw[1], sbus_raw[3], sbus_raw[4], sbus_raw[5],
+            map_sbus_to_us(sbus_raw[0]), map_sbus_to_us(sbus_raw[1]),
+            map_sbus_to_us(sbus_raw[3]), map_sbus_to_us(sbus_raw[5]), map_sbus_to_us(sbus_raw[4]), mstr,
+            k_uptime_get_32() - last_frame_ms);
 }
 
 /* Simple periodic debug printer thread */
-static void rc_debug_thread(void *a, void *b, void *c)
-{
-    ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
+static void rc_debug_thread(void *a, void *b, void *c) {
+    ARG_UNUSED(a);
+    ARG_UNUSED(b);
+    ARG_UNUSED(c);
     while (1) {
         rc_input_debug_dump();
-        k_msleep(100);
+        k_msleep(100000);
     }
 }
 
 /* (moved to top of file before rc_input_init) */
 
-bool rc_input_connected(void)
-{
+bool rc_input_connected(void) {
     /* Consider link lost if we haven't seen a frame in 250 ms */
     const uint32_t age_ms = k_uptime_get_32() - last_frame_ms;
     return age_ms <= 250U;
@@ -143,8 +171,7 @@ bool rc_input_connected(void)
 // Low  -> ROS control
 // Mid  -> Override engaged, but mute outputs (PWM=0)
 // High -> Full manual override passthrough
-rc_override_mode_t rc_get_override_mode(void)
-{
+rc_override_mode_t rc_get_override_mode(void) {
     uint32_t us = rc_get_pulse_us(RC_OVERRIDE);
     // Narrower bands: <1400=ROS, 1400..1600=MUTE, >1600=FULL
     if (us < 1400U) {
@@ -154,4 +181,9 @@ rc_override_mode_t rc_get_override_mode(void)
     } else {
         return RC_OVERRIDE_REMOTE;
     }
+}
+
+bool rc_consume_diff_toggle_event(void) {
+    /* Atomically fetch-and-clear latch; true if a rising edge was latched */
+    return atomic_set(&diff_toggle_ev, 0) != 0;
 }
