@@ -228,7 +228,7 @@ static void control_thread(void *, void *, void *) {
             int32_t decel = max_thr_decel;
             if (gear_us == GEAR_HIGH_US) {
                 // In high gear, be gentler on accel
-                accel /= 2;
+                accel /= 3;
             }
             thr_us = clamp_throttle(thr_us, prev_thr, accel, decel);
             prev_thr = thr_us;
