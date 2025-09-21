@@ -19,7 +19,7 @@
 		zephyr,sram = &sram0;
 		zephyr,flash = &flash0;
 		zephyr,code-partition = &slot0_partition;
-		// zephyr,console = &cdc_acm_uart0; for usb port
+		// zephyr,console = &cdc_acm_uart0; // for usb port
 		zephyr,console = &usart1; // for MD2, connect logic analyzer
 	};
 

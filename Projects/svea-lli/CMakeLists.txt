@@ -24,6 +24,7 @@ target_sources(app PRIVATE
     src/rc_input.c
     src/ros_iface.c
     src/sensors.c
+    src/ina3221_sensor.c
     src/wheel_enc.c
     # BMS integration
     src/bms.cpp

@@ -315,7 +315,8 @@ static void ros_iface_thread(void *a, void *b, void *c) {
         if ((now - last_pub_time) >= pub_period_ms) {
             last_pub_time = now;
 
-            // Only publish remote state if remote is connected
+            // Only publish remote state if remote is connected, could be made more efficient by using whas in control,
+            // but keeping it seperate for clarity
             if (remote_connected) {
                 int32_t steer_us = rc_get_pulse_us(RC_STEER);
                 int32_t throttle_us = rc_get_pulse_us(RC_THROTTLE);

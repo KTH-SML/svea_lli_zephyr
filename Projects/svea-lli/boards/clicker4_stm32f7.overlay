@@ -56,21 +56,36 @@
 &i2c2 {
     status = "okay";
     clock-frequency = <I2C_BITRATE_STANDARD>; // Somethings weird with it, fast only works with too aggressive a pullup
+
     icm42670: icm42670@68 {
         compatible = "invensense,icm42670p";
         reg = <0x68>;
-        label = "ICM42670";
-        //int_gpio = <&mb4 14 GPIO_ACTIVE_HIGH>; 
-        /* Required properties with legal values */
-        gyro-hz = <800>;        /* pick 200 / 400 / 800 / 1600 */
-        accel-hz = <800>;       /* pick 100 / 200 / 400 / 800 / 1600 */
-        accel-fs = <8>;        /* full scale in g */
-        gyro-fs = <2000>;       /* full scale in dps */
-zephyr,deferred-init;
+        int-gpios = <&gpiod 0 GPIO_ACTIVE_HIGH>; /* mikroBUS INT pin on socket 1 */
+        gyro-hz = <800>;
+        accel-hz = <800>;
+        accel-fs = <8>;
+        gyro-fs = <1000>;
         status = "okay";
     };
 
-    /* Battery monitor (TI bq769x0 family) on I2C2 */
+    ina3221: ina3221@40 {
+        compatible = "ti,ina3221";
+        reg = <0x40>;
+        shunt-resistors = <4 8 8>; /* ESC=4 mOhm, 12V=8 mOhm, 5V=8 mOhm */
+        avg-mode = <4>;              /* 128-sample average for less noise */
+        conv-time-bus = <4>;         /* 1.1 ms */
+        conv-time-shunt = <4>;       /* 1.1 ms */
+        status = "okay";
+    };
+};
+
+&i2c4 {
+    status = "okay";
+    pinctrl-0 = <&i2c4_scl_pd12 &i2c4_sda_pd13>;
+    pinctrl-names = "default";
+    clock-frequency = <I2C_BITRATE_STANDARD>;
+
+    /* Battery monitor (TI bq769x0 family) relocated to I2C4 */
     bq769x0: bq769x0@8 {
         compatible = "ti,bq769x0";
         reg = <0x08>;
@@ -82,10 +97,20 @@ zephyr,deferred-init;
     };
 };
 
-/ {
-    aliases {
-        imu = &icm42670;
+&spi1 {
+    status = "disabled";
+};
+
+&gpioa {
+    imu_cs_hold: imu_cs_hold {
+        gpio-hog;
+        gpios = <4 GPIO_ACTIVE_HIGH>;
+        output-high;
     };
+};
+
+&gpioc {
+    /* PC15 is routed to mikroBUS1 RST */
 };
 
 &iwdg {
@@ -176,7 +201,7 @@ zephyr,deferred-init;
         /* Adjust these to your pack and shunt */
         num-cells-max = <5>;              /* e.g. 3S-5S bq76920 */
         num-thermistors-max = <0>;        /* set 0/1/2/3 matching your wiring */
-        current-max = <20>;               /* A, informational */
+        current-max = <30>;               /* A, informational */
         shunt-res = <4000>;               /* mOhm in milli (e.g. 4 mOhm => 4000) */
         type = "CustomPack";
         version-str = "svea-v0.1";
@@ -186,6 +211,7 @@ zephyr,deferred-init;
     /* TS1 wake control GPIO for the BMS IC (used by wake_chip.c) */
     zephyr,user {
         ts1_wake_gpios = <&gpiob 1 GPIO_ACTIVE_HIGH>; /* adjust to your wiring */
+        imu_reset_gpios = <&gpioc 15 GPIO_ACTIVE_HIGH>; /* mikroBUS1 RST */
     };
 
 
@@ -211,7 +237,7 @@ zephyr,deferred-init;
     };
     diffservo: diff_servo {
         compatible = "pwm-servo";
-        pwms = <&pwm1 4 10000000 PWM_POLARITY_NORMAL>; // diff front -> PE14 TIM1_CH4
+        pwms = <&pwm3 2 10000000 PWM_POLARITY_NORMAL>; // diff front -> PB5 TIM3_CH2
         min-pulse = <PWM_USEC(1000)>;
         max-pulse = <PWM_USEC(2100)>;
     };
@@ -255,6 +281,7 @@ zephyr,deferred-init;
         wheel-left-gpio  = &wheel_left;
         wheel-right-gpio = &wheel_right;
         imu = &icm42670;
+        ina3221 = &ina3221;
         watchdog0 = &iwdg;
     };
 };

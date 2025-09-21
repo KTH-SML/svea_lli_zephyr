@@ -14,8 +14,17 @@ LOG_MODULE_REGISTER(bms_task, CONFIG_LOG_DEFAULT_LEVEL);
 // Global BMS instance accessible to other modules if needed
 static Bms g_bms;
 
+static float peak_charge_a;
+static float peak_discharge_a;
+
 static void print_bms_status(const Bms *bms) {
     return;
+    if (bms->status.pack_current > peak_charge_a) {
+        peak_charge_a = bms->status.pack_current;
+    }
+    if (bms->status.pack_current < peak_discharge_a) {
+        peak_discharge_a = bms->status.pack_current;
+    }
 
     printf("\n--- BMS Telemetry ---\n");
     static const char *state_names[] = {"OFF", "CHG", "DIS", "NORMAL", "SHUTDOWN"};
@@ -25,6 +34,7 @@ static void print_bms_status(const Bms *bms) {
 
     printf("Pack Voltage: %.3f V  |  Pack Current: %.3f A\n", bms->status.pack_voltage,
            bms->status.pack_current);
+    printf("Peak Currents: Charge %.3f A  Discharge %.3f A\n", peak_charge_a, peak_discharge_a);
     printf("Stack Voltage: %.3f V\n", bms->status.stack_voltage);
 
     printf("Cell Voltages: ");
@@ -69,13 +79,10 @@ static void print_bms_status(const Bms *bms) {
     } else {
         printf("  No errors detected.\n");
     }
-    // FET debug: read SYS_CTRL2 and show CHG_ON / DSG_ON bits
-    uint8_t sys2 = bq769x0_read_byte(BQ769X0_SYS_CTRL2);
-    SYS_CTRL2_Type s2;
-    s2.byte = sys2;
-    printk("FETs: CHG_ON=%d  DSG_ON=%d  SYS_CTRL2=0x%02x\n",
-           (int)s2.CHG_ON, (int)s2.DSG_ON, sys2);
-    // Hint: to verify on hardware, measure MOSFET Vgs (gate-to-source), not gate-to-ground.
+    uint8_t sys_stat = bq769x0_read_byte(BQ769X0_SYS_STAT);
+    uint8_t protect1 = bq769x0_read_byte(BQ769X0_PROTECT1);
+    uint8_t protect2 = bq769x0_read_byte(BQ769X0_PROTECT2);
+    LOG_INF("SYS_STAT=0x%02x PROTECT1=0x%02x PROTECT2=0x%02x", sys_stat, protect1, protect2);
 }
 
 static int setup_bms(void) {
@@ -93,6 +100,7 @@ static int setup_bms(void) {
         }
         k_sleep(K_MSEC(1000));
     }
+    LOG_INF("BMS hardware initialized");
 
     (void)bms_configure(&g_bms);
     bms_update(&g_bms);
@@ -115,6 +123,8 @@ static void bms_thread(void *, void *, void *) {
     int64_t last_print = 0;
 
     while (true) {
+        peak_charge_a = 0.0f;
+        peak_discharge_a = 0.0f;
         setup_bms();
         int state = 0;
         while (state != -1) {

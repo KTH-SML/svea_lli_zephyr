@@ -72,10 +72,10 @@ static inline void servo_set_ticks(const struct pwm_dt_spec *s, uint16_t t_us) {
 #define DIFF_OPEN_REAR_US 1900
 
 // Throttle ramp profile, prevents overcurrent trips but shouldn't be noticable
-#define THROTTLE_RAMP_DELTA_US 500  // change to consider (us)
-#define THROTTLE_RAMP_TIME_MS 100   // time to make that change (ms)
+#define THROTTLE_RAMP_DELTA_US 600  // change to consider (us)
+#define THROTTLE_RAMP_TIME_MS 200   // time to make that change (ms)
 #define THROTTLE_DECEL_DELTA_US 500 // decel towards neutral
-#define THROTTLE_DECEL_TIME_MS 200  // time to make that change (ms)
+#define THROTTLE_DECEL_TIME_MS 600  // time to make that change (ms)
 
 // Remove old pulse_to_us, use new int8 mapping
 static inline uint32_t int8_to_us(int8_t val) {
@@ -105,7 +105,7 @@ static inline int32_t clamp_throttle(int32_t value, int32_t prev, int32_t max_ac
         if (delta < -max_accel)
             return prev - max_accel;
     } else {
-        // Deceleration (moving towards 1500)
+        // Deceleration
         if (delta > max_decel)
             return prev + max_decel;
         if (delta < -max_decel)
@@ -242,7 +242,6 @@ static void control_thread(void *, void *, void *) {
         servo_set_ticks(&servos[SERVO_DIFF].spec, diff_front_us);
         servo_set_ticks(&servos[SERVO_DIFF_REAR].spec, diff_rear_us);
 
-  
         // 5) Keep the loop period
         const uint64_t elapsed_us = k_ticks_to_us_floor64(k_uptime_ticks()) - loop_start_us;
         const int32_t sleep_time = (int32_t)(LOOP_MS * 1000) - (int32_t)elapsed_us;

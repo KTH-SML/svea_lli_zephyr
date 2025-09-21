@@ -274,13 +274,14 @@
 &i2c2 {
     pinctrl-0 = <&i2c2_scl_pb10 &i2c2_sda_pb11>;
     pinctrl-names = "default";
-    clock-frequency = <I2C_BITRATE_FAST>;
+    clock-frequency = <I2C_BITRATE_STANDARD>;
     status = "okay";
 };
 
 /* SPI1 - mikroBUS 1-3 */
 &spi1 {
     pinctrl-0 = <&spi1_sck_pa5 &spi1_miso_pa6 &spi1_mosi_pa7>;
+    //cs-gpios = <&gpiod 13 GPIO_ACTIVE_LOW>;
     pinctrl-names = "default";
     status = "okay";
 };
@@ -289,7 +290,7 @@
 &spi3 {
     pinctrl-0 = <&spi3_sck_pc10 &spi3_miso_pc11 &spi3_mosi_pc12>;
     pinctrl-names = "default";
+    cs-gpios = <&gpiod 15 GPIO_ACTIVE_LOW>;
     status = "okay";
 };
-
 

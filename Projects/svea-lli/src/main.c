@@ -1,4 +1,5 @@
 #include "control.h"
+#include "ina3221_sensor.h"
 #include "rc_input.h"
 #include "ros_iface.h"
 #include "sensors.h"
@@ -50,6 +51,9 @@ int main(void) {
     rc_input_init();
     servo_init();
     ros_iface_init();
+    if (ina3221_sensor_init() != 0) {
+        LOG_WRN("INA3221 sensor init failed");
+    }
     sensors_init();
     wheel_enc_init();
 
