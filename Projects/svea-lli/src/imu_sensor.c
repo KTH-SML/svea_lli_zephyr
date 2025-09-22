@@ -1,5 +1,4 @@
-#include "sensors.h"
-#include "ina3221_sensor.h"
+#include "imu_sensor.h"
 #include "ros_iface.h"
 
 #include <errno.h>
@@ -15,15 +14,17 @@
 #include <zephyr/pm/device.h>
 #include <zephyr/sys/reboot.h>
 
-LOG_MODULE_REGISTER(sensors, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(imu_sensor, LOG_LEVEL_INF);
 
-static K_THREAD_STACK_DEFINE(sensors_stack, 2048);
-static struct k_thread sensors_thread_data;
+static K_THREAD_STACK_DEFINE(imu_sensor_stack, 2048);
+static struct k_thread imu_thread_data;
 
 static const struct device *imu_dev;
 static sensor_msgs__msg__Imu imu_msg;
 static struct sensor_trigger imu_trigger;
 static K_SEM_DEFINE(imu_data_sem, 0, 1);
+
+static void imu_sensor_thread(void *p1, void *p2, void *p3);
 
 #if DT_NODE_HAS_PROP(DT_PATH(zephyr_user), imu_reset_gpios)
 static const struct gpio_dt_spec imu_reset_gpio =
@@ -55,7 +56,8 @@ static int device_init_status(const struct device *dev) {
     return 0;
 }
 
-static void imu_trigger_handler(const struct device *dev, const struct sensor_trigger *trig) {
+static void imu_trigger_handler(const struct device *dev, const struct sensor_trigger *trig)
+{
     if ((trig->type != SENSOR_TRIG_DATA_READY) || (trig->chan != SENSOR_CHAN_ALL)) {
         return;
     }
@@ -69,18 +71,20 @@ static void imu_trigger_handler(const struct device *dev, const struct sensor_tr
     k_sem_give(&imu_data_sem);
 }
 
-void sensors_init(void) {
-    LOG_INF("Initializing sensors");
-    k_thread_create(&sensors_thread_data, sensors_stack, K_THREAD_STACK_SIZEOF(sensors_stack),
-                    sensors_thread, NULL, NULL, NULL, 6, 0, K_NO_WAIT);
+void imu_sensor_start(void)
+{
+    LOG_INF("Starting IMU sensor thread");
+    k_thread_create(&imu_thread_data, imu_sensor_stack, K_THREAD_STACK_SIZEOF(imu_sensor_stack),
+                    imu_sensor_thread, NULL, NULL, NULL, 6, 0, K_NO_WAIT);
 }
 
-void sensors_thread(void *p1, void *p2, void *p3) {
+static void imu_sensor_thread(void *p1, void *p2, void *p3)
+{
     ARG_UNUSED(p1);
     ARG_UNUSED(p2);
     ARG_UNUSED(p3);
 
-    LOG_INF("Initializing sensors");
+    LOG_INF("Initializing IMU");
 
 #if HAS_IMU_RESET_GPIO
     if (!gpio_is_ready_dt(&imu_reset_gpio)) {
@@ -134,9 +138,7 @@ void sensors_thread(void *p1, void *p2, void *p3) {
         LOG_ERR("Failed to configure IMU trigger: %d", rc);
     }
 
-    int64_t last_ina_log = 0;
-
-    LOG_INF("Sensors thread started");
+    LOG_INF("IMU thread started");
 
     struct sensor_value accel[3];
     struct sensor_value gyro[3];
@@ -206,16 +208,44 @@ void sensors_thread(void *p1, void *p2, void *p3) {
             }
         }
 
-        int64_t now = k_uptime_get();
-        if ((now - last_ina_log) > 500) {
-            struct ina3221_measurement measure;
-            if (ina3221_sensor_get_latest(&measure) == 0) {
-                LOG_INF("INA3221 ch0: V=%.3fV I=%.3fA P=%.3fW",
-                        sensor_value_to_double(&measure.bus_voltage[0]),
-                        sensor_value_to_double(&measure.shunt_current[0]),
-                        sensor_value_to_double(&measure.power[0]));
-            }
-            last_ina_log = now;
-        }
     }
+}
+
+int imu_sensor_quick_check(void)
+{
+    const struct device *dev = DEVICE_DT_GET(DT_ALIAS(imu));
+
+    if (!device_is_ready(dev)) {
+        LOG_ERR("IMU device not ready for quick check");
+        return -ENODEV;
+    }
+
+    struct sensor_value accel[3];
+    struct sensor_value gyro[3];
+
+    int rc = sensor_sample_fetch(dev);
+    if (rc) {
+        LOG_ERR("IMU quick check fetch failed: %d", rc);
+        return rc;
+    }
+
+    rc = sensor_channel_get(dev, SENSOR_CHAN_ACCEL_XYZ, accel);
+    if (rc) {
+        return rc;
+    }
+
+    rc = sensor_channel_get(dev, SENSOR_CHAN_GYRO_XYZ, gyro);
+    if (rc) {
+        return rc;
+    }
+
+    LOG_INF("IMU quick check accel=(%.3f, %.3f, %.3f) gyro=(%.3f, %.3f, %.3f)",
+            sensor_value_to_double(&accel[0]),
+            sensor_value_to_double(&accel[1]),
+            sensor_value_to_double(&accel[2]),
+            sensor_value_to_double(&gyro[0]),
+            sensor_value_to_double(&gyro[1]),
+            sensor_value_to_double(&gyro[2]));
+
+    return 0;
 }
