@@ -37,7 +37,7 @@
             label = "User LED3";
         };
         led4: led_4 {
-            gpios = <&gpiob 5 GPIO_ACTIVE_HIGH>;
+            gpios = <&gpioe 2 GPIO_ACTIVE_HIGH>;
             label = "User LED4";
         };
         led5: led_5 {
@@ -293,4 +293,3 @@
     cs-gpios = <&gpiod 15 GPIO_ACTIVE_LOW>;
     status = "okay";
 };
-
