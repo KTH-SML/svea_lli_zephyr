@@ -132,7 +132,7 @@
         compatible = "st,stm32-pwm";
         status = "okay";
         #pwm-cells = <3>;
-        pinctrl-0 = < &tim4_ch4_pb9>; // PB9 (Servo P2) via TIM4_CH4
+        pinctrl-0 = <&tim4_ch4_pb9>; // PB9 (Servo P2) via TIM4_CH4
         pinctrl-names = "default";
     };
 };
@@ -145,13 +145,10 @@
         compatible = "st,stm32-pwm";
         status = "okay";
         #pwm-cells = <3>;
-        pinctrl-0 = <&tim3_ch2_pb5>; // PB5 (mikroBUS MISO1)
+        pinctrl-0 = <&tim3_ch2_pb5>; // PB5 (Diff front)
         pinctrl-names = "default";
     };
 };
-
-
-
 
 &timers9 {
     status = "okay";
@@ -212,6 +209,7 @@
     zephyr,user {
         ts1_wake_gpios = <&gpiob 1 GPIO_ACTIVE_HIGH>; /* adjust to your wiring */
         imu_reset_gpios = <&gpioc 15 GPIO_ACTIVE_HIGH>; /* mikroBUS1 RST */
+        soc_button_gpios = <&gpioe 10 GPIO_ACTIVE_LOW>; /* User BTN1 */
     };
 
 
@@ -267,7 +265,6 @@
         };
     };
 };
-
 
 / {
     chosen {
