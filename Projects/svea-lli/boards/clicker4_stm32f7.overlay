@@ -90,7 +90,7 @@
         compatible = "ti,bq769x0";
         reg = <0x08>;
         /* ALERT pin from BMS IC to MCU GPIO (adjust to your wiring) */
-        alert-gpios = <&gpioa 8 GPIO_ACTIVE_HIGH>;
+        alert-gpios = <&gpiod 6 GPIO_ACTIVE_HIGH>; /* ALERT rerouted to PD6 */
         /* Precharge control (BQ76200 PCHG) connected to PD2 */
         pchg-gpios = <&gpiod 2 GPIO_ACTIVE_HIGH>;
         status = "okay";
@@ -200,7 +200,7 @@
         num-thermistors-max = <0>;        /* set 0/1/2/3 matching your wiring */
         current-max = <30>;               /* A, informational */
         shunt-res = <4000>;               /* mOhm in milli (e.g. 4 mOhm => 4000) */
-        type = "CustomPack";
+        type = "Powerboard 3.0";
         version-str = "svea-v0.1";
         version-num = <1>;
     };
