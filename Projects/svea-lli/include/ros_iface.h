@@ -6,6 +6,7 @@
 #include <sensor_msgs/msg/imu.h>
 #include <std_msgs/msg/bool.h>
 #include <std_msgs/msg/u_int8.h>
+#include <std_msgs/msg/float32_multi_array.h>
 #include <zephyr/kernel.h>
 
 typedef struct {
@@ -23,6 +24,7 @@ extern bool ros_initialized;
 // Sensors
 extern rcl_publisher_t imu_pub;
 extern rcl_publisher_t encoders_pub;
+extern rcl_publisher_t ina3221_pub;
 
 uint64_t ros_iface_epoch_millis(void);
 uint64_t ros_iface_epoch_nanos(void);

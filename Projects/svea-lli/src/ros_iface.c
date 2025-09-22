@@ -56,6 +56,9 @@ rcl_publisher_t imu_pub;
 // Encoder Publisher
 rcl_publisher_t encoders_pub;
 
+// INA3221 Publisher
+rcl_publisher_t ina3221_pub;
+
 // Time synchronization variables
 static int64_t synced_epoch_ns = 0;
 static int64_t synced_epoch_ms = 0;
@@ -217,6 +220,17 @@ static void ros_iface_thread(void *a, void *b, void *c) {
         rc = rclc_publisher_init_best_effort(&encoders_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, TwistWithCovarianceStamped), "/lli/sensor/encoders");
         if (rc != RCL_RET_OK) {
             LOG_ERR("rclc_publisher_init_best_effort (pub_encoders) failed: %d", rc);
+            rcl_node_fini(&node);
+            rclc_support_fini(&support);
+            k_msleep(1000);
+            continue;
+        }
+
+        rc = rclc_publisher_init_best_effort(&ina3221_pub, &node,
+                                              ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray),
+                                              "/lli/sensor/ina3221");
+        if (rc != RCL_RET_OK) {
+            LOG_ERR("rclc_publisher_init_best_effort (pub_ina3221) failed: %d", rc);
             rcl_node_fini(&node);
             rclc_support_fini(&support);
             k_msleep(1000);

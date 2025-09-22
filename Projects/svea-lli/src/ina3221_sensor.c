@@ -1,10 +1,13 @@
 #include "ina3221_sensor.h"
+#include "ros_iface.h"
 
 #include <stdbool.h>
 #include <string.h>
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <std_msgs/msg/float32_multi_array.h>
+#include <rosidl_runtime_c/primitives_sequence_functions.h>
 
 LOG_MODULE_REGISTER(ina3221_sensor, LOG_LEVEL_INF);
 
@@ -22,6 +25,8 @@ static struct k_thread ina_thread_data;
 static struct ina3221_measurement latest_measurement;
 static bool latest_valid;
 static struct k_mutex measurement_lock;
+static std_msgs__msg__Float32MultiArray ina_msg;
+static bool ina_msg_initialized;
 
 static int ina3221_set_channel(uint8_t channel)
 {
@@ -109,6 +114,24 @@ static void ina3221_thread(void *a, void *b, void *c)
             memcpy(&latest_measurement, &sample, sizeof(sample));
             latest_valid = true;
             k_mutex_unlock(&measurement_lock);
+
+            if (ros_initialized && ina_msg_initialized) {
+                /* Data layout: [ESC_V, ESC_I, ESC_P, 12V_V, 12V_I, 12V_P, 5V_V, 5V_I, 5V_P] */
+                ina_msg.data.data[0] = sensor_value_to_float(&sample.bus_voltage[0]);
+                ina_msg.data.data[1] = sensor_value_to_float(&sample.shunt_current[0]);
+                ina_msg.data.data[2] = sensor_value_to_float(&sample.power[0]);
+                ina_msg.data.data[3] = sensor_value_to_float(&sample.bus_voltage[1]);
+                ina_msg.data.data[4] = sensor_value_to_float(&sample.shunt_current[1]);
+                ina_msg.data.data[5] = sensor_value_to_float(&sample.power[1]);
+                ina_msg.data.data[6] = sensor_value_to_float(&sample.bus_voltage[2]);
+                ina_msg.data.data[7] = sensor_value_to_float(&sample.shunt_current[2]);
+                ina_msg.data.data[8] = sensor_value_to_float(&sample.power[2]);
+
+                rcl_ret_t pub_rc = rcl_publish(&ina3221_pub, &ina_msg, NULL);
+                if (pub_rc != RCL_RET_OK) {
+                    LOG_WRN("INA3221 ROS publish failed: %d", pub_rc);
+                }
+            }
         }
 
         k_sleep(K_MSEC(INA3221_SAMPLE_PERIOD_MS));
@@ -133,6 +156,17 @@ int ina3221_sensor_init(void)
     }
 
     k_mutex_init(&measurement_lock);
+
+    if (!ina_msg_initialized) {
+        if (!std_msgs__msg__Float32MultiArray__init(&ina_msg)) {
+            LOG_ERR("Failed to init INA3221 ROS message");
+        } else if (!rosidl_runtime_c__float32__Sequence__init(&ina_msg.data, 9)) {
+            LOG_ERR("Failed to init INA3221 data sequence");
+        } else {
+            memset(ina_msg.data.data, 0, ina_msg.data.size * sizeof(float));
+            ina_msg_initialized = true;
+        }
+    }
 
     k_thread_create(&ina_thread_data, ina_thread_stack, INA3221_THREAD_STACK_SIZE,
                     ina3221_thread, NULL, NULL, NULL,
