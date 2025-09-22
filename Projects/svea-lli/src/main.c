@@ -2,11 +2,12 @@
 #include "ina3221_sensor.h"
 #include "rc_input.h"
 #include "ros_iface.h"
-#include "sensors.h"
+#include "imu_sensor.h"
 #include "wheel_enc.h"
 #include <zephyr/drivers/watchdog.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/usb/usb_device.h>
 #include <stdio.h>
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
@@ -50,11 +51,15 @@ int main(void) {
 
     rc_input_init();
     servo_init();
+    int usb_rc = usb_enable(NULL);
+    if (usb_rc) {
+        LOG_ERR("USB enable failed: %d", usb_rc);
+    }
     ros_iface_init();
     if (ina3221_sensor_init() != 0) {
         LOG_WRN("INA3221 sensor init failed");
     }
-    sensors_init();
+    imu_sensor_start();
     wheel_enc_init();
 
     while (1) {

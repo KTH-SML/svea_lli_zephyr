@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
+#include <zephyr/devicetree.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/util.h>
 
 #include "bms.h"
 #include "wake_chip.h"
@@ -17,8 +20,128 @@ static Bms g_bms;
 static float peak_charge_a;
 static float peak_discharge_a;
 
+#if DT_NODE_HAS_PROP(DT_PATH(zephyr_user), soc_button_gpios)
+static const struct gpio_dt_spec soc_button =
+    GPIO_DT_SPEC_GET(DT_PATH(zephyr_user), soc_button_gpios);
+#define SOC_BUTTON_PRESENT 1
+#else
+#define SOC_BUTTON_PRESENT 0
+#endif
+
+static const struct gpio_dt_spec soc_led_pins[] = {
+    GPIO_DT_SPEC_GET(DT_NODELABEL(led1), gpios),
+    GPIO_DT_SPEC_GET(DT_NODELABEL(led2), gpios),
+    GPIO_DT_SPEC_GET(DT_NODELABEL(led3), gpios),
+    GPIO_DT_SPEC_GET(DT_NODELABEL(led4), gpios),
+    GPIO_DT_SPEC_GET(DT_NODELABEL(led5), gpios),
+    GPIO_DT_SPEC_GET(DT_NODELABEL(led6), gpios),
+};
+
+static struct gpio_callback soc_button_cb;
+static struct k_work soc_display_work;
+static struct k_work_delayable soc_clear_work;
+static bool soc_leds_ready;
+
+static void soc_leds_off(void) {
+    for (size_t i = 0; i < ARRAY_SIZE(soc_led_pins); ++i) {
+        gpio_pin_set_dt(&soc_led_pins[i], 0);
+    }
+}
+
+static void soc_clear_work_handler(struct k_work *work) {
+    ARG_UNUSED(work);
+    soc_leds_off();
+}
+
+static void soc_display_work_handler(struct k_work *work) {
+    ARG_UNUSED(work);
+
+    float soc = g_bms.status.soc;
+    if (soc < 0.0f) {
+        soc = 0.0f;
+    } else if (soc > 100.0f) {
+        soc = 100.0f;
+    }
+
+    const float step = 100.0f / ARRAY_SIZE(soc_led_pins);
+    int leds_on = (int)((soc + (step - 1.0f)) / step);
+    if (leds_on > (int)ARRAY_SIZE(soc_led_pins)) {
+        leds_on = ARRAY_SIZE(soc_led_pins);
+    }
+    if (leds_on == 0 && soc > 0.0f) {
+        leds_on = 1;
+    }
+
+    for (int i = 0; i < (int)ARRAY_SIZE(soc_led_pins); ++i) {
+        gpio_pin_set_dt(&soc_led_pins[i], 0);
+    }
+
+    for (int i = 0; i < leds_on; ++i) {
+        gpio_pin_set_dt(&soc_led_pins[i], 1);
+        k_msleep(60);
+    }
+
+    for (int i = leds_on; i < (int)ARRAY_SIZE(soc_led_pins); ++i) {
+        gpio_pin_set_dt(&soc_led_pins[i], 0);
+    }
+
+    k_work_reschedule(&soc_clear_work, K_SECONDS(1));
+}
+
+static void soc_button_isr(const struct device *port, struct gpio_callback *cb, uint32_t pins) {
+    ARG_UNUSED(port);
+    ARG_UNUSED(cb);
+    ARG_UNUSED(pins);
+
+    if (soc_leds_ready) {
+        k_work_submit(&soc_display_work);
+    }
+}
+
+static void soc_indicator_init(void) {
+#if SOC_BUTTON_PRESENT
+    int err;
+
+    for (size_t i = 0; i < ARRAY_SIZE(soc_led_pins); ++i) {
+        if (!device_is_ready(soc_led_pins[i].port)) {
+            LOG_WRN("SoC LED %zu port not ready", i);
+            continue;
+        }
+        err = gpio_pin_configure_dt(&soc_led_pins[i], GPIO_OUTPUT_INACTIVE);
+        if (err) {
+            LOG_WRN("SoC LED %zu configure failed: %d", i, err);
+        }
+    }
+
+    if (!device_is_ready(soc_button.port)) {
+        LOG_WRN("SoC button port not ready");
+        return;
+    }
+
+    err = gpio_pin_configure_dt(&soc_button, GPIO_INPUT);
+    if (err) {
+        LOG_WRN("SoC button configure failed: %d", err);
+        return;
+    }
+
+    err = gpio_pin_interrupt_configure_dt(&soc_button, GPIO_INT_EDGE_TO_ACTIVE);
+    if (err) {
+        LOG_WRN("SoC button interrupt configure failed: %d", err);
+        return;
+    }
+
+    gpio_init_callback(&soc_button_cb, soc_button_isr, BIT(soc_button.pin));
+    gpio_add_callback(soc_button.port, &soc_button_cb);
+
+    k_work_init(&soc_display_work, soc_display_work_handler);
+    k_work_init_delayable(&soc_clear_work, soc_clear_work_handler);
+
+    soc_leds_ready = true;
+    LOG_INF("SoC LED indicator ready");
+#endif
+}
+
 static void print_bms_status(const Bms *bms) {
-    return;
     if (bms->status.pack_current > peak_charge_a) {
         peak_charge_a = bms->status.pack_current;
     }
@@ -120,6 +243,7 @@ SYS_INIT(bms_init_config_sys, APPLICATION, 0);
 
 static void bms_thread(void *, void *, void *) {
     LOG_INF("BMS thread starting");
+    soc_indicator_init();
     int64_t last_print = 0;
 
     while (true) {
@@ -147,3 +271,7 @@ static void bms_thread(void *, void *, void *) {
 // Priority lower than main; stack sized generously for I2C + logging
 K_THREAD_DEFINE(bms_tid, 3072, bms_thread, NULL, NULL, NULL,
                 K_PRIO_PREEMPT(5), 0, 0);
+
+extern "C" float bms_get_soc_percent(void) {
+    return g_bms.status.soc;
+}
