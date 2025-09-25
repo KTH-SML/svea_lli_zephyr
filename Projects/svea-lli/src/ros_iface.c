@@ -135,7 +135,10 @@ static void diff_cb(const void *msg) {
 // Timer callback for publisher
 void pub_timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
     RCLC_UNUSED(last_call_time);
-    if (timer != NULL && state == AGENT_CONNECTED) {
+
+    if (timer != NULL && state == AGENT_CONNECTED && ros_initialized) {
+        bool publish_failed = false;
+
         // Only publish remote state if remote is connected
         if (remote_connected) {
             int32_t steer_us = rc_get_pulse_us(RC_STEER);
@@ -147,15 +150,28 @@ void pub_timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
             msg_gear.data = pulse_to_bool(gear_us);
             msg_override.data = (rc_get_override_mode() != RC_OVERRIDE_ROS);
 
-            RCSOFTCHECK(rcl_publish(&pub_steer, &msg_steer, NULL));
-            RCSOFTCHECK(rcl_publish(&pub_throttle, &msg_throttle, NULL));
-            RCSOFTCHECK(rcl_publish(&pub_gear, &msg_gear, NULL));
-            RCSOFTCHECK(rcl_publish(&pub_override, &msg_override, NULL));
+            if (rcl_publish(&pub_steer, &msg_steer, NULL) != RCL_RET_OK)
+                publish_failed = true;
+            if (rcl_publish(&pub_throttle, &msg_throttle, NULL) != RCL_RET_OK)
+                publish_failed = true;
+            if (rcl_publish(&pub_gear, &msg_gear, NULL) != RCL_RET_OK)
+                publish_failed = true;
+            if (rcl_publish(&pub_override, &msg_override, NULL) != RCL_RET_OK)
+                publish_failed = true;
         }
 
-        // Always publish remote_connected status
+        // Always try to publish connected status
         msg_connected.data = remote_connected;
-        RCSOFTCHECK(rcl_publish(&pub_connected, &msg_connected, NULL));
+        if (rcl_publish(&pub_connected, &msg_connected, NULL) != RCL_RET_OK) {
+            publish_failed = true;
+        }
+
+        // If any publish failed, signal disconnection
+        if (publish_failed) {
+            LOG_WRN("Publish failed, signaling disconnection");
+            state = AGENT_DISCONNECTED;
+            ros_initialized = false;
+        }
     }
 }
 
@@ -194,7 +210,7 @@ bool create_entities() {
     RCCHECK(rclc_publisher_init_best_effort(&pub_throttle, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/remote/throttle"));
     RCCHECK(rclc_publisher_init_best_effort(&pub_gear, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/remote/high_gear"));
     RCCHECK(rclc_publisher_init_best_effort(&pub_override, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/remote/override"));
-    RCCHECK(rclc_publisher_init_best_effort(&pub_connected, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/remote/connected"));
+    RCCHECK(rclc_publisher_init_default(&pub_connected, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/remote/connected"));
 
     // Sensor publishers
     RCCHECK(rclc_publisher_init_best_effort(&imu_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu), "/lli/sensor/imu"));
@@ -208,7 +224,7 @@ bool create_entities() {
     RCCHECK(rclc_subscription_init_best_effort(&sub_diff, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/ctrl/diff"));
 
     // Timer
-    const unsigned int timer_timeout_ms = 50; // Publish every 50ms
+    const unsigned int timer_timeout_ms = 21; // ~48Hz
     RCCHECK(rclc_timer_init_default2(&pub_timer, &support, RCL_MS_TO_NS(timer_timeout_ms), pub_timer_callback, true));
 
     // Executor
@@ -302,12 +318,6 @@ static void ros_iface_thread(void *a, void *b, void *c) {
             break;
 
         case AGENT_CONNECTED:
-            state = (RMW_RET_OK == rmw_uros_ping_agent(500, 1)) ? AGENT_CONNECTED : AGENT_DISCONNECTED;
-            if (state != AGENT_CONNECTED) {
-                LOG_WRN("Ping to agent failed, assuming disconnection");
-                ros_initialized = false;
-                break;
-            }
             // Try to spin the executor
             rcl_ret_t spin_ret = rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10));
             if (spin_ret != RCL_RET_OK) {
@@ -336,6 +346,7 @@ static void ros_iface_thread(void *a, void *b, void *c) {
             state = WAITING_AGENT;
             break;
         }
+        k_msleep(1);
     }
 }
 
