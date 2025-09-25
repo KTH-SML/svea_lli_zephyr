@@ -224,6 +224,7 @@ bool create_entities() {
 
 // Destroy allocator, support, pub, sub, executor for node if agent connection is lost or unsuccessful
 bool destroy_entities() {
+
     rmw_context_t *rmw_context = rcl_context_get_rmw_context(&support.context);
     (void)rmw_uros_set_context_entity_destroy_session_timeout(rmw_context, 0);
 
@@ -315,12 +316,16 @@ static void ros_iface_thread(void *a, void *b, void *c) {
                 ros_initialized = false;
                 break;
             }
-
+            ros_initialized = true;
             k_msleep(1);
             break;
 
         case AGENT_DISCONNECTED:
             LOG_INF("Disconnected from agent. Cleaning up and retrying...");
+            // Guarantees that control commands are zeroed on disconnect
+            g_ros_ctrl.steering = 0;
+            g_ros_ctrl.throttle = 0;
+
             destroy_entities();
             ros_initialized = false;
             state = WAITING_AGENT;
