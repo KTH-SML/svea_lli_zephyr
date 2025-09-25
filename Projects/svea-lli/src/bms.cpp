@@ -142,6 +142,7 @@ static void soc_indicator_init(void) {
 }
 
 static void print_bms_status(const Bms *bms) {
+    return;
     if (bms->status.pack_current > peak_charge_a) {
         peak_charge_a = bms->status.pack_current;
     }

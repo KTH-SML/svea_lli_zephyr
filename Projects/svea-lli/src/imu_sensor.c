@@ -56,8 +56,7 @@ static int device_init_status(const struct device *dev) {
     return 0;
 }
 
-static void imu_trigger_handler(const struct device *dev, const struct sensor_trigger *trig)
-{
+static void imu_trigger_handler(const struct device *dev, const struct sensor_trigger *trig) {
     if ((trig->type != SENSOR_TRIG_DATA_READY) || (trig->chan != SENSOR_CHAN_ALL)) {
         return;
     }
@@ -71,15 +70,13 @@ static void imu_trigger_handler(const struct device *dev, const struct sensor_tr
     k_sem_give(&imu_data_sem);
 }
 
-void imu_sensor_start(void)
-{
+void imu_sensor_start(void) {
     LOG_INF("Starting IMU sensor thread");
     k_thread_create(&imu_thread_data, imu_sensor_stack, K_THREAD_STACK_SIZEOF(imu_sensor_stack),
                     imu_sensor_thread, NULL, NULL, NULL, 6, 0, K_NO_WAIT);
 }
 
-static void imu_sensor_thread(void *p1, void *p2, void *p3)
-{
+static void imu_sensor_thread(void *p1, void *p2, void *p3) {
     ARG_UNUSED(p1);
     ARG_UNUSED(p2);
     ARG_UNUSED(p3);
@@ -207,12 +204,10 @@ static void imu_sensor_thread(void *p1, void *p2, void *p3)
                 LOG_ERR("IMU publish failed: %d", pub_rc);
             }
         }
-
     }
 }
 
-int imu_sensor_quick_check(void)
-{
+int imu_sensor_quick_check(void) {
     const struct device *dev = DEVICE_DT_GET(DT_ALIAS(imu));
 
     if (!device_is_ready(dev)) {
@@ -239,13 +234,13 @@ int imu_sensor_quick_check(void)
         return rc;
     }
 
-    LOG_INF("IMU quick check accel=(%.3f, %.3f, %.3f) gyro=(%.3f, %.3f, %.3f)",
-            sensor_value_to_double(&accel[0]),
-            sensor_value_to_double(&accel[1]),
-            sensor_value_to_double(&accel[2]),
-            sensor_value_to_double(&gyro[0]),
-            sensor_value_to_double(&gyro[1]),
-            sensor_value_to_double(&gyro[2]));
+    // LOG_INF("IMU quick check accel=(%.3f, %.3f, %.3f) gyro=(%.3f, %.3f, %.3f)",
+    //         sensor_value_to_double(&accel[0]),
+    //         sensor_value_to_double(&accel[1]),
+    //         sensor_value_to_double(&accel[2]),
+    //         sensor_value_to_double(&gyro[0]),
+    //         sensor_value_to_double(&gyro[1]),
+    //         sensor_value_to_double(&gyro[2]));
 
     return 0;
 }
