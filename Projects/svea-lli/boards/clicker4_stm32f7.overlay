@@ -67,7 +67,7 @@
     icm42670: icm42670@68 {
         compatible = "invensense,icm42670p";
         reg = <0x68>;
-        int-gpios = <&gpiod 0 GPIO_ACTIVE_HIGH>;
+        //int-gpios = <&gpiod 0 GPIO_ACTIVE_HIGH>;
         gyro-hz = <800>;
         accel-hz = <800>;
         accel-fs = <8>;
@@ -112,7 +112,7 @@
 &gpioa {
     imu_cs_hold: imu_cs_hold {
         gpio-hog;
-        gpios = <4 GPIO_ACTIVE_HIGH>;
+        gpios = <4 GPIO_ACTIVE_LOW>;
         output-high;
     };
 };
