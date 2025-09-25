@@ -3,6 +3,13 @@
 };
 
 &usart1 {
+    status = "disabled";
+};
+
+&usart3 {
+    status = "okay";
+    pinctrl-0 = <&usart3_tx_pd8 &usart3_rx_pd9>;
+    pinctrl-names = "default";
     current-speed = <115200>;
 };
 
@@ -60,7 +67,7 @@
     icm42670: icm42670@68 {
         compatible = "invensense,icm42670p";
         reg = <0x68>;
-        int-gpios = <&gpiod 0 GPIO_ACTIVE_HIGH>; /* mikroBUS INT pin on socket 1 */
+        int-gpios = <&gpiod 0 GPIO_ACTIVE_HIGH>;
         gyro-hz = <800>;
         accel-hz = <800>;
         accel-fs = <8>;
@@ -77,15 +84,16 @@
         conv-time-shunt = <4>;       /* 1.1 ms */
         status = "okay";
     };
+
 };
 
-&i2c4 {
+&i2c1 {
     status = "okay";
-    pinctrl-0 = <&i2c4_scl_pd12 &i2c4_sda_pd13>;
+    pinctrl-0 = <&i2c1_scl_pb6 &i2c1_sda_pb7>;
     pinctrl-names = "default";
     clock-frequency = <I2C_BITRATE_STANDARD>;
 
-    /* Battery monitor (TI bq769x0 family) relocated to I2C4 */
+    /* Battery monitor (TI bq769x0 family) relocated to I2C1 */
     bq769x0: bq769x0@8 {
         compatible = "ti,bq769x0";
         reg = <0x08>;
@@ -268,8 +276,8 @@
 
 / {
     chosen {
-        zephyr,console = &usart1;
-        zephyr,shell-uart = &usart1;
+        zephyr,console = &usart3;
+        zephyr,shell-uart = &usart3;
     };
 
     aliases {
