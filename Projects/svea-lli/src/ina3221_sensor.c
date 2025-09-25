@@ -1,13 +1,13 @@
 #include "ina3221_sensor.h"
 #include "ros_iface.h"
 
+#include <rosidl_runtime_c/primitives_sequence_functions.h>
+#include <std_msgs/msg/float32_multi_array.h>
 #include <stdbool.h>
 #include <string.h>
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include <std_msgs/msg/float32_multi_array.h>
-#include <rosidl_runtime_c/primitives_sequence_functions.h>
 
 LOG_MODULE_REGISTER(ina3221_sensor, LOG_LEVEL_INF);
 
@@ -28,8 +28,7 @@ static struct k_mutex measurement_lock;
 static std_msgs__msg__Float32MultiArray ina_msg;
 static bool ina_msg_initialized;
 
-static int ina3221_set_channel(uint8_t channel)
-{
+static int ina3221_set_channel(uint8_t channel) {
     struct sensor_value sel = {
         .val1 = channel + 1, /* driver expects channels 1-3 */
         .val2 = 0,
@@ -39,8 +38,7 @@ static int ina3221_set_channel(uint8_t channel)
                            SENSOR_ATTR_INA3221_SELECTED_CHANNEL, &sel);
 }
 
-static const char *ina3221_channel_label(uint8_t ch)
-{
+static const char *ina3221_channel_label(uint8_t ch) {
     switch (ch) {
     case 0:
         return "ESC";
@@ -53,8 +51,7 @@ static const char *ina3221_channel_label(uint8_t ch)
     }
 }
 
-static int ina3221_read_channel(uint8_t ch, struct ina3221_measurement *sample)
-{
+static int ina3221_read_channel(uint8_t ch, struct ina3221_measurement *sample) {
     int rc = ina3221_set_channel(ch);
     if (rc) {
         return rc;
@@ -80,17 +77,16 @@ static int ina3221_read_channel(uint8_t ch, struct ina3221_measurement *sample)
         return rc;
     }
 
-    LOG_INF("INA3221 %s: V=%.3fV I=%.3fA P=%.3fW",
-            ina3221_channel_label(ch),
-            sensor_value_to_double(&sample->bus_voltage[ch]),
-            sensor_value_to_double(&sample->shunt_current[ch]),
-            sensor_value_to_double(&sample->power[ch]));
+    // LOG_INF("INA3221 %s: V=%.3fV I=%.3fA P=%.3fW",
+    //         ina3221_channel_label(ch),
+    //         sensor_value_to_double(&sample->bus_voltage[ch]),
+    //         sensor_value_to_double(&sample->shunt_current[ch]),
+    //         sensor_value_to_double(&sample->power[ch]));
 
     return 0;
 }
 
-static void ina3221_thread(void *a, void *b, void *c)
-{
+static void ina3221_thread(void *a, void *b, void *c) {
     ARG_UNUSED(a);
     ARG_UNUSED(b);
     ARG_UNUSED(c);
@@ -138,8 +134,7 @@ static void ina3221_thread(void *a, void *b, void *c)
     }
 }
 
-int ina3221_sensor_init(void)
-{
+int ina3221_sensor_init(void) {
     if (latest_valid) {
         return 0;
     }
@@ -178,8 +173,7 @@ int ina3221_sensor_init(void)
     return 0;
 }
 
-int ina3221_sensor_get_latest(struct ina3221_measurement *sample)
-{
+int ina3221_sensor_get_latest(struct ina3221_measurement *sample) {
     if ((sample == NULL) || (ina_dev == NULL)) {
         return -EINVAL;
     }
