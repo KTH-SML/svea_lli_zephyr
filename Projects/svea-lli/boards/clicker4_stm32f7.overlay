@@ -260,14 +260,14 @@
 / {
     wheel_encoders: wheel_encoders {
         compatible = "gpio-keys";
-        status = "disabled"; /* Using timer capture, not gpio-keys */
+        status = "okay"; /* Using timer capture, not gpio-keys */
         wheel_left: wheel_left {
-            gpios = <&gpioc 0 GPIO_ACTIVE_HIGH>;
+            gpios = <&gpiod 12 GPIO_ACTIVE_HIGH>; /* mikroBUS2 PWM */
             zephyr,code = <INPUT_KEY_0>;
             label = "WHEEL_LEFT";
         };
         wheel_right: wheel_right {
-            gpios = <&gpioi 10 GPIO_ACTIVE_HIGH>;
+            gpios = <&gpiob 2 GPIO_ACTIVE_HIGH>;  /* mikroBUS2 INT */
             zephyr,code = <INPUT_KEY_1>;
             label = "WHEEL_RIGHT";
         };
