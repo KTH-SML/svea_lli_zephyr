@@ -28,43 +28,69 @@
 #include <rmw_microros/rmw_microros.h>
 
 LOG_MODULE_REGISTER(ros_iface, LOG_LEVEL_INF);
-ros_ctrl_t g_ros_ctrl = {0};
-#define ROS_STACK_SIZE 4096
 
+#define ROS_STACK_SIZE 4096
+#define RCCHECK(fn)                                                                     \
+    {                                                                                   \
+        rcl_ret_t temp_rc = fn;                                                         \
+        if ((temp_rc != RCL_RET_OK)) {                                                  \
+            LOG_ERR("Failed status on line %d: %d. Aborting.", __LINE__, (int)temp_rc); \
+            return false;                                                               \
+        }                                                                               \
+    }
+#define RCSOFTCHECK(fn)                                                                   \
+    {                                                                                     \
+        rcl_ret_t temp_rc = fn;                                                           \
+        if ((temp_rc != RCL_RET_OK)) {                                                    \
+            LOG_ERR("Failed status on line %d: %d. Continuing.", __LINE__, (int)temp_rc); \
+        }                                                                                 \
+    }
+
+ros_ctrl_t g_ros_ctrl = {0};
 bool ros_initialized = false;
 
 static K_THREAD_STACK_DEFINE(ros_stack, ROS_STACK_SIZE);
 static struct k_thread ros_thread;
 
+// Node support
+static rcl_allocator_t allocator;
 static rclc_support_t support;
 static rcl_node_t node;
 static rclc_executor_t executor;
 
 // Publishers
 static rcl_publisher_t pub_steer, pub_throttle, pub_gear, pub_override, pub_connected;
-static std_msgs__msg__Int8 msg_steer, msg_throttle;
-static std_msgs__msg__Bool msg_gear, msg_override;
+rcl_publisher_t imu_pub, encoders_pub, ina3221_pub; // Remove static keyword for these
 
-// Subscriptions
+// Messages - ensure proper alignment
+static std_msgs__msg__Int8 msg_steer __aligned(4);
+static std_msgs__msg__Int8 msg_throttle __aligned(4);
+static std_msgs__msg__Bool msg_gear __aligned(4);
+static std_msgs__msg__Bool msg_override __aligned(4);
+static std_msgs__msg__Bool msg_connected __aligned(4);
+
+// Subscriptions - ensure proper alignment
 static rcl_subscription_t sub_steer, sub_throttle, sub_gear, sub_diff;
-static std_msgs__msg__Int8 submsg_steer, submsg_throttle;
-static std_msgs__msg__Bool submsg_gear, submsg_diff;
+static std_msgs__msg__Int8 submsg_steer __aligned(4);
+static std_msgs__msg__Int8 submsg_throttle __aligned(4);
+static std_msgs__msg__Bool submsg_gear __aligned(4);
+static std_msgs__msg__Bool submsg_diff __aligned(4);
 
-// IMU Publisher
-rcl_publisher_t imu_pub;
-
-// Encoder Publisher
-rcl_publisher_t encoders_pub;
-
-// INA3221 Publisher
-rcl_publisher_t ina3221_pub;
+// Timers
+static rcl_timer_t pub_timer;
 
 // Time synchronization variables
-static int64_t synced_epoch_ns = 0;
-static int64_t synced_epoch_ms = 0;
-static uint64_t synced_uptime_ms = 0;
+static uint64_t epoch_off_ns;
+static atomic_t epoch_locked = ATOMIC_INIT(0);
 static struct k_thread time_sync_thread_data;
 K_THREAD_STACK_DEFINE(time_sync_stack, 2048);
+
+enum states {
+    WAITING_AGENT,
+    AGENT_AVAILABLE,
+    AGENT_CONNECTED,
+    AGENT_DISCONNECTED
+} state;
 
 // Map pulse [1000,2000] to int8 [-127,127]
 static inline int8_t pulse_to_int8(int32_t us) {
@@ -74,10 +100,12 @@ static inline int8_t pulse_to_int8(int32_t us) {
         us = 2000;
     return (int8_t)(((us - 1500) * 127) / 500);
 }
+
 // Map pulse to bool (>1500 true)
 static inline bool pulse_to_bool(uint32_t us) {
     return us > 1500;
 }
+
 // Subscription callbacks
 static void steer_cb(const void *msg) {
     int8_t value = ((std_msgs__msg__Int8 *)msg)->data;
@@ -89,7 +117,7 @@ static void throttle_cb(const void *msg) {
     int8_t value = ((std_msgs__msg__Int8 *)msg)->data;
     LOG_DBG("Received throttle command: %d", value);
     g_ros_ctrl.throttle = value;
-    g_ros_ctrl.timestamp = k_uptime_get(); // Update timestamp on throttle change, important
+    g_ros_ctrl.timestamp = k_uptime_get();
 }
 
 static void gear_cb(const void *msg) {
@@ -104,38 +132,226 @@ static void diff_cb(const void *msg) {
     g_ros_ctrl.diff = value;
 }
 
-static uint64_t epoch_off_ns; /* agent_epoch ‑ local_uptime */
-static atomic_t epoch_locked = ATOMIC_INIT(0);
-// Sync time thread: updates virtual clock every second
-static void time_sync_thread(void *a, void *b, void *c) {
-    while (!ros_initialized)
-        k_sleep(K_MSEC(100));
+// Timer callback for publisher
+void pub_timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
+    RCLC_UNUSED(last_call_time);
+    if (timer != NULL && state == AGENT_CONNECTED) {
+        // Only publish remote state if remote is connected
+        if (remote_connected) {
+            int32_t steer_us = rc_get_pulse_us(RC_STEER);
+            int32_t throttle_us = rc_get_pulse_us(RC_THROTTLE);
+            uint32_t gear_us = rc_get_pulse_us(RC_HIGH_GEAR);
 
-    while (1) {
-        rmw_uros_sync_session(200);
+            msg_steer.data = pulse_to_int8(steer_us);
+            msg_throttle.data = pulse_to_int8(throttle_us);
+            msg_gear.data = pulse_to_bool(gear_us);
+            msg_override.data = (rc_get_override_mode() != RC_OVERRIDE_ROS);
 
-        if (rmw_uros_epoch_synchronized() &&
-            !atomic_test_and_set_bit(&epoch_locked, 0)) {
-
-            uint64_t agent_ns = rmw_uros_epoch_nanos();
-            uint64_t up_ns = k_uptime_get() * 1000000ULL;
-
-            /* disable IRQs: atomic on 32‑bit CPU */
-            unsigned int key = irq_lock();
-            epoch_off_ns = agent_ns - up_ns;
-            irq_unlock(key);
-
-            LOG_INF("Time locked to agent, offset = %lld ns",
-                    (long long)epoch_off_ns);
+            RCSOFTCHECK(rcl_publish(&pub_steer, &msg_steer, NULL));
+            RCSOFTCHECK(rcl_publish(&pub_throttle, &msg_throttle, NULL));
+            RCSOFTCHECK(rcl_publish(&pub_gear, &msg_gear, NULL));
+            RCSOFTCHECK(rcl_publish(&pub_override, &msg_override, NULL));
         }
-        k_sleep(K_SECONDS(1)); /* lower bus traffic */
+
+        // Always publish remote_connected status
+        msg_connected.data = remote_connected;
+        RCSOFTCHECK(rcl_publish(&pub_connected, &msg_connected, NULL));
     }
 }
 
+// Create allocator, support, pub, sub, executor for node if agent connection is successful
+bool create_entities() {
+    allocator = rcl_get_default_allocator();
+
+    // Init support - this will fail if no agent is available
+    rcl_ret_t ret = rclc_support_init(&support, 0, NULL, &allocator);
+    if (ret != RCL_RET_OK) {
+        LOG_DBG("Support init failed: %d (no agent available)", ret);
+        return false;
+    }
+
+    // Configure transport timeouts for better disconnection detection
+    rmw_context_t *rmw_context = rcl_context_get_rmw_context(&support.context);
+    if (rmw_context != NULL) {
+        // Set session timeout (how long to wait for agent responses)
+        rmw_uros_set_context_entity_creation_session_timeout(rmw_context, 1000); // 1 second
+        rmw_uros_set_context_entity_destroy_session_timeout(rmw_context, 500);   // 0.5 seconds
+
+        // Configure publisher timeout for faster failure detection
+        rmw_uros_set_publisher_session_timeout(rmw_context, 100); // 100ms timeout for publishes
+    }
+
+    // Node
+    ret = rclc_node_init_default(&node, "svea_lli_node", "", &support);
+    if (ret != RCL_RET_OK) {
+        LOG_ERR("Node init failed: %d", ret);
+        rclc_support_fini(&support);
+        return false;
+    }
+
+    // Publishers
+    RCCHECK(rclc_publisher_init_best_effort(&pub_steer, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/remote/steering"));
+    RCCHECK(rclc_publisher_init_best_effort(&pub_throttle, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/remote/throttle"));
+    RCCHECK(rclc_publisher_init_best_effort(&pub_gear, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/remote/high_gear"));
+    RCCHECK(rclc_publisher_init_best_effort(&pub_override, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/remote/override"));
+    RCCHECK(rclc_publisher_init_best_effort(&pub_connected, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/remote/connected"));
+
+    // Sensor publishers
+    RCCHECK(rclc_publisher_init_best_effort(&imu_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu), "/lli/sensor/imu"));
+    RCCHECK(rclc_publisher_init_best_effort(&encoders_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, TwistWithCovarianceStamped), "/lli/sensor/encoders"));
+    RCCHECK(rclc_publisher_init_best_effort(&ina3221_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray), "/lli/sensor/ina3221"));
+
+    // Subscriptions
+    RCCHECK(rclc_subscription_init_best_effort(&sub_steer, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/ctrl/steering"));
+    RCCHECK(rclc_subscription_init_best_effort(&sub_throttle, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/ctrl/throttle"));
+    RCCHECK(rclc_subscription_init_best_effort(&sub_gear, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/ctrl/high_gear"));
+    RCCHECK(rclc_subscription_init_best_effort(&sub_diff, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/ctrl/diff"));
+
+    // Timer
+    const unsigned int timer_timeout_ms = 50; // Publish every 50ms
+    RCCHECK(rclc_timer_init_default2(&pub_timer, &support, RCL_MS_TO_NS(timer_timeout_ms), pub_timer_callback, true));
+
+    // Executor
+    RCCHECK(rclc_executor_init(&executor, &support.context, 5, &allocator));
+    RCCHECK(rclc_executor_add_subscription(&executor, &sub_steer, &submsg_steer, steer_cb, ON_NEW_DATA));
+    RCCHECK(rclc_executor_add_subscription(&executor, &sub_throttle, &submsg_throttle, throttle_cb, ON_NEW_DATA));
+    RCCHECK(rclc_executor_add_subscription(&executor, &sub_gear, &submsg_gear, gear_cb, ON_NEW_DATA));
+    RCCHECK(rclc_executor_add_subscription(&executor, &sub_diff, &submsg_diff, diff_cb, ON_NEW_DATA));
+    RCCHECK(rclc_executor_add_timer(&executor, &pub_timer));
+
+    return true;
+}
+
+// Destroy allocator, support, pub, sub, executor for node if agent connection is lost or unsuccessful
+bool destroy_entities() {
+    rmw_context_t *rmw_context = rcl_context_get_rmw_context(&support.context);
+    (void)rmw_uros_set_context_entity_destroy_session_timeout(rmw_context, 0);
+
+    RCSOFTCHECK(rcl_publisher_fini(&pub_steer, &node));
+    RCSOFTCHECK(rcl_publisher_fini(&pub_throttle, &node));
+    RCSOFTCHECK(rcl_publisher_fini(&pub_gear, &node));
+    RCSOFTCHECK(rcl_publisher_fini(&pub_override, &node));
+    RCSOFTCHECK(rcl_publisher_fini(&pub_connected, &node));
+    RCSOFTCHECK(rcl_publisher_fini(&imu_pub, &node));
+    RCSOFTCHECK(rcl_publisher_fini(&encoders_pub, &node));
+    RCSOFTCHECK(rcl_publisher_fini(&ina3221_pub, &node));
+    RCSOFTCHECK(rcl_subscription_fini(&sub_steer, &node));
+    RCSOFTCHECK(rcl_subscription_fini(&sub_throttle, &node));
+    RCSOFTCHECK(rcl_subscription_fini(&sub_gear, &node));
+    RCSOFTCHECK(rcl_subscription_fini(&sub_diff, &node));
+    RCSOFTCHECK(rcl_timer_fini(&pub_timer));
+    RCSOFTCHECK(rclc_executor_fini(&executor));
+    RCSOFTCHECK(rcl_node_fini(&node));
+    RCSOFTCHECK(rclc_support_fini(&support));
+
+    return true;
+}
+
+// Sync time thread: updates virtual clock every second
+static void time_sync_thread(void *a, void *b, void *c) {
+    while (state != AGENT_CONNECTED) {
+        k_sleep(K_MSEC(100));
+    }
+
+    while (1) {
+        if (state == AGENT_CONNECTED) {
+            rmw_uros_sync_session(200);
+
+            if (rmw_uros_epoch_synchronized() && !atomic_test_and_set_bit(&epoch_locked, 0)) {
+                uint64_t agent_ns = rmw_uros_epoch_nanos();
+                uint64_t up_ns = k_uptime_get() * 1000000ULL;
+
+                unsigned int key = irq_lock();
+                epoch_off_ns = agent_ns - up_ns;
+                irq_unlock(key);
+
+                LOG_INF("Time locked to agent, offset = %lld ns", (long long)epoch_off_ns);
+            }
+        }
+        k_sleep(K_SECONDS(1));
+    }
+}
+
+// Main transport task for transmitting and receiving data
 static void ros_iface_thread(void *a, void *b, void *c) {
     LOG_INF("ros_iface_thread: started");
     k_msleep(1000); // Allow time for other subsystems to initialize
-    // --- ADD THIS BLOCK: Micro-ROS transport setup ---
+
+    uint64_t last_publish_check = 0;
+    const uint64_t publish_check_interval = 1000; // Check connection every 1 second
+
+    while (1) {
+        switch (state) {
+        case WAITING_AGENT:
+            LOG_INF("Attempting to create entities...");
+            state = (true == create_entities()) ? AGENT_CONNECTED : WAITING_AGENT;
+            if (state == WAITING_AGENT) {
+                LOG_INF("Failed to create entities, retrying in 2 seconds.");
+                k_msleep(2000);
+            } else {
+                LOG_INF("Connected to uROS agent and created entities.");
+                ros_initialized = true;
+                last_publish_check = k_uptime_get();
+            }
+            break;
+
+        case AGENT_AVAILABLE:
+            // Not using ping from example
+            state = WAITING_AGENT;
+            break;
+
+        case AGENT_CONNECTED:
+            state = (RMW_RET_OK == rmw_uros_ping_agent(500, 1)) ? AGENT_CONNECTED : AGENT_DISCONNECTED;
+            if (state != AGENT_CONNECTED) {
+                LOG_WRN("Ping to agent failed, assuming disconnection");
+                ros_initialized = false;
+                break;
+            }
+            // Try to spin the executor
+            rcl_ret_t spin_ret = rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10));
+            if (spin_ret != RCL_RET_OK) {
+                LOG_WRN("Executor spin failed (%d), assuming disconnection", spin_ret);
+                state = AGENT_DISCONNECTED;
+                ros_initialized = false;
+                break;
+            }
+
+            k_msleep(1);
+            break;
+
+        case AGENT_DISCONNECTED:
+            LOG_INF("Disconnected from agent. Cleaning up and retrying...");
+            destroy_entities();
+            ros_initialized = false;
+            state = WAITING_AGENT;
+            k_msleep(1000);
+            break;
+
+        default:
+            state = WAITING_AGENT;
+            break;
+        }
+    }
+}
+
+uint64_t ros_iface_epoch_millis(void) {
+    unsigned int key = irq_lock();
+    uint64_t off = epoch_off_ns;
+    irq_unlock(key);
+
+    return k_uptime_get() + off / 1000000ULL;
+}
+
+uint64_t ros_iface_epoch_nanos(void) {
+    unsigned int key = irq_lock();
+    uint64_t off = epoch_off_ns;
+    irq_unlock(key);
+
+    return k_uptime_get() * 1000000ULL + off;
+}
+
+void ros_iface_init(void) {
+    // Setup custom transports for microros
     rmw_uros_set_custom_transport(
         MICRO_ROS_FRAMING_REQUIRED,
         (void *)&default_params,
@@ -143,247 +359,9 @@ static void ros_iface_thread(void *a, void *b, void *c) {
         zephyr_transport_close,
         zephyr_transport_write,
         zephyr_transport_read);
-    // -------------------------------------------------
 
-    rcl_ret_t rc;
+    state = WAITING_AGENT;
 
-    LOG_INF("ros_iface_thread: initializing rclc_support");
-    while (1) {
-        rcl_allocator_t allocator = rcl_get_default_allocator();
-        rc = rclc_support_init(&support, 0, NULL, &allocator);
-        if (rc != RCL_RET_OK) {
-            LOG_ERR("rclc_support_init failed: %d", rc);
-            k_msleep(1000);
-            continue;
-        }
-
-        rc = rclc_node_init_default(&node, "svea_lli_node", "", &support);
-        if (rc != RCL_RET_OK) {
-            LOG_ERR("rclc_node_init_default failed: %d", rc);
-            rclc_support_fini(&support);
-            k_msleep(1000);
-            continue;
-        }
-
-        // Publishers
-        rc = rclc_publisher_init_best_effort(&pub_steer, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/remote/steering");
-        if (rc != RCL_RET_OK) {
-            LOG_ERR("rclc_publisher_init_best_effort (pub_steer) failed: %d", rc);
-            rcl_node_fini(&node);
-            rclc_support_fini(&support);
-            k_msleep(1000);
-            continue;
-        }
-        rc = rclc_publisher_init_best_effort(&pub_throttle, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/remote/throttle");
-        if (rc != RCL_RET_OK) {
-            LOG_ERR("rclc_publisher_init_best_effort (pub_throttle) failed: %d", rc);
-            rcl_node_fini(&node);
-            rclc_support_fini(&support);
-            k_msleep(1000);
-            continue;
-        }
-        rc = rclc_publisher_init_best_effort(&pub_gear, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/remote/high_gear");
-        if (rc != RCL_RET_OK) {
-            LOG_ERR("rclc_publisher_init_best_effort (pub_gear) failed: %d", rc);
-            rcl_node_fini(&node);
-            rclc_support_fini(&support);
-            k_msleep(1000);
-            continue;
-        }
-        rc = rclc_publisher_init_best_effort(&pub_override, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/remote/override");
-        if (rc != RCL_RET_OK) {
-            LOG_ERR("rclc_publisher_init_best_effort (pub_override) failed: %d", rc);
-            rcl_node_fini(&node);
-            rclc_support_fini(&support);
-            k_msleep(1000);
-            continue;
-        }
-        rc = rclc_publisher_init_best_effort(&pub_connected, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/remote/connected");
-        if (rc != RCL_RET_OK) {
-            LOG_ERR("rclc_publisher_init_best_effort (pub_connected) failed: %d", rc);
-            rcl_node_fini(&node);
-            rclc_support_fini(&support);
-            k_msleep(1000);
-            continue;
-        }
-        // Sensors pubs
-
-        rc = rclc_publisher_init_best_effort(&imu_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu), "/lli/sensor/imu");
-        if (rc != RCL_RET_OK) {
-            LOG_ERR("rclc_publisher_init_best_effort (pub_imu) failed: %d", rc);
-            rcl_node_fini(&node);
-            rclc_support_fini(&support);
-            k_msleep(1000);
-            continue;
-        }
-
-        rc = rclc_publisher_init_best_effort(&encoders_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, TwistWithCovarianceStamped), "/lli/sensor/encoders");
-        if (rc != RCL_RET_OK) {
-            LOG_ERR("rclc_publisher_init_best_effort (pub_encoders) failed: %d", rc);
-            rcl_node_fini(&node);
-            rclc_support_fini(&support);
-            k_msleep(1000);
-            continue;
-        }
-
-        rc = rclc_publisher_init_best_effort(&ina3221_pub, &node,
-                                              ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray),
-                                              "/lli/sensor/ina3221");
-        if (rc != RCL_RET_OK) {
-            LOG_ERR("rclc_publisher_init_best_effort (pub_ina3221) failed: %d", rc);
-            rcl_node_fini(&node);
-            rclc_support_fini(&support);
-            k_msleep(1000);
-            continue;
-        }
-        // Subscriptions
-        rc = rclc_subscription_init_best_effort(&sub_steer, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/ctrl/steering");
-        if (rc != RCL_RET_OK) {
-            LOG_ERR("rclc_subscription_init_best_effort (sub_steer) failed: %d", rc);
-            rcl_node_fini(&node);
-            rclc_support_fini(&support);
-            k_msleep(1000);
-            continue;
-        }
-        rc = rclc_subscription_init_best_effort(&sub_throttle, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/ctrl/throttle");
-        if (rc != RCL_RET_OK) {
-            LOG_ERR("rclc_subscription_init_best_effort (sub_throttle) failed: %d", rc);
-            rcl_node_fini(&node);
-            rclc_support_fini(&support);
-            k_msleep(1000);
-            continue;
-        }
-        rc = rclc_subscription_init_best_effort(&sub_gear, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/ctrl/high_gear");
-        if (rc != RCL_RET_OK) {
-            LOG_ERR("rclc_subscription_init_best_effort (sub_gear) failed: %d", rc);
-            rcl_node_fini(&node);
-            rclc_support_fini(&support);
-            k_msleep(1000);
-            continue;
-        }
-        rc = rclc_subscription_init_best_effort(&sub_diff, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/ctrl/diff");
-        if (rc != RCL_RET_OK) {
-            LOG_ERR("rclc_subscription_init_best_effort (sub_diff) failed: %d", rc);
-            rcl_node_fini(&node);
-            rclc_support_fini(&support);
-            k_msleep(1000);
-            continue;
-        }
-
-        rc = rclc_executor_init(&executor, &support.context, 5, support.allocator);
-        if (rc != RCL_RET_OK) {
-            LOG_ERR("rclc_executor_init failed: %d", rc);
-            rcl_node_fini(&node);
-            rclc_support_fini(&support);
-            k_msleep(1000);
-            continue;
-        }
-        rc = rclc_executor_add_subscription(&executor, &sub_steer, &submsg_steer, steer_cb, ON_NEW_DATA);
-        if (rc != RCL_RET_OK) {
-            LOG_ERR("rclc_executor_add_subscription (sub_steer) failed: %d", rc);
-            rcl_node_fini(&node);
-            rclc_support_fini(&support);
-            k_msleep(1000);
-            continue;
-        }
-        rc = rclc_executor_add_subscription(&executor, &sub_throttle, &submsg_throttle, throttle_cb, ON_NEW_DATA);
-        if (rc != RCL_RET_OK) {
-            LOG_ERR("rclc_executor_add_subscription (sub_throttle) failed: %d", rc);
-            rcl_node_fini(&node);
-            rclc_support_fini(&support);
-            k_msleep(1000);
-            continue;
-        }
-        rc = rclc_executor_add_subscription(&executor, &sub_gear, &submsg_gear, gear_cb, ON_NEW_DATA);
-        if (rc != RCL_RET_OK) {
-            LOG_ERR("rclc_executor_add_subscription (sub_gear) failed: %d", rc);
-            rcl_node_fini(&node);
-            rclc_support_fini(&support);
-            k_msleep(1000);
-            continue;
-        }
-        rc = rclc_executor_add_subscription(&executor, &sub_diff, &submsg_diff, diff_cb, ON_NEW_DATA);
-        if (rc != RCL_RET_OK) {
-            LOG_ERR("rclc_executor_add_subscription (sub_diff) failed: %d", rc);
-            rcl_node_fini(&node);
-            rclc_support_fini(&support);
-            k_msleep(1000);
-            continue;
-        }
-
-        // If all succeeded, break out of retry loop
-        break;
-    }
-    rmw_uros_sync_session(1000);
-    LOG_INF("ROS iface thread started");
-
-    ros_initialized = true;
-    const uint32_t pub_period_ms = 50; // Publish every 50ms
-    uint64_t last_pub_time = k_uptime_get();
-
-    while (1) {
-        rclc_executor_spin_some(&executor, 10);
-        k_msleep(1);
-
-        uint64_t now = k_uptime_get();
-        if ((now - last_pub_time) >= pub_period_ms) {
-            last_pub_time = now;
-
-            // Only publish remote state if remote is connected, could be made more efficient by using whas in control,
-            // but keeping it seperate for clarity
-            if (remote_connected) {
-                int32_t steer_us = rc_get_pulse_us(RC_STEER);
-                int32_t throttle_us = rc_get_pulse_us(RC_THROTTLE);
-                uint32_t gear_us = rc_get_pulse_us(RC_HIGH_GEAR);
-
-                msg_steer.data = pulse_to_int8(steer_us);
-                msg_throttle.data = pulse_to_int8(throttle_us);
-                msg_gear.data = pulse_to_bool(gear_us);
-                // Treat both MUTE and FULL as override engaged
-                msg_override.data = (rc_get_override_mode() != RC_OVERRIDE_ROS);
-
-                rcl_ret_t rc;
-                rc = rcl_publish(&pub_steer, &msg_steer, NULL);
-                if (rc != RCL_RET_OK)
-                    LOG_ERR("pub_steer failed: %d", rc);
-                rc = rcl_publish(&pub_throttle, &msg_throttle, NULL);
-                if (rc != RCL_RET_OK)
-                    LOG_ERR("pub_throttle failed: %d", rc);
-                rc = rcl_publish(&pub_gear, &msg_gear, NULL);
-                if (rc != RCL_RET_OK)
-                    LOG_ERR("pub_gear failed: %d", rc);
-                rc = rcl_publish(&pub_override, &msg_override, NULL);
-                if (rc != RCL_RET_OK)
-                    LOG_ERR("pub_override failed: %d", rc);
-            }
-
-            // Always publish remote_connected status
-            rcl_ret_t rc = rcl_publish(&pub_connected, &remote_connected, NULL);
-            if (rc != RCL_RET_OK)
-                LOG_ERR("pub_connected failed: %d", rc);
-        }
-    }
-}
-
-uint64_t ros_iface_epoch_millis(void) {
-    unsigned int key = irq_lock(); // atomic copy
-    uint64_t off = epoch_off_ns;
-    irq_unlock(key);
-
-    return k_uptime_get() + off / 1000000ULL;
-}
-
-uint64_t ros_iface_epoch_nanos(void) /* new helper: epoch ns */
-{
-    unsigned int key = irq_lock(); /* atomic copy       */
-    uint64_t off = epoch_off_ns;
-    irq_unlock(key);
-
-    return k_uptime_get() * 1000000ULL + off;
-}
-
-// Call this in ros_iface_init
-void ros_iface_init(void) {
     k_thread_create(&ros_thread, ros_stack, K_THREAD_STACK_SIZEOF(ros_stack),
                     ros_iface_thread, NULL, NULL, NULL,
                     5, 0, K_NO_WAIT);

@@ -1,14 +1,14 @@
 #include "control.h"
+#include "imu_sensor.h"
 #include "ina3221_sensor.h"
 #include "rc_input.h"
 #include "ros_iface.h"
-#include "imu_sensor.h"
 #include "wheel_enc.h"
+#include <stdio.h>
 #include <zephyr/drivers/watchdog.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/usb/usb_device.h>
-#include <stdio.h>
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
 #define WDT_TIMEOUT_MS 2000
@@ -55,12 +55,14 @@ int main(void) {
     if (usb_rc) {
         LOG_ERR("USB enable failed: %d", usb_rc);
     }
-    ros_iface_init();
+
     if (ina3221_sensor_init() != 0) {
         LOG_WRN("INA3221 sensor init failed");
     }
     imu_sensor_start();
     wheel_enc_init();
+
+    ros_iface_init();
 
     while (1) {
         if (wdt_channel_id >= 0) {

@@ -38,11 +38,12 @@ static const uint32_t WINDOW_MS = (uint32_t)(WINDOW_MS_F + 0.5f);
 #define TICKS_IN_WIN_MAX_F (MAX_SPEED / DIST_PER_TICK * (WINDOW_MS_F / 1000.0f))
 #define MAX_TICKS ((uint16_t)(TICKS_IN_WIN_MAX_F + 4.5f))
 
-/* ── Devicetree aliases ------------------------------------------------ */
-#define WL_NODE DT_ALIAS(wheel_left_gpio)
-#define WR_NODE DT_ALIAS(wheel_right_gpio)
-BUILD_ASSERT(DT_NODE_HAS_STATUS(WL_NODE, okay), "wheel_left_gpio alias missing");
-BUILD_ASSERT(DT_NODE_HAS_STATUS(WR_NODE, okay), "wheel_right_gpio alias missing");
+/* ── Devicetree references --------------------------------------------- */
+#define WHEEL_SPEC_NODE DT_PATH(zephyr_user)
+BUILD_ASSERT(DT_NODE_HAS_PROP(WHEEL_SPEC_NODE, wheel_left_gpios),
+             "wheel_left_gpios missing in zephyr,user");
+BUILD_ASSERT(DT_NODE_HAS_PROP(WHEEL_SPEC_NODE, wheel_right_gpios),
+             "wheel_right_gpios missing in zephyr,user");
 
 /* ── wheel context ----------------------------------------------------- */
 struct wheel_ctx {
@@ -57,8 +58,8 @@ struct wheel_ctx {
 };
 
 static struct wheel_ctx w[2] = {
-    {.gpio = GPIO_DT_SPEC_GET(WL_NODE, gpios)},
-    {.gpio = GPIO_DT_SPEC_GET(WR_NODE, gpios)},
+    {.gpio = GPIO_DT_SPEC_GET(WHEEL_SPEC_NODE, wheel_left_gpios)},
+    {.gpio = GPIO_DT_SPEC_GET(WHEEL_SPEC_NODE, wheel_right_gpios)},
 };
 
 /* ── helpers ----------------------------------------------------------- */

@@ -218,6 +218,8 @@
         ts1_wake_gpios = <&gpiob 1 GPIO_ACTIVE_HIGH>; /* adjust to your wiring */
         imu_reset_gpios = <&gpioc 15 GPIO_ACTIVE_HIGH>; /* mikroBUS1 RST */
         soc_button_gpios = <&gpioe 10 GPIO_ACTIVE_LOW>; /* User BTN1 */
+        wheel_left_gpios = <&gpiod 12 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+        wheel_right_gpios = <&gpiob 2 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
     };
 
 
@@ -258,23 +260,6 @@
 
 
 / {
-    wheel_encoders: wheel_encoders {
-        compatible = "gpio-keys";
-        status = "okay"; /* Using timer capture, not gpio-keys */
-        wheel_left: wheel_left {
-            gpios = <&gpiod 12 GPIO_ACTIVE_HIGH>; /* mikroBUS2 PWM */
-            zephyr,code = <INPUT_KEY_0>;
-            label = "WHEEL_LEFT";
-        };
-        wheel_right: wheel_right {
-            gpios = <&gpiob 2 GPIO_ACTIVE_HIGH>;  /* mikroBUS2 INT */
-            zephyr,code = <INPUT_KEY_1>;
-            label = "WHEEL_RIGHT";
-        };
-    };
-};
-
-/ {
     chosen {
         zephyr,console = &usart3;
         zephyr,shell-uart = &usart3;
@@ -283,8 +268,6 @@
     aliases {
         /* RC PWM capture aliases removed: using SBUS on USART2 instead */
 
-        wheel-left-gpio  = &wheel_left;
-        wheel-right-gpio = &wheel_right;
         imu = &icm42670;
         ina3221 = &ina3221;
         watchdog0 = &iwdg;
