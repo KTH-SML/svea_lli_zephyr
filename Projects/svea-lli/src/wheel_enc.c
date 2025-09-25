@@ -18,7 +18,7 @@ LOG_MODULE_REGISTER(wheel_enc, LOG_LEVEL_INF);
 #define TICKS_PER_REV 80.0f /* encoder gives this many edges / rev   */
 #define WHEEL_DIAM 0.115f   /* metres                                */
 #define MAX_SPEED 3.0f      /* m s⁻¹  (top speed)                    */
-#define MIN_SPEED 0.10f     /* m s⁻¹  (lowest speed to measure)      */
+#define MIN_SPEED 0.10f     /* m s⁻¹  (lowest speed to measure) helps reduce jitter if the wheel stops at the edge of a "tooth"     */
 
 #define WHEELBASE 0.32f   /* metres – centre-to-centre of wheels   */
 #define SPEED_SCALE 0.93f /* empirical scale from ideal to real    */
@@ -141,6 +141,10 @@ static void odom_thread(void *, void *, void *);
 static void wheel_enc_start_odom_thread(void);
 
 void wheel_enc_init(void) {
+    LOG_INF("Wheel encoders: init (L=%s/%u, R=%s/%u)",
+            w[0].gpio.port->name, w[0].gpio.pin,
+            w[1].gpio.port->name, w[1].gpio.pin);
+
     for (int i = 0; i < 2; i++) {
         gpio_pin_configure_dt(&w[i].gpio, GPIO_INPUT | GPIO_PULL_UP);
         gpio_pin_interrupt_configure_dt(&w[i].gpio, GPIO_INT_EDGE_BOTH);
@@ -166,8 +170,7 @@ static void odom_thread(void *a, void *b, void *c) {
     ARG_UNUSED(b);
     ARG_UNUSED(c);
 
-    while (!ros_initialized)
-        k_sleep(K_MSEC(100));
+    uint32_t last_log_ms = k_uptime_get_32();
 
     for (;;) {
         float vL = wheel_left_speed();
@@ -179,6 +182,17 @@ static void odom_thread(void *a, void *b, void *c) {
         /* 2× gain compensates empirically for skid-steer slip */
         odom_msg.twist.twist.angular.z = ((vL - vR) / WHEELBASE) *
                                          (fwd ? 1.f : -1.f) * 2.f;
+
+        if (!ros_initialized) {
+            uint32_t now = k_uptime_get_32();
+            if ((uint32_t)(now - last_log_ms) >= 1000U) {
+                LOG_INF("Wheel encoders waiting for ROS (vL=%.2f m/s, vR=%.2f m/s)",
+                        (double)vL, (double)vR);
+                last_log_ms = now;
+            }
+            k_sleep(K_MSEC(50));
+            continue;
+        }
 
         /* diagonal covariance = 0.1, rest 0 */
         memset(odom_msg.twist.covariance, 0, sizeof(odom_msg.twist.covariance));
@@ -197,7 +211,10 @@ static void odom_thread(void *a, void *b, void *c) {
         strncpy(odom_msg.header.frame_id.data, frame, odom_msg.header.frame_id.capacity);
         odom_msg.header.frame_id.size = strlen(frame); /* keep capacity unchanged */
 
-        rcl_publish(&encoders_pub, &odom_msg, NULL);
+        rcl_ret_t rc = rcl_publish(&encoders_pub, &odom_msg, NULL);
+        if (rc != RCL_RET_OK) {
+            LOG_WRN("Wheel encoder publish failed: %d", rc);
+        }
         k_sleep(K_MSEC(5));
     }
 }
