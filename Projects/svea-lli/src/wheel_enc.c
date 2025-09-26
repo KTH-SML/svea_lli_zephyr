@@ -147,7 +147,7 @@ void wheel_enc_init(void) {
             w[1].gpio.port->name, w[1].gpio.pin);
 
     for (int i = 0; i < 2; i++) {
-        gpio_pin_configure_dt(&w[i].gpio, GPIO_INPUT | GPIO_PULL_UP);
+        gpio_pin_configure_dt(&w[i].gpio, GPIO_INPUT);
         gpio_pin_interrupt_configure_dt(&w[i].gpio, GPIO_INT_EDGE_BOTH);
         gpio_init_callback(&w[i].cb, i ? wr_isr : wl_isr, BIT(w[i].gpio.pin));
         gpio_add_callback(w[i].gpio.port, &w[i].cb);

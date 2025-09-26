@@ -67,7 +67,8 @@
     icm42670: icm42670@68 {
         compatible = "invensense,icm42670p";
         reg = <0x68>;
-        //int-gpios = <&gpiod 0 GPIO_ACTIVE_HIGH>;
+        int-gpios = <&gpioc 7 GPIO_ACTIVE_HIGH>;
+
         gyro-hz = <800>;
         accel-hz = <800>;
         accel-fs = <8>;
@@ -109,10 +110,10 @@
     status = "disabled";
 };
 
-&gpioa {
+&gpiod {
     imu_cs_hold: imu_cs_hold {
         gpio-hog;
-        gpios = <4 GPIO_ACTIVE_LOW>;
+        gpios = <13 GPIO_ACTIVE_HIGH>;
         output-high;
     };
 };
@@ -215,11 +216,12 @@
 
     /* TS1 wake control GPIO for the BMS IC (used by wake_chip.c) */
     zephyr,user {
-        ts1_wake_gpios = <&gpiob 1 GPIO_ACTIVE_HIGH>; /* adjust to your wiring */
-        imu_reset_gpios = <&gpioc 15 GPIO_ACTIVE_HIGH>; /* mikroBUS1 RST */
+        ts1_wake_gpios = <&gpiod 5 GPIO_ACTIVE_HIGH>; /* adjust to your wiring */
+        /* MikroBUS RST pin selects the CS analog mux (keep host -> IMU path) */
+        imu_reset_gpios = <&gpioc 15 GPIO_ACTIVE_LOW>; /* mikroBUS1 RST */
         soc_button_gpios = <&gpioe 10 GPIO_ACTIVE_LOW>; /* User BTN1 */
-        wheel_left_gpios = <&gpiod 12 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
-        wheel_right_gpios = <&gpiob 2 (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+        wheel_left_gpios = <&gpiob 2 GPIO_ACTIVE_HIGH>;
+        wheel_right_gpios = <&gpioc 7 GPIO_ACTIVE_HIGH>;
     };
 
 

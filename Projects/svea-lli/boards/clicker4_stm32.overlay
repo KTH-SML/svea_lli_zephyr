@@ -188,6 +188,8 @@
 
     zephyr,user {
         ts1_wake_gpios = <&gpiob 1 GPIO_ACTIVE_HIGH>;
+        /* MikroBUS RST pin selects the CS analog mux (keep host -> IMU path) */
+        imu_reset_gpios = <&gpioc 15 GPIO_ACTIVE_LOW>;
     };
 
     wheel_encoders: wheel_encoders {

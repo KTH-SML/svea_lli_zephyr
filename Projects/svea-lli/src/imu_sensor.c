@@ -2,6 +2,7 @@
 #include "ros_iface.h"
 
 #include <errno.h>
+#include <limits.h>
 #include <rmw_microros/rmw_microros.h>
 #include <sensor_msgs/msg/imu.h>
 #include <stdbool.h>
@@ -9,10 +10,13 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/sensor.h>
+#include <zephyr/init.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/pm/device.h>
+#include <zephyr/pm/device_runtime.h>
 #include <zephyr/sys/reboot.h>
+#include <zephyr/sys/util.h>
 
 LOG_MODULE_REGISTER(imu_sensor, LOG_LEVEL_INF);
 
@@ -25,6 +29,7 @@ static struct sensor_trigger imu_trigger;
 static K_SEM_DEFINE(imu_data_sem, 0, 1);
 
 static void imu_sensor_thread(void *p1, void *p2, void *p3);
+static int imu_device_retry_init(const struct device *dev);
 
 #if DT_NODE_HAS_PROP(DT_PATH(zephyr_user), imu_reset_gpios)
 static const struct gpio_dt_spec imu_reset_gpio =
@@ -33,6 +38,36 @@ static const struct gpio_dt_spec imu_reset_gpio =
 #else
 #define HAS_IMU_RESET_GPIO 0
 #endif
+
+static int imu_device_retry_init(const struct device *dev) {
+    extern const struct init_entry __init_POST_KERNEL_start[];
+    extern const struct init_entry __init_APPLICATION_start[];
+    const struct init_entry *entry;
+
+    for (entry = __init_POST_KERNEL_start; entry < __init_APPLICATION_start; ++entry) {
+        if ((entry->dev != dev) || (entry->init_fn.dev == NULL)) {
+            continue;
+        }
+
+        dev->state->initialized = false;
+        dev->state->init_res = 0U;
+
+        int rc = entry->init_fn.dev(dev);
+
+        if (rc != 0) {
+            unsigned int stored = (unsigned int)((rc < 0) ? MIN(-rc, (int)UINT8_MAX)
+                                                          : MIN(rc, (int)UINT8_MAX));
+            dev->state->init_res = (uint8_t)stored;
+        } else if (IS_ENABLED(CONFIG_PM_DEVICE_RUNTIME)) {
+            (void)pm_device_runtime_auto_enable(dev);
+        }
+
+        dev->state->initialized = true;
+        return rc;
+    }
+
+    return -ENOENT;
+}
 
 static int device_init_status(const struct device *dev) {
     const struct device_state *state = dev->state;
@@ -101,12 +136,30 @@ static void imu_sensor_thread(void *p1, void *p2, void *p3) {
 #endif
 
     const struct device *dev = DEVICE_DT_GET(DT_ALIAS(imu));
+    const int MAX_IMU_INIT_ATTEMPTS = 20;
+    int init_attempts = 0;
 
-    if (!device_is_ready(dev)) {
+    while (dev && !device_is_ready(dev) && (init_attempts < MAX_IMU_INIT_ATTEMPTS)) {
         int rc = device_init_status(dev);
-        LOG_ERR("IMU device failed to init (rc=%d); rebooting", rc);
-        k_sleep(K_MSEC(100));
-        // sys_reboot(SYS_REBOOT_COLD);
+        LOG_ERR("IMU driver cached init_res=%u (errno=%d)", dev->state->init_res, rc);
+
+        int retry = imu_device_retry_init(dev);
+        init_attempts++;
+
+        if (retry) {
+            LOG_WRN("IMU re-init attempt %d/%d failed: %d", init_attempts, MAX_IMU_INIT_ATTEMPTS, retry);
+        } else {
+            LOG_INF("IMU re-init attempt %d/%d succeeded", init_attempts, MAX_IMU_INIT_ATTEMPTS);
+        }
+
+        if (!device_is_ready(dev)) {
+            k_msleep(100);
+        }
+    }
+
+    if (!dev || !device_is_ready(dev)) {
+        LOG_ERR("IMU initialization failed after %d attempts, giving up", MAX_IMU_INIT_ATTEMPTS);
+        return;
     }
 
     imu_dev = dev;
