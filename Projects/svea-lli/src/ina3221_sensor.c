@@ -130,7 +130,7 @@ static void ina3221_thread(void *a, void *b, void *c) {
             }
         }
 
-        k_sleep(K_MSEC(INA3221_SAMPLE_PERIOD_MS));
+        k_sleep(K_MSEC(1000));
     }
 }
 

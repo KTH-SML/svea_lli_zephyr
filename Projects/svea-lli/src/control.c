@@ -228,7 +228,7 @@ static void control_thread(void *, void *, void *) {
             int32_t decel = max_thr_decel;
             if (gear_us == GEAR_HIGH_US) {
                 // In high gear, be gentler on accel
-                accel /= 3;
+                accel /= 5;
             }
             thr_us = clamp_throttle(thr_us, prev_thr, accel, decel);
             prev_thr = thr_us;
@@ -247,6 +247,8 @@ static void control_thread(void *, void *, void *) {
         const int32_t sleep_time = (int32_t)(LOOP_MS * 1000) - (int32_t)elapsed_us;
         if (sleep_time > 0) {
             k_sleep(K_USEC(sleep_time));
+        } else {
+            k_sleep(K_USEC(100)); // yield to lower-prio tasks at least a lil bit
         }
     }
 }

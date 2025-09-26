@@ -62,7 +62,7 @@
 
 &i2c2 {
     status = "okay";
-    clock-frequency = <I2C_BITRATE_STANDARD>; // Somethings weird with it, fast only works with too aggressive a pullup
+    clock-frequency = <I2C_BITRATE_FAST>; // Somethings weird with it, fast only works with too aggressive a pullup
 
     icm42670: icm42670@68 {
         compatible = "invensense,icm42670p";

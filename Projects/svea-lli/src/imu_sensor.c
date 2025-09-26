@@ -257,6 +257,7 @@ static void imu_sensor_thread(void *p1, void *p2, void *p3) {
                 LOG_ERR("IMU publish failed: %d", pub_rc);
             }
         }
+        k_sleep(K_MSEC(10)); // yield to lower-prio tasks at least a lil bit
     }
 }
 

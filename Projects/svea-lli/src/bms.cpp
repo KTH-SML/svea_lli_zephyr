@@ -142,6 +142,7 @@ static void soc_indicator_init(void) {
 }
 
 static void print_bms_status(const Bms *bms) {
+
     return;
     if (bms->status.pack_current > peak_charge_a) {
         peak_charge_a = bms->status.pack_current;
@@ -271,7 +272,7 @@ static void bms_thread(void *, void *, void *) {
 
 // Priority lower than main; stack sized generously for I2C + logging
 K_THREAD_DEFINE(bms_tid, 3072, bms_thread, NULL, NULL, NULL,
-                K_PRIO_PREEMPT(5), 0, 0);
+                3, 0, 0);
 
 extern "C" float bms_get_soc_percent(void) {
     return g_bms.status.soc;

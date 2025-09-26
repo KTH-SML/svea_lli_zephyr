@@ -109,13 +109,13 @@ static inline bool pulse_to_bool(uint32_t us) {
 // Subscription callbacks
 static void steer_cb(const void *msg) {
     int8_t value = ((std_msgs__msg__Int8 *)msg)->data;
-    LOG_DBG("Received steering command: %d", value);
+    LOG_INF("Received steering command: %d", value);
     g_ros_ctrl.steering = value;
 }
 
 static void throttle_cb(const void *msg) {
     int8_t value = ((std_msgs__msg__Int8 *)msg)->data;
-    LOG_DBG("Received throttle command: %d", value);
+    LOG_INF("Received throttle command: %d", value);
     g_ros_ctrl.throttle = value;
     g_ros_ctrl.timestamp = k_uptime_get();
 }
@@ -298,6 +298,7 @@ static void ros_iface_thread(void *a, void *b, void *c) {
     const uint64_t publish_check_interval = 1000; // Check connection every 1 second
 
     while (1) {
+        // k_msleep(1);
         switch (state) {
         case WAITING_AGENT:
             LOG_INF("Attempting to create entities...");
@@ -346,7 +347,6 @@ static void ros_iface_thread(void *a, void *b, void *c) {
             state = WAITING_AGENT;
             break;
         }
-        k_msleep(1);
     }
 }
 
