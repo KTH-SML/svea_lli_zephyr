@@ -296,15 +296,21 @@ static void ros_iface_thread(void *a, void *b, void *c) {
 
     uint64_t last_publish_check = 0;
     const uint64_t publish_check_interval = 1000; // Check connection every 1 second
+    uint32_t last_retry_log_ms = 0;
 
     while (1) {
         // k_msleep(1);
         switch (state) {
-        case WAITING_AGENT:
-            LOG_INF("Attempting to create entities...");
-            state = (true == create_entities()) ? AGENT_CONNECTED : WAITING_AGENT;
-            if (state == WAITING_AGENT) {
-                LOG_INF("Failed to create entities, retrying in 2 seconds.");
+        case WAITING_AGENT: {
+            LOG_DBG("Attempting to create micro-ROS entities");
+            bool created = create_entities();
+            state = created ? AGENT_CONNECTED : WAITING_AGENT;
+            if (!created) {
+                uint32_t now_ms = k_uptime_get_32();
+                if ((uint32_t)(now_ms - last_retry_log_ms) >= 10000U) {
+                    LOG_WRN("Failed to create micro-ROS entities, retrying...");
+                    last_retry_log_ms = now_ms;
+                }
                 k_msleep(2000);
             } else {
                 LOG_INF("Connected to uROS agent and created entities.");
@@ -312,6 +318,7 @@ static void ros_iface_thread(void *a, void *b, void *c) {
                 last_publish_check = k_uptime_get();
             }
             break;
+        }
 
         case AGENT_AVAILABLE:
             // Not using ping from example
@@ -332,7 +339,7 @@ static void ros_iface_thread(void *a, void *b, void *c) {
             break;
 
         case AGENT_DISCONNECTED:
-            LOG_INF("Disconnected from agent. Cleaning up and retrying...");
+            LOG_WRN("Disconnected from agent. Cleaning up and retrying...");
             // Guarantees that control commands are zeroed on disconnect
             g_ros_ctrl.steering = 0;
             g_ros_ctrl.throttle = 0;

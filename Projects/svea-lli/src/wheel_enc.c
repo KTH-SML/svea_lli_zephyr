@@ -186,8 +186,8 @@ static void odom_thread(void *a, void *b, void *c) {
 
         if (!ros_initialized) {
             uint32_t now = k_uptime_get_32();
-            if ((uint32_t)(now - last_log_ms) >= 1000U) {
-                LOG_INF("Wheel encoders waiting for ROS (vL=%.2f m/s, vR=%.2f m/s)",
+            if ((uint32_t)(now - last_log_ms) >= 5000U) {
+                LOG_DBG("Wheel encoders waiting for ROS (vL=%.2f m/s, vR=%.2f m/s)",
                         (double)vL, (double)vR);
                 last_log_ms = now;
             }

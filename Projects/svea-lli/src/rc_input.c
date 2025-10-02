@@ -141,7 +141,7 @@ void rc_input_debug_dump(void) {
     const char *mstr = (mode == RC_OVERRIDE_ROS) ? "ROS" : (mode == RC_OVERRIDE_MUTE) ? "MUTE"
                                                                                       : "FULL";
     // Print ch4_diff_button as raw value and mapped to us
-    LOG_INF("SBUS raw ch1=%u ch2=%u ch4=%u ch5=%u ch6=%u us[steer=%u thr=%u diff=%u gear=%u ovr=%u mode=%s] age=%u us\n",
+    LOG_DBG("SBUS raw ch1=%u ch2=%u ch4=%u ch5=%u ch6=%u us[steer=%u thr=%u diff=%u gear=%u ovr=%u mode=%s] age=%u us",
             sbus_raw[0], sbus_raw[1], sbus_raw[3], sbus_raw[4], sbus_raw[5],
             map_sbus_to_us(sbus_raw[0]), map_sbus_to_us(sbus_raw[1]),
             map_sbus_to_us(sbus_raw[3]), map_sbus_to_us(sbus_raw[5]), map_sbus_to_us(sbus_raw[4]), mstr,
