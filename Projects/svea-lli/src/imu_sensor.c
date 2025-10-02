@@ -25,8 +25,6 @@ static struct k_thread imu_thread_data;
 
 static const struct device *imu_dev;
 static sensor_msgs__msg__Imu imu_msg;
-static struct sensor_trigger imu_trigger;
-static K_SEM_DEFINE(imu_data_sem, 0, 1);
 
 static void imu_sensor_thread(void *p1, void *p2, void *p3);
 static int imu_device_retry_init(const struct device *dev);
@@ -89,20 +87,6 @@ static int device_init_status(const struct device *dev) {
     }
 
     return 0;
-}
-
-static void imu_trigger_handler(const struct device *dev, const struct sensor_trigger *trig) {
-    if ((trig->type != SENSOR_TRIG_DATA_READY) || (trig->chan != SENSOR_CHAN_ALL)) {
-        return;
-    }
-
-    int rc = sensor_sample_fetch_chan(dev, trig->chan);
-    if (rc < 0) {
-        LOG_ERR("IMU sample fetch in trigger failed: %d", rc);
-        return;
-    }
-
-    k_sem_give(&imu_data_sem);
 }
 
 void imu_sensor_start(void) {
@@ -182,11 +166,9 @@ static void imu_sensor_thread(void *p1, void *p2, void *p3) {
         // Debug each channel read separately
         int accel_rc = sensor_channel_get(imu_dev, SENSOR_CHAN_ACCEL_XYZ, accel);
         int gyro_rc = sensor_channel_get(imu_dev, SENSOR_CHAN_GYRO_XYZ, gyro);
-        // int temp_rc = sensor_channel_get(imu_dev, SENSOR_CHAN_DIE_TEMP, &temperature);
 
         if (accel_rc || gyro_rc) {
-            LOG_WRN("IMU channel read failed: accel=%d, gyro=%d, temp=%d",
-                    accel_rc, gyro_rc);
+            LOG_WRN("IMU channel read failed: accel=%d, gyro=%d", accel_rc, gyro_rc);
             k_sleep(K_MSEC(100));
             continue;
         }
