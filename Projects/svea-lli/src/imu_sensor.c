@@ -78,13 +78,13 @@ static int device_init_status(const struct device *dev) {
 
     if (!state->initialized) {
         int rc = device_init(dev);
-        LOG_INF("IMU device_init() invoked manually, rc=%d", rc);
+        LOG_DBG("IMU device_init() invoked manually, rc=%d", rc);
         return rc;
     }
 
     if (state->init_res != 0U) {
         int rc = -((int)state->init_res);
-        LOG_ERR("IMU driver cached init_res=%u (errno=%d)", state->init_res, rc);
+        LOG_DBG("IMU driver cached init_res=%u (errno=%d)", state->init_res, rc);
         return rc;
     }
 
@@ -141,7 +141,10 @@ static void imu_sensor_thread(void *p1, void *p2, void *p3) {
 
     while (dev && !device_is_ready(dev) && (init_attempts < MAX_IMU_INIT_ATTEMPTS)) {
         int rc = device_init_status(dev);
-        LOG_ERR("IMU driver cached init_res=%u (errno=%d)", dev->state->init_res, rc);
+        if (rc != 0) {
+            LOG_WRN("IMU init attempt %d/%d failed (rc=%d)", init_attempts + 1,
+                    MAX_IMU_INIT_ATTEMPTS, rc);
+        }
 
         int retry = imu_device_retry_init(dev);
         init_attempts++;
@@ -158,52 +161,35 @@ static void imu_sensor_thread(void *p1, void *p2, void *p3) {
     }
 
     if (!dev || !device_is_ready(dev)) {
-        LOG_ERR("IMU initialization failed after %d attempts, giving up", MAX_IMU_INIT_ATTEMPTS);
+        LOG_ERR("IMU initialization failed after %d attempts, giving up", init_attempts);
         return;
     }
 
     imu_dev = dev;
-    LOG_INF("IMU device ready: %s", imu_dev->name);
-
-    struct sensor_value v = {
-        .val1 = 100,
-        .val2 = 0,
-    };
-    int rc = sensor_attr_set(imu_dev, SENSOR_CHAN_ACCEL_XYZ, SENSOR_ATTR_SAMPLING_FREQUENCY, &v);
-    if (rc) {
-        LOG_WRN("Accel ODR set failed: %d", rc);
-    }
-
-    v.val1 = 100;
-    v.val2 = 0;
-    rc = sensor_attr_set(imu_dev, SENSOR_CHAN_GYRO_XYZ, SENSOR_ATTR_SAMPLING_FREQUENCY, &v);
-    if (rc) {
-        LOG_WRN("Gyro ODR set failed: %d", rc);
-    }
-
-    imu_trigger.type = SENSOR_TRIG_DATA_READY;
-    imu_trigger.chan = SENSOR_CHAN_ALL;
-    rc = sensor_trigger_set(imu_dev, &imu_trigger, imu_trigger_handler);
-    if (rc) {
-        LOG_ERR("Failed to configure IMU trigger: %d", rc);
-    }
-
-    LOG_INF("IMU thread started");
+    LOG_INF("IMU device loop starting: %s", imu_dev->name);
 
     struct sensor_value accel[3];
     struct sensor_value gyro[3];
-    struct sensor_value temperature;
 
     while (true) {
-        k_sem_take(&imu_data_sem, K_FOREVER);
-
-        if (sensor_channel_get(imu_dev, SENSOR_CHAN_ACCEL_XYZ, accel) ||
-            sensor_channel_get(imu_dev, SENSOR_CHAN_GYRO_XYZ, gyro) ||
-            sensor_channel_get(imu_dev, SENSOR_CHAN_DIE_TEMP, &temperature)) {
-            LOG_WRN("Failed to read IMU channels after trigger");
+        int rc = sensor_sample_fetch(imu_dev);
+        if (rc) {
+            LOG_WRN("IMU sample fetch failed: %d", rc);
+            k_sleep(K_MSEC(100));
             continue;
         }
 
+        // Debug each channel read separately
+        int accel_rc = sensor_channel_get(imu_dev, SENSOR_CHAN_ACCEL_XYZ, accel);
+        int gyro_rc = sensor_channel_get(imu_dev, SENSOR_CHAN_GYRO_XYZ, gyro);
+        // int temp_rc = sensor_channel_get(imu_dev, SENSOR_CHAN_DIE_TEMP, &temperature);
+
+        if (accel_rc || gyro_rc) {
+            LOG_WRN("IMU channel read failed: accel=%d, gyro=%d, temp=%d",
+                    accel_rc, gyro_rc);
+            k_sleep(K_MSEC(100));
+            continue;
+        }
         imu_msg.linear_acceleration.x = sensor_value_to_double(&accel[0]);
         imu_msg.linear_acceleration.y = sensor_value_to_double(&accel[1]);
         imu_msg.linear_acceleration.z = sensor_value_to_double(&accel[2]);
@@ -241,60 +227,25 @@ static void imu_sensor_thread(void *p1, void *p2, void *p3) {
             }
         }
 
-        // LOG_INF("[%lld ms] temp %.2f Cel  accel %.6f %.6f %.6f m/s^2  gyro %.6f %.6f %.6f rad/s",
-        //         (long long)k_uptime_get(),
-        //         sensor_value_to_double(&temperature),
-        //         imu_msg.linear_acceleration.x,
-        //         imu_msg.linear_acceleration.y,
-        //         imu_msg.linear_acceleration.z,
-        //         imu_msg.angular_velocity.x,
-        //         imu_msg.angular_velocity.y,
-        //         imu_msg.angular_velocity.z);
-
         if (ros_initialized) {
             rcl_ret_t pub_rc = rcl_publish(&imu_pub, &imu_msg, NULL);
             if (pub_rc != RCL_RET_OK) {
                 LOG_ERR("IMU publish failed: %d", pub_rc);
             }
+        } else {
+            static uint64_t last_log_time;
+            uint64_t now = k_uptime_get();
+            if ((now - last_log_time) >= 5000U) {
+                LOG_INF("IMU sample (accel=%.6f/%.6f/%.6f m/s^2, gyro=%.6f/%.6f/%.6f rad/s)",
+                        (double)imu_msg.linear_acceleration.x,
+                        (double)imu_msg.linear_acceleration.y,
+                        (double)imu_msg.linear_acceleration.z,
+                        (double)imu_msg.angular_velocity.x,
+                        (double)imu_msg.angular_velocity.y,
+                        (double)imu_msg.angular_velocity.z);
+                last_log_time = now;
+            }
         }
         k_sleep(K_MSEC(10)); // yield to lower-prio tasks at least a lil bit
     }
-}
-
-int imu_sensor_quick_check(void) {
-    const struct device *dev = DEVICE_DT_GET(DT_ALIAS(imu));
-
-    if (!device_is_ready(dev)) {
-        LOG_ERR("IMU device not ready for quick check");
-        return -ENODEV;
-    }
-
-    struct sensor_value accel[3];
-    struct sensor_value gyro[3];
-
-    int rc = sensor_sample_fetch(dev);
-    if (rc) {
-        LOG_ERR("IMU quick check fetch failed: %d", rc);
-        return rc;
-    }
-
-    rc = sensor_channel_get(dev, SENSOR_CHAN_ACCEL_XYZ, accel);
-    if (rc) {
-        return rc;
-    }
-
-    rc = sensor_channel_get(dev, SENSOR_CHAN_GYRO_XYZ, gyro);
-    if (rc) {
-        return rc;
-    }
-
-    // LOG_INF("IMU quick check accel=(%.3f, %.3f, %.3f) gyro=(%.3f, %.3f, %.3f)",
-    //         sensor_value_to_double(&accel[0]),
-    //         sensor_value_to_double(&accel[1]),
-    //         sensor_value_to_double(&accel[2]),
-    //         sensor_value_to_double(&gyro[0]),
-    //         sensor_value_to_double(&gyro[1]),
-    //         sensor_value_to_double(&gyro[2]));
-
-    return 0;
 }
