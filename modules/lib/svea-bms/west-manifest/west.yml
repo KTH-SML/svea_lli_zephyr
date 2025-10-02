@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: Apache-2.0
+
+manifest:
+  remotes:
+    - name: libresolar
+      url-base: https://github.com/LibreSolar
+    - name: thingset
+      url-base: https://github.com/ThingSet
+    - name: throwtheswitch
+      url-base: https://github.com/ThrowTheSwitch
+  projects:
+    - name: zephyr
+      remote: libresolar
+      revision: v3.4-branch
+      import:
+        name-allowlist:
+          - cmsis
+          - edtt
+          - hal_espressif
+          - hal_stm32
+          - tinycrypt
+    - name: oled-display-library
+      remote: libresolar
+      revision: 523b26c103de56714fcda655702d600870a671bc
+      path: modules/oled-display
+    - name: thingset-zephyr-sdk
+      remote: thingset
+      revision: ab2f3c978a5c410b2b95b8cf2a2db601fecab859
+      path: thingset-zephyr-sdk
+      import:
+        name-allowlist:
+          - thingset-node-c
+          - zcbor
+    - name: unity
+      remote: throwtheswitch
+      revision: 74cde089e65c3435ce9aa87d5c69f4f16b7f6ade
+      path: modules/unity

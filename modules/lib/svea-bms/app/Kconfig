@@ -1,0 +1,113 @@
+# Copyright (c) The Libre Solar Project Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "Libre Solar Battery Management System Firmware"
+
+#
+# Invisible (board-specific) Kconfig symbols
+#
+
+DT_COMPAT_TI_BQ769X0 := ti,bq769x0
+DT_COMPAT_TI_BQ769X2_I2C := ti,bq769x2-i2c
+DT_COMPAT_TI_BQ769X2_SPI := ti,bq769x2-spi
+DT_COMPAT_RENESAS_ISL94202 := renesas,isl94202
+
+config BQ769X0
+    bool
+    default $(dt_compat_enabled,$(DT_COMPAT_TI_BQ769X0))
+    help
+      Texas Instruments bq769x0 series used as BMS IC
+
+config BQ769X2
+    bool
+    default $(dt_compat_enabled,$(DT_COMPAT_TI_BQ769X2_I2C)) || \
+            $(dt_compat_enabled,$(DT_COMPAT_TI_BQ769X2_SPI))
+    help
+      Texas Instruments bq769x2 series used as BMS IC
+
+config ISL94202
+    bool
+    default $(dt_compat_enabled,$(DT_COMPAT_RENESAS_ISL94202))
+    help
+      Intersil/Renesas ISL94202 used as BMS IC
+
+config LIBRE_SOLAR_TYPE_ID
+    int
+    help
+      Numeric Libre Solar hardware type ID
+
+#
+# Visible (user-configurable) Kconfig symbols
+#
+
+menu "Battery default settings"
+
+config BAT_CAPACITY_AH
+    int "Battery nominal capacity in Ah"
+    range 1 1000
+    default 8
+    help
+      Nominal battery capacity or sum of parallel cells capacity
+
+choice
+    prompt "Cell type"
+    default CELL_TYPE_LFP
+    help
+      Select the type of the single cells inside the battery
+      to determine voltage set points. Total voltage set points
+      are multiplied with the selected number of cells.
+
+    config CELL_TYPE_LFP
+        bool "LiFePO4, 3.3V nominal"
+
+    config CELL_TYPE_NMC
+        bool "NMC/Graphite, 3.7V nominal, 4.2V max"
+
+    config CELL_TYPE_NMC_HV
+        bool "NMC/Graphite High Voltage, 3.7V nominal, 4.35 max"
+
+    config CELL_TYPE_LTO
+        bool "NMC/Titanate, 2.4 V nominal"
+endchoice
+
+# values must match enum CellType in bms.h
+config CELL_TYPE
+    int
+    default 0 if CELL_TYPE_CUSTOM
+    default 1 if CELL_TYPE_LFP
+    default 2 if CELL_TYPE_NMC
+    default 3 if CELL_TYPE_NMC_HV
+    default 4 if CELL_TYPE_LTO
+
+config NUM_CELLS_IN_SERIES
+    int "Number of cells for single battery"
+    default 3 if CELL_TYPE_NMC || CELL_TYPE_NMC_HV
+    default 4 if CELL_TYPE_LFP
+    default 5 if CELL_TYPE_LTO
+    range 3 16
+    help
+      Typical choices:
+      - 3 for 12V NMC Li-Ion battery
+      - 4 for 12V LiFePO4 battery
+      - 5 for 12V Titanate battery
+
+endmenu
+
+
+menu "UEXT port"
+
+config UEXT_OLED_DISPLAY
+    select I2C
+    bool "OLED display"
+
+config UEXT_OLED_BRIGHTNESS
+    depends on UEXT_OLED_DISPLAY
+    int "OLED display brightness"
+    range 1 255
+    default 1
+
+endmenu # UEXT port
+
+
+# include main Zephyr menu entries from Zephyr root directory
+source "Kconfig.zephyr"
