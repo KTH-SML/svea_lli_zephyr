@@ -196,6 +196,7 @@ static void control_thread(void *, void *, void *) {
             case RC_OVERRIDE_ROS:
                 // TODO ADD CHECK IF ROS IS ACTIVE, OTHERWISE FALLBACK TO MANUAL
                 // ROS control
+
                 steer_us = int8_to_us(g_ros_ctrl.steering);
                 thr_us = int8_to_us(g_ros_ctrl.throttle);
                 high_gear = g_ros_ctrl.high_gear;
