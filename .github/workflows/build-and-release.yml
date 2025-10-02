@@ -23,6 +23,21 @@ jobs:
         run: |
           echo "WORKSPACE=${GITHUB_WORKSPACE:-/workspace}" >> $GITHUB_ENV
 
+      - name: Debug environment
+        run: |
+          echo "=== Environment Debug ==="
+          echo "WORKSPACE: $WORKSPACE"
+          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
+          echo "PWD: $(pwd)"
+          echo "=== Zephyr SDK Search ==="
+          find /opt -name "*zephyr*" -type d 2>/dev/null || echo "No zephyr directories in /opt"
+          ls -la /opt/toolchains/ 2>/dev/null || echo "No /opt/toolchains directory"
+          echo "=== Environment Variables ==="
+          env | grep -i zephyr || echo "No ZEPHYR env vars"
+          echo "=== Which west ==="
+          which west || echo "west not found"
+          west --version || echo "west version failed"
+
       - name: Initialize west workspace
         run: |
           if [ ! -d .west ]; then
