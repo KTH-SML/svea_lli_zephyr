@@ -329,153 +329,74 @@ jobs:
               return null;
             }
 
-      - name: Create enhanced release notes
-        id: enhanced_notes
+      - name: Create simple release notes
+        id: simple_notes
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
           BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
 
-          # Create enhanced release notes file
-          cat << 'EOF' > enhanced_notes.md
-          🚀 **SVEA Low-Level Interface Firmware - Beta Release**
+          # Get AI notes if available, otherwise use simple fallback
+          AI_RESULT='${{ steps.ai_notes.outputs.result }}'
 
-          **Version:** ${{ steps.version.outputs.beta_version }}  
-          **Base Version:** ${{ steps.version.outputs.base_version }}  
-          **Target Board:** Clicker 4 STM32F7  
-          **Build:** #${{ github.run_number }}  
-          **Commit:** [${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
+          cat > release_notes.md << EOF
+          ## 🚀 SVEA LLI Firmware Beta
+
+          **Version:** ${{ steps.version.outputs.beta_version }}
+          **Board:** Clicker 4 STM32F7
+          **Build:** #${{ github.run_number }}
+          **Commit:** [${SHORT_SHA}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
 
           ---
 
           EOF
 
-          # Add AI-generated notes if available (fix the condition syntax)
-          AI_RESULT="${{ steps.ai_notes.outputs.result }}"
+          # Add what changed section
           if [ -n "${AI_RESULT}" ] && [ "${AI_RESULT}" != "null" ]; then
-            echo "## 📋 What's Changed" >> enhanced_notes.md
-            echo "" >> enhanced_notes.md
-            echo "${AI_RESULT}" >> enhanced_notes.md
-            echo "" >> enhanced_notes.md
+            echo "${AI_RESULT}" >> release_notes.md
           else
-            echo "## 📋 What's Changed" >> enhanced_notes.md
-            echo "" >> enhanced_notes.md
-            
-            # Get number of commits since last release
-            BASE_VERSION="${{ steps.version.outputs.base_version }}"
-            if git rev-list "${BASE_VERSION}..HEAD" >/dev/null 2>&1; then
-              COMMIT_COUNT=$(git rev-list --count "${BASE_VERSION}..HEAD")
-            else
-              COMMIT_COUNT="1"
-            fi
-            
-            # Get latest commit info
+            # Simple fallback
+            COMMIT_COUNT=$(git rev-list --count ${{ steps.version.outputs.base_version }}..HEAD 2>/dev/null || echo "1")
             LATEST_COMMIT=$(git log -1 --pretty=format:"%s" HEAD)
             
-            echo "This beta release includes **${COMMIT_COUNT} commits** with improvements to the SVEA low-level interface firmware." >> enhanced_notes.md
-            echo "" >> enhanced_notes.md
-            echo "**Latest change:** ${LATEST_COMMIT}" >> enhanced_notes.md
-            echo "" >> enhanced_notes.md
-            
-            # Add recent commits (last 5)
-            echo "### Recent Changes:" >> enhanced_notes.md
-            if git rev-list "${BASE_VERSION}..HEAD" >/dev/null 2>&1; then
-              git log "${BASE_VERSION}..HEAD" --oneline --pretty=format:"- %s ([%h](https://github.com/${{ github.repository }}/commit/%H))" -n 5 >> enhanced_notes.md
-            else
-              echo "- Latest commit: ${LATEST_COMMIT} ([${SHORT_SHA}](https://github.com/${{ github.repository }}/commit/${{ github.sha }}))" >> enhanced_notes.md
-            fi
+            cat >> release_notes.md << EOF
+          ## What's Changed
+
+          ${COMMIT_COUNT} commits since ${{ steps.version.outputs.base_version }}
+
+          **Latest:** ${LATEST_COMMIT}
+
+          [Full Changelog](https://github.com/${{ github.repository }}/compare/${{ steps.version.outputs.base_version }}...${{ steps.version.outputs.beta_version }})
+
+          EOF
           fi
 
-          # Add firmware and technical info using cat with here document
-          cat << EOF >> enhanced_notes.md
+          # Add simple firmware info
+          cat >> release_notes.md << EOF
 
           ---
 
-          ## 📦 Firmware Files
+          ## 📦 Files
 
-          | File | Description | Use Case |
-          |------|-------------|----------|
-          | **\`zephyr.hex\`** | Intel HEX format | Programming with CodeGrip GUI |
-          | **\`zephyr.elf\`** | ELF with debug symbols | Debugging and analysis |
-          | **\`zephyr.bin\`** | Raw binary | Direct flash programming |
+          - **zephyr.hex** - Flash with CodeGrip GUI
+          - **zephyr.elf** - Debug symbols
+          - **zephyr.bin** - Raw binary
 
-          ## 💾 Memory Usage
+          ## ⚠️ Beta Notice
 
-          - **Flash Usage:** ${{ needs.build.outputs.flash_used || 'See build logs' }}
-          - **RAM Usage:** ${{ needs.build.outputs.ram_used || 'See build logs' }}
-          - **Zephyr Version:** ${{ needs.build.outputs.zephyr_version || 'Latest' }}
+          This is a test release. Use with caution.
 
-          ## 🔧 Recommended Programming Method
-
-          **CodeGrip GUI** is the recommended method for flashing this firmware:
-
-          ### Using CodeGrip GUI:
-
-          1. **Open CodeGrip** application
-          2. **Connect your STM32F7 board** via ST-Link or similar debugger
-          3. **Load firmware file:**
-             - Click "Browse" or "Load File"
-             - Select the \`zephyr.hex\` file from this release
-          4. **Configure target:**
-             - Target: STM32F7xx series
-             - Interface: SWD (recommended) or JTAG
-          5. **Program the device:**
-             - Click "Flash" or "Program"
-             - Wait for programming completion
-             - Verify programming success
-
-          ### CodeGrip GUI Benefits:
-          - 🎯 **Visual interface** - Easy target selection and configuration
-          - 🔍 **Real-time feedback** - Progress bars and status indicators
-          - 🛡️ **Safety features** - Built-in verification and error handling
-          - 📊 **Memory view** - Visualize flash and RAM usage
-          - 🔧 **Advanced options** - Chip erase, protection bits, etc.
-
-          ### Alternative Methods:
-
-          **STM32CubeProgrammer GUI:**
-          - Open STM32CubeProgrammer
-          - Connect to target (SWD interface)
-          - Load \`zephyr.hex\` file
-          - Click "Download" to program
-
-          **OpenOCD (Command Line):**
-          \`\`\`bash
-          openocd -f interface/stlink.cfg -f target/stm32f7x.cfg \\
-                  -c "program zephyr.hex verify reset exit"
-          \`\`\`
-
-          ## ⚠️ Beta Release Notice
-
-          This is an **automated pre-release** for testing and development.
-
-          - ✅ **Suitable for:** Development, testing, evaluation
-          - ⚠️ **Use with caution in:** Production environments
-          - 🔍 **Testing recommended:** Verify functionality before deployment
-
-          ## 🤖 Build Information
-
-          - **Triggered by:** @${{ github.actor }}
-          - **Build Time:** ${BUILD_TIME}
-          - **GitHub Actions:** [View build logs](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          - **Commit:** [${SHORT_SHA}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
-
-          ## 🔗 Related Links
-
-          - [SVEA Platform Documentation](https://github.com/KTH-SML/svea)
-          - [Zephyr RTOS Documentation](https://docs.zephyrproject.org/)
-          - [STM32F7 Reference Manual](https://www.st.com/resource/en/reference_manual/rm0385-stm32f75xxx-and-stm32f74xxx-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
-
+          **Build Time:** ${BUILD_TIME}
           EOF
 
-          echo "notes_file=enhanced_notes.md" >> $GITHUB_OUTPUT
+          echo "notes_file=release_notes.md" >> $GITHUB_OUTPUT
 
       - name: Create auto-prerelease
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.version.outputs.beta_version }}
-          name: "${{ steps.version.outputs.next_version }} Beta - SVEA LLI Firmware"
+          name: "${{ steps.version.outputs.beta_version }} - SVEA LLI Firmware"
           prerelease: true
-          body_path: enhanced_notes.md
+          body_path: release_notes.md
           files: |
             release-artifacts/zephyr.hex
             release-artifacts/zephyr.elf
