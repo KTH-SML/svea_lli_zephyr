@@ -3,6 +3,7 @@
 
 #include <errno.h>
 #include <limits.h>
+#include <math.h>
 #include <rmw_microros/rmw_microros.h>
 #include <sensor_msgs/msg/imu.h>
 #include <stdbool.h>
@@ -28,6 +29,23 @@ static sensor_msgs__msg__Imu imu_msg;
 
 static void imu_sensor_thread(void *p1, void *p2, void *p3);
 static int imu_device_retry_init(const struct device *dev);
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+#define IMU_ACCEL_NOISE_DENSITY_G (90e-6) /* 90 µg/√Hz from datasheet */
+#define IMU_GYRO_NOISE_DENSITY_MDPS (3.8) /* 3.8 mdps/√Hz from datasheet */
+#define STANDARD_GRAVITY (9.80665)
+/* With ODR set to 100 Hz we have BW ≈ ODR/2 */
+#define IMU_EFFECTIVE_BW_HZ (50.0)
+
+static const double acc_noise_rms = (IMU_ACCEL_NOISE_DENSITY_G * STANDARD_GRAVITY) *
+                                    sqrt(IMU_EFFECTIVE_BW_HZ);
+static const double gyro_noise_rms = ((IMU_GYRO_NOISE_DENSITY_MDPS * 1e-3) * (M_PI / 180.0)) *
+                                     sqrt(IMU_EFFECTIVE_BW_HZ);
+static const double acc_variance = acc_noise_rms * acc_noise_rms;
+static const double gyro_variance = gyro_noise_rms * gyro_noise_rms;
 
 #if DT_NODE_HAS_PROP(DT_PATH(zephyr_user), imu_reset_gpios)
 static const struct gpio_dt_spec imu_reset_gpio =
@@ -163,7 +181,6 @@ static void imu_sensor_thread(void *p1, void *p2, void *p3) {
             continue;
         }
 
-        // Debug each channel read separately
         int accel_rc = sensor_channel_get(imu_dev, SENSOR_CHAN_ACCEL_XYZ, accel);
         int gyro_rc = sensor_channel_get(imu_dev, SENSOR_CHAN_GYRO_XYZ, gyro);
 
@@ -191,18 +208,18 @@ static void imu_sensor_thread(void *p1, void *p2, void *p3) {
             imu_msg.orientation_covariance[i] = 0;
         }
 
-        imu_msg.angular_velocity_covariance[0] = 0.01;
-        imu_msg.angular_velocity_covariance[4] = 0.01;
-        imu_msg.angular_velocity_covariance[8] = 0.01;
+        imu_msg.angular_velocity_covariance[0] = gyro_variance;
+        imu_msg.angular_velocity_covariance[4] = gyro_variance;
+        imu_msg.angular_velocity_covariance[8] = gyro_variance;
         for (int i = 0; i < 9; i++) {
             if ((i != 0) && (i != 4) && (i != 8)) {
                 imu_msg.angular_velocity_covariance[i] = 0;
             }
         }
 
-        imu_msg.linear_acceleration_covariance[0] = 0.1;
-        imu_msg.linear_acceleration_covariance[4] = 0.1;
-        imu_msg.linear_acceleration_covariance[8] = 0.1;
+        imu_msg.linear_acceleration_covariance[0] = acc_variance;
+        imu_msg.linear_acceleration_covariance[4] = acc_variance;
+        imu_msg.linear_acceleration_covariance[8] = acc_variance;
         for (int i = 0; i < 9; i++) {
             if ((i != 0) && (i != 4) && (i != 8)) {
                 imu_msg.linear_acceleration_covariance[i] = 0;
