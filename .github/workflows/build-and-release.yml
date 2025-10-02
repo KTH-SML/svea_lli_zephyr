@@ -229,29 +229,52 @@ jobs:
         id: version
         run: |
           # Get the latest release tag (excluding prereleases)
-          LATEST_TAG=$(git tag -l "v*" --sort=-version:refname | grep -v "beta\|alpha\|rc" | head -1)
+          LATEST_RELEASE_TAG=$(git tag -l "v*" --sort=-version:refname | grep -v -E "beta|alpha|rc" | head -1)
 
-          if [ -z "$LATEST_TAG" ]; then
-            # No tags exist, start with v1.0.0
+          # Get the latest beta tag to increment from
+          LATEST_BETA_TAG=$(git tag -l "v*-beta" --sort=-version:refname | head -1)
+
+          if [ -z "$LATEST_RELEASE_TAG" ]; then
             echo "No existing release tags found, starting with v1.0.0"
             BASE_VERSION="v1.0.0"
+            NEXT_VERSION="v1.0.1"
           else
-            echo "Latest release tag: $LATEST_TAG"
-            BASE_VERSION="$LATEST_TAG"
+            echo "Latest release tag: $LATEST_RELEASE_TAG"
+            BASE_VERSION="$LATEST_RELEASE_TAG"
+            
+            # Extract version numbers (remove 'v' prefix)
+            VERSION=${BASE_VERSION#v}
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+            
+            # Check if we need to increment based on existing beta tags
+            if [ -n "$LATEST_BETA_TAG" ]; then
+              # Extract beta version number
+              BETA_VERSION_NUM=${LATEST_BETA_TAG%-beta}
+              BETA_VERSION_NUM=${BETA_VERSION_NUM#v}
+              IFS='.' read -r BETA_MAJOR BETA_MINOR BETA_PATCH <<< "$BETA_VERSION_NUM"
+              
+              # If beta version is newer than release, increment from beta
+              if [ "$BETA_MAJOR" -gt "$MAJOR" ] || \
+                 [ "$BETA_MAJOR" -eq "$MAJOR" -a "$BETA_MINOR" -gt "$MINOR" ] || \
+                 [ "$BETA_MAJOR" -eq "$MAJOR" -a "$BETA_MINOR" -eq "$MINOR" -a "$BETA_PATCH" -gt "$PATCH" ]; then
+                NEXT_PATCH=$((BETA_PATCH + 1))
+                NEXT_VERSION="v${BETA_MAJOR}.${BETA_MINOR}.${NEXT_PATCH}"
+              else
+                # Increment from release version
+                NEXT_PATCH=$((PATCH + 1))
+                NEXT_VERSION="v${MAJOR}.${MINOR}.${NEXT_PATCH}"
+              fi
+            else
+              # No beta tags, increment from release
+              NEXT_PATCH=$((PATCH + 1))
+              NEXT_VERSION="v${MAJOR}.${MINOR}.${NEXT_PATCH}"
+            fi
           fi
 
-          # Extract version numbers (remove 'v' prefix)
-          VERSION=${BASE_VERSION#v}
-
-          # Split into major.minor.patch
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-
-          # Increment patch version for prerelease
-          NEXT_PATCH=$((PATCH + 1))
-          NEXT_VERSION="v${MAJOR}.${MINOR}.${NEXT_PATCH}"
           BETA_VERSION="${NEXT_VERSION}-beta"
 
           echo "Base version: $BASE_VERSION"
+          echo "Latest beta: $LATEST_BETA_TAG"
           echo "Next version: $NEXT_VERSION"
           echo "Beta version: $BETA_VERSION"
 
@@ -259,8 +282,30 @@ jobs:
           echo "next_version=$NEXT_VERSION" >> $GITHUB_OUTPUT
           echo "beta_version=$BETA_VERSION" >> $GITHUB_OUTPUT
 
-      - name: Generate GitHub auto-release notes
-        id: github_notes
+      - name: Check if release already exists
+        id: check_release
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            try {
+              const { data: release } = await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: '${{ steps.version.outputs.beta_version }}'
+              });
+              console.log(`Release ${release.tag_name} already exists, will update it`);
+              return true;
+            } catch (error) {
+              if (error.status === 404) {
+                console.log(`Release ${{ steps.version.outputs.beta_version }} does not exist, will create new one`);
+                return false;
+              }
+              throw error;
+            }
+
+      - name: Generate AI-powered release notes
+        id: ai_notes
         continue-on-error: true
         uses: actions/github-script@v7
         with:
@@ -304,18 +349,22 @@ jobs:
 
           EOF
 
-          # Add GitHub auto-generated notes if available
-          if [ "${{ steps.github_notes.outputs.result }}" != "null" ] && [ -n "${{ steps.github_notes.outputs.result }}" ]; then
+          # Add AI-generated notes if available
+          if [ -n "${{ steps.ai_notes.outputs.result }}" ] && [ "${{ steps.ai_notes.outputs.result }}" != "null" ]; then
             echo "## 📋 What's Changed" >> enhanced_notes.md
             echo "" >> enhanced_notes.md
-            echo '${{ steps.github_notes.outputs.result }}' >> enhanced_notes.md
+            echo '${{ steps.ai_notes.outputs.result }}' >> enhanced_notes.md
             echo "" >> enhanced_notes.md
           else
             echo "## 📋 What's Changed" >> enhanced_notes.md
             echo "" >> enhanced_notes.md
             
-            # Get number of commits
-            COMMIT_COUNT=$(git rev-list --count ${{ steps.version.outputs.base_version }}..HEAD 2>/dev/null || echo "1")
+            # Get number of commits since last release
+            if git rev-list ${{ steps.version.outputs.base_version }}..HEAD >/dev/null 2>&1; then
+              COMMIT_COUNT=$(git rev-list --count ${{ steps.version.outputs.base_version }}..HEAD)
+            else
+              COMMIT_COUNT="1"
+            fi
             
             # Get latest commit info
             LATEST_COMMIT=$(git log -1 --pretty=format:"%s" HEAD)
@@ -327,90 +376,46 @@ jobs:
             
             # Add recent commits (last 5)
             echo "### Recent Changes:" >> enhanced_notes.md
-            git log ${{ steps.version.outputs.base_version }}..HEAD --oneline --pretty=format:"- %s ([%h](https://github.com/${{ github.repository }}/commit/%H))" -n 5 >> enhanced_notes.md 2>/dev/null || echo "- Latest commit: ${LATEST_COMMIT} ([${SHORT_SHA}](https://github.com/${{ github.repository }}/commit/${{ github.sha }}))" >> enhanced_notes.md
+            if git rev-list ${{ steps.version.outputs.base_version }}..HEAD >/dev/null 2>&1; then
+              git log ${{ steps.version.outputs.base_version }}..HEAD --oneline --pretty=format:"- %s ([%h](https://github.com/${{ github.repository }}/commit/%H))" -n 5 >> enhanced_notes.md
+            else
+              echo "- Latest commit: ${LATEST_COMMIT} ([${SHORT_SHA}](https://github.com/${{ github.repository }}/commit/${{ github.sha }}))" >> enhanced_notes.md
+            fi
           fi
 
-          # Add firmware and technical info (using echo to substitute variables)
-          cat << EOF >> enhanced_notes.md
-
-          ---
-
-          ## 📦 Firmware Files
-
-          | File | Description | Use Case |
-          |------|-------------|----------|
-          | **\`zephyr.hex\`** | Intel HEX format | Programming with most flash tools |
-          | **\`zephyr.elf\`** | ELF with debug symbols | Debugging and analysis |
-          | **\`zephyr.bin\`** | Raw binary | Direct flash programming |
-
-          ## 💾 Memory Usage
-
-          - **Flash Usage:** ${{ needs.build.outputs.flash_used || 'See build logs' }}
-          - **RAM Usage:** ${{ needs.build.outputs.ram_used || 'See build logs' }}
-          - **Zephyr Version:** ${{ needs.build.outputs.zephyr_version || 'Latest' }}
-
-          ## 🔧 Recommended Programming Method
-
-          **CodeGrip GUI** is the recommended method for flashing this firmware:
-
-          ### Using CodeGrip GUI:
-
-          1. **Open CodeGrip** application
-          2. **Connect your STM32F7 board** via ST-Link or similar debugger
-          3. **Load firmware file:**
-             - Click "Browse" or "Load File"
-             - Select the \`zephyr.hex\` file from this release
-          4. **Configure target:**
-             - Target: STM32F7xx series
-             - Interface: SWD (recommended) or JTAG
-          5. **Program the device:**
-             - Click "Flash" or "Program"
-             - Wait for programming completion
-             - Verify programming success
-
-          ### CodeGrip GUI Benefits:
-          - 🎯 **Visual interface** - Easy target selection and configuration
-          - 🔍 **Real-time feedback** - Progress bars and status indicators
-          - 🛡️ **Safety features** - Built-in verification and error handling
-          - 📊 **Memory view** - Visualize flash and RAM usage
-          - 🔧 **Advanced options** - Chip erase, protection bits, etc.
-
-          ### Alternative Methods:
-
-          **STM32CubeProgrammer GUI:**
-          - Open STM32CubeProgrammer
-          - Connect to target (SWD interface)
-          - Load \`zephyr.hex\` file
-          - Click "Download" to program
-
-          **OpenOCD (Command Line):**
-          \`\`\`bash
-          openocd -f interface/stlink.cfg -f target/stm32f7x.cfg \\
-                  -c "program zephyr.hex verify reset exit"
-          \`\`\`
-
-          ## ⚠️ Beta Release Notice
-
-          This is an **automated pre-release** for testing and development.
-
-          - ✅ **Suitable for:** Development, testing, evaluation
-          - ⚠️ **Use with caution in:** Production environments
-          - 🔍 **Testing recommended:** Verify functionality before deployment
-
-          ## 🤖 Build Information
-
-          - **Triggered by:** @${{ github.actor }}
-          - **Build Time:** ${BUILD_TIME}
-          - **GitHub Actions:** [View build logs](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          - **Commit:** [${SHORT_SHA}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
-
-          ## 🔗 Related Links
-
-          - [SVEA Platform Documentation](https://github.com/KTH-SML/svea)
-          - [Zephyr RTOS Documentation](https://docs.zephyrproject.org/)
-          - [STM32F7 Reference Manual](https://www.st.com/resource/en/reference_manual/rm0385-stm32f75xxx-and-stm32f74xxx-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
-
-          EOF
+          # Add firmware and technical info (using printf to handle variables properly)
+          printf "\n\n---\n\n" >> enhanced_notes.md
+          printf "## 📦 Firmware Files\n\n" >> enhanced_notes.md
+          printf "| File | Description | Use Case |\n" >> enhanced_notes.md
+          printf "|------|-------------|----------|\n" >> enhanced_notes.md
+          printf "| **\`zephyr.hex\`** | Intel HEX format | Programming with CodeGrip GUI |\n" >> enhanced_notes.md
+          printf "| **\`zephyr.elf\`** | ELF with debug symbols | Debugging and analysis |\n" >> enhanced_notes.md
+          printf "| **\`zephyr.bin\`** | Raw binary | Direct flash programming |\n\n" >> enhanced_notes.md
+          printf "## 🔧 Recommended Programming Method\n\n" >> enhanced_notes.md
+          printf "**CodeGrip GUI** is the recommended method for flashing this firmware:\n\n" >> enhanced_notes.md
+          printf "### Using CodeGrip GUI:\n\n" >> enhanced_notes.md
+          printf "1. **Open CodeGrip** application\n" >> enhanced_notes.md
+          printf "2. **Connect your STM32F7 board** via ST-Link or similar debugger\n" >> enhanced_notes.md
+          printf "3. **Load firmware file:**\n" >> enhanced_notes.md
+          printf "   - Click \"Browse\" or \"Load File\"\n" >> enhanced_notes.md
+          printf "   - Select the \`zephyr.hex\` file from this release\n" >> enhanced_notes.md
+          printf "4. **Configure target:**\n" >> enhanced_notes.md
+          printf "   - Target: STM32F7xx series\n" >> enhanced_notes.md
+          printf "   - Interface: SWD (recommended) or JTAG\n" >> enhanced_notes.md
+          printf "5. **Program the device:**\n" >> enhanced_notes.md
+          printf "   - Click \"Flash\" or \"Program\"\n" >> enhanced_notes.md
+          printf "   - Wait for programming completion\n" >> enhanced_notes.md
+          printf "   - Verify programming success\n\n" >> enhanced_notes.md
+          printf "## ⚠️ Beta Release Notice\n\n" >> enhanced_notes.md
+          printf "This is an **automated pre-release** for testing and development.\n\n" >> enhanced_notes.md
+          printf "- ✅ **Suitable for:** Development, testing, evaluation\n" >> enhanced_notes.md
+          printf "- ⚠️ **Use with caution in:** Production environments\n" >> enhanced_notes.md
+          printf "- 🔍 **Testing recommended:** Verify functionality before deployment\n\n" >> enhanced_notes.md
+          printf "## 🤖 Build Information\n\n" >> enhanced_notes.md
+          printf "- **Triggered by:** @${{ github.actor }}\n" >> enhanced_notes.md
+          printf "- **Build Time:** %s\n" "${BUILD_TIME}" >> enhanced_notes.md
+          printf "- **GitHub Actions:** [View build logs](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})\n" >> enhanced_notes.md
+          printf "- **Commit:** [%s](https://github.com/${{ github.repository }}/commit/${{ github.sha }})\n" "${SHORT_SHA}" >> enhanced_notes.md
 
           echo "notes_file=enhanced_notes.md" >> $GITHUB_OUTPUT
 
