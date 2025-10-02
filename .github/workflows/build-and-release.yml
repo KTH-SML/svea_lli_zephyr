@@ -19,6 +19,10 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Set workspace variable
+        run: |
+          echo "WORKSPACE=${GITHUB_WORKSPACE:-/workspace}" >> $GITHUB_ENV
+
       - name: Initialize west workspace
         run: |
           if [ ! -d .west ]; then
@@ -83,9 +87,9 @@ jobs:
 
       - name: Clean build directory
         run: |
-          rm -rf /workspace/Projects/svea-lli/build
-          rm -rf /workspace/modules/lib/micro_ros_zephyr_module/modules/libmicroros/micro_ros_*
-          rm -rf /workspace/build
+          rm -rf $WORKSPACE/Projects/svea-lli/build
+          rm -rf $WORKSPACE/modules/lib/micro_ros_zephyr_module/modules/libmicroros/micro_ros_*
+          rm -rf $WORKSPACE/build
 
       - name: Build firmware
         run: |
@@ -93,12 +97,12 @@ jobs:
           export VERBOSE=1
           export MAKEFLAGS="-j1"
 
-          cd /workspace
+          cd $WORKSPACE
 
           west build -b clicker4_stm32f7 Projects/svea-lli \
             --build-dir build/clicker4_stm32f7 \
             --pristine \
-            -- -DBOARD_ROOT="/workspace" \
+            -- -DBOARD_ROOT="$WORKSPACE" \
               -DCONFIG_DEBUG_OPTIMIZATIONS=y
 
       - name: Collect build artifacts
