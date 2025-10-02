@@ -177,7 +177,7 @@ static void odom_thread(void *a, void *b, void *c) {
         float vL = wheel_left_speed();
         float vR = wheel_right_speed();
 
-        bool fwd = forward_guess;
+        bool fwd = 1; // assume forward, done on ros side instead
 
         odom_msg.twist.twist.linear.x = 0.5f * (vL + vR) * (fwd ? 1.f : -1.f);
         /* 2× gain compensates empirically for skid-steer slip */
