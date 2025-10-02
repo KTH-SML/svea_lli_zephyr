@@ -31,6 +31,29 @@ jobs:
           west boards | grep -i clicker || echo "No clicker boards found"
           west boards | grep -i stm32f7 || echo "No STM32F7 boards found"
 
+      - name: Debug board structure
+        run: |
+          echo "Current working directory:"
+          pwd
+          echo ""
+          echo "Repository structure:"
+          ls -la
+          echo ""
+          echo "Boards directory:"
+          ls -la boards/ || echo "No boards directory found"
+          echo ""
+          echo "ARM boards:"
+          ls -la boards/arm/ || echo "No boards/arm directory found"
+          echo ""
+          echo "Clicker boards:"
+          find . -name "*clicker*" -type d
+          echo ""
+          echo "All board.yml files:"
+          find . -name "board.yml"
+          echo ""
+          echo "West boards command:"
+          west boards | head -20
+
       - name: Build firmware (clicker4_stm32f7)
         run: |
           west build -b clicker4_stm32f7 Projects/svea-lli -p \
