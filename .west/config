@@ -5,6 +5,5 @@ file = west.yml
 [zephyr]
 base = external/zephyr
 
-[build]
-board-root = /workspace
+
 
