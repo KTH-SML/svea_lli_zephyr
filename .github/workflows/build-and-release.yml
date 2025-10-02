@@ -26,10 +26,18 @@ jobs:
           fi
           west update
 
-      - name: Clean micro-ROS artifacts
+      - name: Install colcon (required for micro-ROS)
+        run: |
+          # Try system package first, fallback to pip with --break-system-packages
+          apt-get update && apt-get install -y python3-colcon-common-extensions || \
+          pip3 install --break-system-packages colcon-common-extensions || \
+          pip3 install --user colcon-common-extensions
+
+      - name: Clean and prepare micro-ROS
         run: |
           rm -rf modules/lib/micro_ros_zephyr_module/modules/libmicroros/libmicroros.a || true
           rm -rf modules/lib/micro_ros_zephyr_module/modules/libmicroros/micro_ros_src/build || true
+          rm -rf modules/lib/micro_ros_zephyr_module/modules/libmicroros/micro_ros_src/install || true
 
       - name: Build firmware (clicker4_stm32f7)
         run: |
