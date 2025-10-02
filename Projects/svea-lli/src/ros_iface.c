@@ -282,109 +282,109 @@ static void time_sync_thread(void *a, void *b, void *c) {
                 epoch_off_ns = agent_ns - up_ns;
                 irq_unlock(key);
 
-                LOG_INF("Time locked to agent, offset = %lld ns", (long long)epoch_off_ns);
+                LOG_INF("Time locked to agent, offset = %lld ns",
+                        (long long)epoch_off_ns);
             }
+            k_sleep(K_SECONDS(1));
         }
-        k_sleep(K_SECONDS(1));
     }
-}
 
-// Main transport task for transmitting and receiving data
-static void ros_iface_thread(void *a, void *b, void *c) {
-    LOG_INF("ros_iface_thread: started");
-    k_msleep(1000); // Allow time for other subsystems to initialize
+    // Main transport task for transmitting and receiving data
+    static void ros_iface_thread(void *a, void *b, void *c) {
+        LOG_INF("ros_iface_thread: started");
+        k_msleep(1000); // Allow time for other subsystems to initialize
 
-    uint64_t last_publish_check = 0;
-    const uint64_t publish_check_interval = 1000; // Check connection every 1 second
+        uint64_t last_publish_check = 0;
+        const uint64_t publish_check_interval = 1000; // Check connection every 1 second
 
-    while (1) {
-        // k_msleep(1);
-        switch (state) {
-        case WAITING_AGENT:
-            LOG_INF("Attempting to create entities...");
-            state = (true == create_entities()) ? AGENT_CONNECTED : WAITING_AGENT;
-            if (state == WAITING_AGENT) {
-                LOG_INF("Failed to create entities, retrying in 2 seconds.");
-                k_msleep(2000);
-            } else {
-                LOG_INF("Connected to uROS agent and created entities.");
+        while (1) {
+            // k_msleep(1);
+            switch (state) {
+            case WAITING_AGENT:
+                LOG_INF("Attempting to create entities...");
+                state = (true == create_entities()) ? AGENT_CONNECTED : WAITING_AGENT;
+                if (state == WAITING_AGENT) {
+                    LOG_INF("Failed to create entities, retrying in 2 seconds.");
+                    k_msleep(2000);
+                } else {
+                    LOG_INF("Connected to uROS agent and created entities.");
+                    ros_initialized = true;
+                    last_publish_check = k_uptime_get();
+                }
+                break;
+
+            case AGENT_AVAILABLE:
+                // Not using ping from example
+                state = WAITING_AGENT;
+                break;
+
+            case AGENT_CONNECTED:
+                // Try to spin the executor
+                rcl_ret_t spin_ret = rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10));
+                if (spin_ret != RCL_RET_OK) {
+                    LOG_WRN("Executor spin failed (%d), assuming disconnection", spin_ret);
+                    state = AGENT_DISCONNECTED;
+                    ros_initialized = false;
+                    break;
+                }
                 ros_initialized = true;
-                last_publish_check = k_uptime_get();
-            }
-            break;
+                k_msleep(1);
+                break;
 
-        case AGENT_AVAILABLE:
-            // Not using ping from example
-            state = WAITING_AGENT;
-            break;
+            case AGENT_DISCONNECTED:
+                LOG_INF("Disconnected from agent. Cleaning up and retrying...");
+                // Guarantees that control commands are zeroed on disconnect
+                g_ros_ctrl.steering = 0;
+                g_ros_ctrl.throttle = 0;
 
-        case AGENT_CONNECTED:
-            // Try to spin the executor
-            rcl_ret_t spin_ret = rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10));
-            if (spin_ret != RCL_RET_OK) {
-                LOG_WRN("Executor spin failed (%d), assuming disconnection", spin_ret);
-                state = AGENT_DISCONNECTED;
+                destroy_entities();
                 ros_initialized = false;
+                state = WAITING_AGENT;
+                k_msleep(1000);
+                break;
+
+            default:
+                state = WAITING_AGENT;
                 break;
             }
-            ros_initialized = true;
-            k_msleep(1);
-            break;
-
-        case AGENT_DISCONNECTED:
-            LOG_INF("Disconnected from agent. Cleaning up and retrying...");
-            // Guarantees that control commands are zeroed on disconnect
-            g_ros_ctrl.steering = 0;
-            g_ros_ctrl.throttle = 0;
-
-            destroy_entities();
-            ros_initialized = false;
-            state = WAITING_AGENT;
-            k_msleep(1000);
-            break;
-
-        default:
-            state = WAITING_AGENT;
-            break;
         }
     }
-}
 
-uint64_t ros_iface_epoch_millis(void) {
-    unsigned int key = irq_lock();
-    uint64_t off = epoch_off_ns;
-    irq_unlock(key);
+    uint64_t ros_iface_epoch_millis(void) {
+        unsigned int key = irq_lock();
+        uint64_t off = epoch_off_ns;
+        irq_unlock(key);
 
-    return k_uptime_get() + off / 1000000ULL;
-}
+        return k_uptime_get() + off / 1000000ULL;
+    }
 
-uint64_t ros_iface_epoch_nanos(void) {
-    unsigned int key = irq_lock();
-    uint64_t off = epoch_off_ns;
-    irq_unlock(key);
+    uint64_t ros_iface_epoch_nanos(void) {
+        unsigned int key = irq_lock();
+        uint64_t off = epoch_off_ns;
+        irq_unlock(key);
 
-    return k_uptime_get() * 1000000ULL + off;
-}
+        return k_uptime_get() * 1000000ULL + off;
+    }
 
-void ros_iface_init(void) {
-    // Setup custom transports for microros
-    rmw_uros_set_custom_transport(
-        MICRO_ROS_FRAMING_REQUIRED,
-        (void *)&default_params,
-        zephyr_transport_open,
-        zephyr_transport_close,
-        zephyr_transport_write,
-        zephyr_transport_read);
+    void ros_iface_init(void) {
+        // Setup custom transports for microros
+        rmw_uros_set_custom_transport(
+            MICRO_ROS_FRAMING_REQUIRED,
+            (void *)&default_params,
+            zephyr_transport_open,
+            zephyr_transport_close,
+            zephyr_transport_write,
+            zephyr_transport_read);
 
-    state = WAITING_AGENT;
+        state = WAITING_AGENT;
 
-    k_thread_create(&ros_thread, ros_stack, K_THREAD_STACK_SIZEOF(ros_stack),
-                    ros_iface_thread, NULL, NULL, NULL,
-                    5, 0, K_NO_WAIT);
-    k_thread_name_set(&ros_thread, "ros_iface");
+        k_thread_create(&ros_thread, ros_stack, K_THREAD_STACK_SIZEOF(ros_stack),
+                        ros_iface_thread, NULL, NULL, NULL,
+                        5, 0, K_NO_WAIT);
+        k_thread_name_set(&ros_thread, "ros_iface");
 
-    k_thread_create(&time_sync_thread_data, time_sync_stack, K_THREAD_STACK_SIZEOF(time_sync_stack),
-                    time_sync_thread, NULL, NULL, NULL,
-                    4, 0, K_NO_WAIT);
-    k_thread_name_set(&time_sync_thread_data, "time_sync");
-}
+        k_thread_create(&time_sync_thread_data, time_sync_stack, K_THREAD_STACK_SIZEOF(time_sync_stack),
+                        time_sync_thread, NULL, NULL, NULL,
+                        4, 0, K_NO_WAIT);
+        k_thread_name_set(&time_sync_thread_data, "time_sync");
+    }

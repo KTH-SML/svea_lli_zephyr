@@ -1,6 +1,7 @@
 /* src/control.c  –  fast, non-blocking servo output -------------------- */
 #include "control.h"
-#include "rc_input.h" /* rc_get_pulse_us() prototype        */
+#include "rc_input.h"  /* rc_get_pulse_us() prototype        */
+#include "ros_iface.h" /* ros_get_command() prototype       */
 
 #include <stdlib.h>       // <-- Add this line
 #include <stm32_ll_tim.h> /* low-level TIM helpers               */
@@ -112,6 +113,42 @@ static inline int32_t clamp_throttle(int32_t value, int32_t prev, int32_t max_ac
             return prev - max_decel;
     }
     return value;
+}
+
+// Place these static variables at file scope (top of file, after global variables)
+static uint64_t forward_start_us = 0;
+static uint64_t reverse_start_us = 0;
+
+// Not used for anything but to update the forward_guess, right now only used for encoder, assumes now fast change in direction
+static void update_forward_guess(uint32_t thr) {
+    const int threshold_us = 50;             // 50 us away from neutral
+    const uint64_t required_time_us = 21000; // 21 ms required in one direction, aka a bit more than 2 periods
+
+    uint64_t now_us = k_ticks_to_us_floor64(k_uptime_ticks());
+
+    if (thr > 1500 + threshold_us) {
+        // Going forward
+        if (forward_start_us == 0) {
+            forward_start_us = now_us;
+        }
+        reverse_start_us = 0;
+        if ((now_us - forward_start_us) >= required_time_us) {
+            forward_guess = true;
+        }
+    } else if (thr < 1500 - threshold_us) {
+        // Going reverse
+        if (reverse_start_us == 0) {
+            reverse_start_us = now_us;
+        }
+        forward_start_us = 0;
+        if ((now_us - reverse_start_us) >= required_time_us) {
+            forward_guess = false;
+        }
+    } else {
+        // Near neutral, reset both timers
+        forward_start_us = 0;
+        reverse_start_us = 0;
+    }
 }
 
 static void control_thread(void *, void *, void *) {
