@@ -185,6 +185,224 @@ jobs:
           name: svea-lli-firmware
           path: artifacts/
 
+  auto-prerelease:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Need full history for release notes
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: svea-lli-firmware
+          path: release-artifacts
+
+      - name: Get next version
+        id: version
+        run: |
+          # Get the latest release tag (excluding prereleases)
+          LATEST_TAG=$(git tag -l "v*" --sort=-version:refname | grep -v "beta\|alpha\|rc" | head -1)
+
+          if [ -z "$LATEST_TAG" ]; then
+            # No tags exist, start with v1.0.0
+            echo "No existing release tags found, starting with v1.0.0"
+            BASE_VERSION="v1.0.0"
+          else
+            echo "Latest release tag: $LATEST_TAG"
+            BASE_VERSION="$LATEST_TAG"
+          fi
+
+          # Extract version numbers (remove 'v' prefix)
+          VERSION=${BASE_VERSION#v}
+
+          # Split into major.minor.patch
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+
+          # Increment patch version for prerelease
+          NEXT_PATCH=$((PATCH + 1))
+          NEXT_VERSION="v${MAJOR}.${MINOR}.${NEXT_PATCH}"
+          BETA_VERSION="${NEXT_VERSION}-beta"
+
+          echo "Base version: $BASE_VERSION"
+          echo "Next version: $NEXT_VERSION"
+          echo "Beta version: $BETA_VERSION"
+
+          echo "base_version=$BASE_VERSION" >> $GITHUB_OUTPUT
+          echo "next_version=$NEXT_VERSION" >> $GITHUB_OUTPUT
+          echo "beta_version=$BETA_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Generate smart release notes
+        id: release_notes
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            try {
+              // Get commits since last release
+              const { data: comparison } = await github.rest.repos.compareCommits({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                base: '${{ steps.version.outputs.base_version }}',
+                head: context.sha
+              });
+
+              // Extract commit messages and analyze
+              const commits = comparison.commits.map(commit => ({
+                sha: commit.sha.substring(0, 7),
+                message: commit.commit.message.split('\n')[0],
+                author: commit.commit.author.name,
+                url: commit.html_url
+              }));
+
+              // Categorize commits
+              const features = commits.filter(c => 
+                /feat|add|implement|new/i.test(c.message)
+              );
+              
+              const fixes = commits.filter(c => 
+                /fix|bug|resolve|patch/i.test(c.message)
+              );
+              
+              const improvements = commits.filter(c => 
+                /improve|update|enhance|optimize|refactor/i.test(c.message)
+              );
+
+              const docs = commits.filter(c => 
+                /doc|readme|comment/i.test(c.message)
+              );
+
+              const other = commits.filter(c => 
+                !features.includes(c) && !fixes.includes(c) && 
+                !improvements.includes(c) && !docs.includes(c)
+              );
+
+              // Generate release notes
+              let releaseNotes = `🚀 **Automated Beta Release**\n\n`;
+              releaseNotes += `**Version:** ${{ steps.version.outputs.beta_version }}\n`;
+              releaseNotes += `**Base Version:** ${{ steps.version.outputs.base_version }}\n`;
+              releaseNotes += `**Commits:** ${commits.length} changes since last release\n\n`;
+
+              if (features.length > 0) {
+                releaseNotes += `## ✨ New Features\n`;
+                features.forEach(c => {
+                  releaseNotes += `- ${c.message} ([${c.sha}](${c.url}))\n`;
+                });
+                releaseNotes += `\n`;
+              }
+
+              if (fixes.length > 0) {
+                releaseNotes += `## 🐛 Bug Fixes\n`;
+                fixes.forEach(c => {
+                  releaseNotes += `- ${c.message} ([${c.sha}](${c.url}))\n`;
+                });
+                releaseNotes += `\n`;
+              }
+
+              if (improvements.length > 0) {
+                releaseNotes += `## 🔧 Improvements\n`;
+                improvements.forEach(c => {
+                  releaseNotes += `- ${c.message} ([${c.sha}](${c.url}))\n`;
+                });
+                releaseNotes += `\n`;
+              }
+
+              if (docs.length > 0) {
+                releaseNotes += `## 📚 Documentation\n`;
+                docs.forEach(c => {
+                  releaseNotes += `- ${c.message} ([${c.sha}](${c.url}))\n`;
+                });
+                releaseNotes += `\n`;
+              }
+
+              if (other.length > 0) {
+                releaseNotes += `## 🔄 Other Changes\n`;
+                other.forEach(c => {
+                  releaseNotes += `- ${c.message} ([${c.sha}](${c.url}))\n`;
+                });
+                releaseNotes += `\n`;
+              }
+
+              releaseNotes += `## 📦 Firmware Files\n`;
+              releaseNotes += `- \`zephyr.hex\` - Flash file for programming\n`;
+              releaseNotes += `- \`zephyr.elf\` - Debug symbols and binary\n`;
+              releaseNotes += `- \`zephyr.bin\` - Raw binary file\n\n`;
+
+              releaseNotes += `## ⚠️ Beta Notice\n`;
+              releaseNotes += `This is an automated pre-release for testing. Use with caution in production.\n\n`;
+
+              releaseNotes += `**Build Info:**\n`;
+              releaseNotes += `- Build #${{ github.run_number }}\n`;
+              releaseNotes += `- Commit: ${context.sha.substring(0, 7)}\n`;
+              releaseNotes += `- Triggered by: @${{ github.actor }}\n`;
+
+              return releaseNotes;
+            } catch (error) {
+              console.log('Smart release notes failed:', error.message);
+              return null;
+            }
+
+      - name: Generate fallback release notes
+        id: fallback_notes
+        if: steps.release_notes.outcome == 'failure' || steps.release_notes.outputs.result == 'null'
+        run: |
+          # Get short commit SHA
+          SHORT_SHA=$(git rev-parse --short HEAD)
+
+          # Get commit message
+          COMMIT_MSG=$(git log -1 --pretty=format:'%s')
+
+          # Get recent commits (last 10)
+          RECENT_COMMITS=$(git log --oneline -10 --pretty=format:'- %s ([%h](https://github.com/${{ github.repository }}/commit/%H))')
+
+          # Generate fallback release notes
+          cat << EOF > fallback_notes.md
+          🚀 **Automated Beta Release**
+
+          **Version:** ${{ steps.version.outputs.beta_version }}
+          **Base Version:** ${{ steps.version.outputs.base_version }}
+
+          ## 📝 Latest Changes
+          **Latest Commit:** ${COMMIT_MSG} ([${SHORT_SHA}](https://github.com/${{ github.repository }}/commit/${{ github.sha }}))
+
+          ## 🔄 Recent Commits
+          ${RECENT_COMMITS}
+
+          ## 📦 Firmware Files
+          - \`zephyr.hex\` - Flash file for programming
+          - \`zephyr.elf\` - Debug symbols and binary  
+          - \`zephyr.bin\` - Raw binary file
+
+          ## ⚠️ Beta Notice
+          This is an automated pre-release for testing. Use with caution in production.
+
+          **Build Info:**
+          - Build #${{ github.run_number }}
+          - Commit: ${SHORT_SHA}
+          - Triggered by: @${{ github.actor }}
+          EOF
+
+          # Set output for next step
+          echo "notes_file=fallback_notes.md" >> $GITHUB_OUTPUT
+
+      - name: Create auto-prerelease
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.beta_version }}
+          name: "${{ steps.version.outputs.next_version }} Beta"
+          prerelease: true
+          body: ${{ steps.release_notes.outputs.result || '' }}
+          body_path: ${{ steps.fallback_notes.outputs.notes_file || '' }}
+          files: |
+            release-artifacts/zephyr.hex
+            release-artifacts/zephyr.elf
+            release-artifacts/zephyr.bin
+
   release:
     needs: build
     if: github.event_name == 'release'
@@ -205,3 +423,4 @@ jobs:
           files: |
             release-artifacts/zephyr.hex
             release-artifacts/zephyr.elf
+            release-artifacts/zephyr.bin
