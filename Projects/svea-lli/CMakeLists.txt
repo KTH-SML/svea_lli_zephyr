@@ -1,5 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
 
+
+message(WARNING 
+"========================================================================
+MICRO-ROS BUILD NOTICE:
+If you have changed the target board/port and are doing a pristine build,
+you may need to manually remove micro-ROS build artifacts:
+  rm -rf modules/lib/micro_ros_zephyr_module/modules/libmicroros/libmicroros.a
+  rm -rf modules/lib/micro_ros_zephyr_module/modules/libmicroros/micro_ros_src/build
+This ensures micro-ROS rebuilds for the correct target architecture.
+========================================================================")
+
+
 cmake_minimum_required(VERSION 3.13.1)
 
 list(APPEND ZEPHYR_EXTRA_MODULES ${CMAKE_CURRENT_SOURCE_DIR}/../../modules/lib/micro_ros_zephyr_module/modules/libmicroros)
