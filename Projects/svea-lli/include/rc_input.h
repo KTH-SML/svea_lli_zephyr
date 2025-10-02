@@ -1,3 +1,9 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * SVEA Note.
+ *
+ * Part of the SVEA Low‑Level Interface (Zephyr) application.
+ * Author: Nils Kiefer
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 #pragma once
 
 #include <stdbool.h>

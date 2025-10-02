@@ -1,3 +1,9 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * SVEA Note.
+ *
+ * Part of the SVEA Low‑Level Interface (Zephyr) application.
+ * Author: Nils Kiefer
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /* src/control.c  –  fast, non-blocking servo output -------------------- */
 #include "control.h"
 #include "rc_input.h" /* rc_get_pulse_us() prototype        */

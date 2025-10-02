@@ -1,3 +1,9 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * SVEA Note.
+ *
+ * Part of the SVEA Low‑Level Interface (Zephyr) application.
+ * Author: Nils Kiefer
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 #ifndef WHEEL_ENC_H_
 #define WHEEL_ENC_H_
 

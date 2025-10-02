@@ -1,3 +1,9 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * SVEA Note.
+ *
+ * Part of the SVEA Low‑Level Interface (Zephyr) application.
+ * Author: Nils Kiefer
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 #ifndef CONTROL_H
 #define CONTROL_H
 

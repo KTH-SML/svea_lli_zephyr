@@ -1,3 +1,9 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * SVEA Note.
+ *
+ * Part of the SVEA Low‑Level Interface (Zephyr) application.
+ * Author: Nils Kiefer
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 #include "control.h"
 #include "ros_iface.h"

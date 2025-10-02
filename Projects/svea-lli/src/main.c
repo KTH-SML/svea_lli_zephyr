@@ -1,3 +1,10 @@
+#/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+# * SVEA Note.
+# *
+# * Part of the SVEA Low‑Level Interface (Zephyr) application.
+# * Author: Nils Kiefer
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
 #include "control.h"
 #include "imu_sensor.h"
 #include "ina3221_sensor.h"
