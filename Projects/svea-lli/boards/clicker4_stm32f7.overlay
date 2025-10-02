@@ -80,8 +80,9 @@ icm42670: icm42670@68 {
         reg = <0x6b>;
         //drdy-gpios = <&gpiod 0 GPIO_ACTIVE_HIGH>;
         //int-pin = <1>;
-        accel-odr = <6>;
+        accel-odr = <9>;
         accel-range = <8>;
+        gyro-odr = <8>;
         gyro-range = <1000>;
         status = "okay";
     };
