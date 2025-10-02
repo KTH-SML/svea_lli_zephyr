@@ -21,7 +21,9 @@ jobs:
 
       - name: Initialize west workspace
         run: |
-          west init -l west-manifest
+          if [ ! -d .west ]; then
+            west init -l west-manifest
+          fi
           west update
 
       - name: Build firmware (clicker4_stm32f7)
