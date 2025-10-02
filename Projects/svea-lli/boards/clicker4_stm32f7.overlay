@@ -64,18 +64,27 @@
     status = "okay";
     clock-frequency = <I2C_BITRATE_FAST>; // Somethings weird with it, fast only works with too aggressive a pullup
 
-    icm42670: icm42670@68 {
-        compatible = "invensense,icm42670p";
-        reg = <0x68>;
-        int-gpios = <&gpioc 7 GPIO_ACTIVE_HIGH>;
+icm42670: icm42670@68 {
+    compatible = "invensense,icm42670p";
+    reg = <0x68>;
+    //int-gpios = <&gpioc 7 GPIO_ACTIVE_HIGH>;
 
-        gyro-hz = <800>;
-        accel-hz = <800>;
-        accel-fs = <8>;
-        gyro-fs = <1000>;
+    gyro-hz = <800>;
+    accel-hz = <800>;
+    accel-fs = <8>;
+    gyro-fs = <1000>;
+    status = "disabled";
+};
+   ism330dlc: ism330dlc@6a {
+        compatible = "st,ism330dlc";
+        reg = <0x6b>;
+        //drdy-gpios = <&gpiod 0 GPIO_ACTIVE_HIGH>;
+        //int-pin = <1>;
+        accel-odr = <6>;
+        accel-range = <8>;
+        gyro-range = <1000>;
         status = "okay";
     };
-
     ina3221: ina3221@40 {
         compatible = "ti,ina3221";
         reg = <0x40>;
@@ -270,7 +279,7 @@
     aliases {
         /* RC PWM capture aliases removed: using SBUS on USART2 instead */
 
-        imu = &icm42670;
+        imu = &ism330dlc;
         ina3221 = &ina3221;
         watchdog0 = &iwdg;
     };
