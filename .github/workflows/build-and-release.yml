@@ -2,7 +2,7 @@ name: Build and Publish Firmware
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
   release:
     types: [published]
@@ -33,15 +33,15 @@ jobs:
 
       - name: Build firmware (clicker4_stm32f7)
         run: |
-          # Add your custom boards directory to the build
-          west build -b clicker4_stm32f7 Projects/svea-lli \
-            --build-dir build/clicker4_stm32f7 \
-            -- -DBOARD_ROOT=.
+          west build -b clicker4_stm32f7 Projects/svea-lli -p \
+            --build-dir Projects/svea-lli/build/clicker4_stm32f7 \
+            -- -DBOARD_ROOT='.' \
+               -DCONFIG_DEBUG_OPTIMIZATIONS=y
 
       - name: Collect build artifacts
         run: |
           mkdir -p artifacts
-          cp build/clicker4_stm32f7/zephyr/zephyr.{hex,bin,elf,map} artifacts/
+          cp Projects/svea-lli/build/clicker4_stm32f7/zephyr/zephyr.{hex,bin,elf,map} artifacts/
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
