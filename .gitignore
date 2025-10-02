@@ -6,3 +6,5 @@ external
 
 ./external
 **DS_Store
+drivers/st_ism330dlc/ism330dlc.txt
+**/log/
