@@ -9,6 +9,10 @@
 #include <std_msgs/msg/float32_multi_array.h>
 #include <zephyr/kernel.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct {
     uint32_t steering_us;
     uint32_t throttle_us;
@@ -25,8 +29,13 @@ extern bool ros_initialized;
 extern rcl_publisher_t imu_pub;
 extern rcl_publisher_t encoders_pub;
 extern rcl_publisher_t ina3221_pub;
+extern rcl_publisher_t battery_pub;
 
 uint64_t ros_iface_epoch_millis(void);
 uint64_t ros_iface_epoch_nanos(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // ROS_IFACE_H

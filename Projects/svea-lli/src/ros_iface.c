@@ -4,6 +4,7 @@
 
 #include <geometry_msgs/msg/twist.h>
 #include <geometry_msgs/msg/twist_with_covariance_stamped.h>
+#include <sensor_msgs/msg/battery_state.h>
 #include <rcl/rcl.h>
 #include <rclc/executor.h>
 #include <rclc/rclc.h>
@@ -60,7 +61,7 @@ static rclc_executor_t executor;
 
 // Publishers
 static rcl_publisher_t pub_steer, pub_throttle, pub_gear, pub_override, pub_connected;
-rcl_publisher_t imu_pub, encoders_pub, ina3221_pub; // Remove static keyword for these
+rcl_publisher_t imu_pub, encoders_pub, ina3221_pub, battery_pub; // Remove static keyword for these
 
 // Messages - ensure proper alignment
 static std_msgs__msg__Int8 msg_steer __aligned(4);
@@ -109,13 +110,13 @@ static inline bool pulse_to_bool(uint32_t us) {
 // Subscription callbacks
 static void steer_cb(const void *msg) {
     int8_t value = ((std_msgs__msg__Int8 *)msg)->data;
-    LOG_INF("Received steering command: %d", value);
+    LOG_DBG("Received steering command: %d", value);
     g_ros_ctrl.steering = value;
 }
 
 static void throttle_cb(const void *msg) {
     int8_t value = ((std_msgs__msg__Int8 *)msg)->data;
-    LOG_INF("Received throttle command: %d", value);
+    LOG_DBG("Received throttle command: %d", value);
     g_ros_ctrl.throttle = value;
     g_ros_ctrl.timestamp = k_uptime_get();
 }
@@ -192,9 +193,6 @@ bool create_entities() {
         // Set session timeout (how long to wait for agent responses)
         rmw_uros_set_context_entity_creation_session_timeout(rmw_context, 1000); // 1 second
         rmw_uros_set_context_entity_destroy_session_timeout(rmw_context, 500);   // 0.5 seconds
-
-        // Configure publisher timeout for faster failure detection
-        rmw_uros_set_publisher_session_timeout(rmw_context, 100); // 100ms timeout for publishes
     }
 
     // Node
@@ -216,6 +214,7 @@ bool create_entities() {
     RCCHECK(rclc_publisher_init_best_effort(&imu_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu), "/lli/sensor/imu"));
     RCCHECK(rclc_publisher_init_best_effort(&encoders_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, TwistWithCovarianceStamped), "/lli/sensor/encoders"));
     RCCHECK(rclc_publisher_init_best_effort(&ina3221_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray), "/lli/sensor/ina3221"));
+    RCCHECK(rclc_publisher_init_best_effort(&battery_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, BatteryState), "/lli/battery/state"));
 
     // Subscriptions
     RCCHECK(rclc_subscription_init_best_effort(&sub_steer, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/ctrl/steering"));
@@ -252,6 +251,7 @@ bool destroy_entities() {
     RCSOFTCHECK(rcl_publisher_fini(&imu_pub, &node));
     RCSOFTCHECK(rcl_publisher_fini(&encoders_pub, &node));
     RCSOFTCHECK(rcl_publisher_fini(&ina3221_pub, &node));
+    RCSOFTCHECK(rcl_publisher_fini(&battery_pub, &node));
     RCSOFTCHECK(rcl_subscription_fini(&sub_steer, &node));
     RCSOFTCHECK(rcl_subscription_fini(&sub_throttle, &node));
     RCSOFTCHECK(rcl_subscription_fini(&sub_gear, &node));
@@ -295,7 +295,6 @@ static void ros_iface_thread(void *a, void *b, void *c) {
     k_msleep(1000); // Allow time for other subsystems to initialize
 
     uint64_t last_publish_check = 0;
-    const uint64_t publish_check_interval = 1000; // Check connection every 1 second
     uint32_t last_retry_log_ms = 0;
 
     while (1) {
