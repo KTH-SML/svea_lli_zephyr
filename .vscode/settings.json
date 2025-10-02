@@ -22,7 +22,9 @@
         "twist.h": "c",
         "icm42x70.h": "c",
         "sensor.h": "c",
-        "kernel.h": "c"
+        "kernel.h": "c",
+        "util.h": "c",
+        "ina3221_sensor.h": "c"
     },
     "terminal.integrated.defaultProfile.osx": "Zephyr IDE Terminal"
 }
