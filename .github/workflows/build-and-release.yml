@@ -288,6 +288,7 @@ jobs:
         id: enhanced_notes
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
+          BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
 
           # Create enhanced release notes file
           cat << 'EOF' > enhanced_notes.md
@@ -329,8 +330,8 @@ jobs:
             git log ${{ steps.version.outputs.base_version }}..HEAD --oneline --pretty=format:"- %s ([%h](https://github.com/${{ github.repository }}/commit/%H))" -n 5 >> enhanced_notes.md 2>/dev/null || echo "- Latest commit: ${LATEST_COMMIT} ([${SHORT_SHA}](https://github.com/${{ github.repository }}/commit/${{ github.sha }}))" >> enhanced_notes.md
           fi
 
-          # Add firmware and technical info
-          cat << 'EOF' >> enhanced_notes.md
+          # Add firmware and technical info (using echo to substitute variables)
+          cat << EOF >> enhanced_notes.md
 
           ---
 
@@ -338,9 +339,9 @@ jobs:
 
           | File | Description | Use Case |
           |------|-------------|----------|
-          | **`zephyr.hex`** | Intel HEX format | Programming with most flash tools |
-          | **`zephyr.elf`** | ELF with debug symbols | Debugging and analysis |
-          | **`zephyr.bin`** | Raw binary | Direct flash programming |
+          | **\`zephyr.hex\`** | Intel HEX format | Programming with most flash tools |
+          | **\`zephyr.elf\`** | ELF with debug symbols | Debugging and analysis |
+          | **\`zephyr.bin\`** | Raw binary | Direct flash programming |
 
           ## 💾 Memory Usage
 
@@ -350,7 +351,43 @@ jobs:
 
           ## 🔧 Recommended Programming Method
 
-          **CodeGrip** is the recommended method for flashing this firmware
+          **CodeGrip GUI** is the recommended method for flashing this firmware:
+
+          ### Using CodeGrip GUI:
+
+          1. **Open CodeGrip** application
+          2. **Connect your STM32F7 board** via ST-Link or similar debugger
+          3. **Load firmware file:**
+             - Click "Browse" or "Load File"
+             - Select the \`zephyr.hex\` file from this release
+          4. **Configure target:**
+             - Target: STM32F7xx series
+             - Interface: SWD (recommended) or JTAG
+          5. **Program the device:**
+             - Click "Flash" or "Program"
+             - Wait for programming completion
+             - Verify programming success
+
+          ### CodeGrip GUI Benefits:
+          - 🎯 **Visual interface** - Easy target selection and configuration
+          - 🔍 **Real-time feedback** - Progress bars and status indicators
+          - 🛡️ **Safety features** - Built-in verification and error handling
+          - 📊 **Memory view** - Visualize flash and RAM usage
+          - 🔧 **Advanced options** - Chip erase, protection bits, etc.
+
+          ### Alternative Methods:
+
+          **STM32CubeProgrammer GUI:**
+          - Open STM32CubeProgrammer
+          - Connect to target (SWD interface)
+          - Load \`zephyr.hex\` file
+          - Click "Download" to program
+
+          **OpenOCD (Command Line):**
+          \`\`\`bash
+          openocd -f interface/stlink.cfg -f target/stm32f7x.cfg \\
+                  -c "program zephyr.hex verify reset exit"
+          \`\`\`
 
           ## ⚠️ Beta Release Notice
 
@@ -363,7 +400,7 @@ jobs:
           ## 🤖 Build Information
 
           - **Triggered by:** @${{ github.actor }}
-          - **Build Time:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          - **Build Time:** ${BUILD_TIME}
           - **GitHub Actions:** [View build logs](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
           - **Commit:** [${SHORT_SHA}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
 
