@@ -16,3 +16,10 @@ manifest:
           - hal_stm32
           - cmsis
           - hal_tdk
+
+  self:
+    path: .
+
+# Configure west to find custom boards
+build:
+  board-root: .
