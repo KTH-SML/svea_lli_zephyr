@@ -252,6 +252,6 @@ static void imu_sensor_thread(void *p1, void *p2, void *p3) {
                 last_log_time = now;
             }
         }
-        k_sleep(K_MSEC(10)); // yield to lower-prio tasks at least a lil bit
+        k_sleep(K_MSEC(40)); // yield to lower-prio tasks at least a lil bit
     }
 }
