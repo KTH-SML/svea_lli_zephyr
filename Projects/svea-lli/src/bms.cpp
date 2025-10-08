@@ -392,7 +392,7 @@ static void battery_publisher_thread(void *, void *, void *) {
             }
         }
 
-        k_sleep(K_MSEC(500));
+        k_sleep(K_MSEC(1000));
     }
 }
 
