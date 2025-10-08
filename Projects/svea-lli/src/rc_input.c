@@ -178,7 +178,7 @@ static void rc_debug_thread(void *a, void *b, void *c) {
 bool rc_input_connected(void) {
     /* Consider link lost if we haven't seen a frame in 100 ms */
     const uint32_t age_ms = k_uptime_get_32() - last_frame_ms;
-    return age_ms <= 100U;
+    return age_ms <= 500U;
 }
 
 // Classify override channel into three discrete modes using wide bands
