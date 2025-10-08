@@ -224,10 +224,10 @@ bool create_entities() {
     RCCHECK(rclc_publisher_init_best_effort(&battery_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, BatteryState), "/lli/battery/state"));
 
     // Subscriptions
-    RCCHECK(rclc_publisher_init_best_effort(&sub_steer, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/ctrl/steering"));
-    RCCHECK(rclc_publisher_init_best_effort(&sub_throttle, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/ctrl/throttle"));
-    RCCHECK(rclc_publisher_init_best_effort(&sub_gear, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/ctrl/high_gear"));
-    RCCHECK(rclc_publisher_init_best_effort(&sub_diff, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/ctrl/diff"));
+    RCCHECK(rclc_subscription_init_best_effort(&sub_steer, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/ctrl/steering"));
+    RCCHECK(rclc_subscription_init_best_effort(&sub_throttle, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/ctrl/throttle"));
+    RCCHECK(rclc_subscription_init_best_effort(&sub_gear, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/ctrl/high_gear"));
+    RCCHECK(rclc_subscription_init_best_effort(&sub_diff, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/ctrl/diff"));
 
     // Timer
     const unsigned int timer_timeout_ms = 21; // ~48Hz
