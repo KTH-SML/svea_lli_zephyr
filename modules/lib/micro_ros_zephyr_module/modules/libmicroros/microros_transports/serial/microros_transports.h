@@ -17,7 +17,6 @@
 
 #include <unistd.h>
 #include <version.h>
-#include <uxr/client/profile/transport/custom/custom_transport.h>
 
 #if ZEPHYR_VERSION_CODE >= ZEPHYR_VERSION(3,1,0)
 #include <zephyr/device.h>
