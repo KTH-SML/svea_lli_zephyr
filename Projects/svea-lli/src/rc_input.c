@@ -12,6 +12,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
+#include <zephyr/sys/util.h>
 #include <zephyr/sys/printk.h>
 
 LOG_MODULE_REGISTER(rc_input_hw, LOG_LEVEL_INF);
@@ -36,8 +37,15 @@ static inline uint32_t map_sbus_to_us(uint16_t v) {
 static void sbus_input_cb(struct input_event *evt, void *user_data) {
     ARG_UNUSED(user_data);
 
-    /* Update last frame time on any sbus event */
-    last_frame_ms = k_uptime_get_32();
+    /* Sync-marked events correspond to validated SBUS frames */
+    if (evt->sync) {
+        last_frame_ms = k_uptime_get_32();
+        return;
+    }
+
+    if (!IS_ENABLED(CONFIG_INPUT_SBUS_SEND_SYNC)) {
+        last_frame_ms = k_uptime_get_32();
+    }
 
     if (evt->type != INPUT_EV_ABS) {
         return;
