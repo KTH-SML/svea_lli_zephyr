@@ -1,17 +1,29 @@
-#! /bin/bash
-#
-# This entrypoint script will be called everytime a container is started.
-#
+#!/usr/bin/env bash
+
+# This entrypoint script will be called every time a container starts.
 # Author: Kaj Munhoz Arfvidsson
 
-set -e
+set -euo pipefail
 
 git config --global --add safe.directory '*'
 
+# Ensure west workspace is initialized (idempotent)
+if [ ! -d .west ]; then
+  west init -l west-manifest || true
+fi
+
 west update
+west zephyr-export || true
 
-west zephyr-export
-source /workdir/zephyr/zephyr-env.sh
+# Source Zephyr env if present (optional)
+if [ -f /workdir/zephyr/zephyr-env.sh ]; then
+  . /workdir/zephyr/zephyr-env.sh || true
+fi
 
-exec "$@"
+# If arguments were provided, exec them; otherwise finish quietly
+if [ "$#" -gt 0 ]; then
+  exec "$@"
+fi
+
+exit 0
 
