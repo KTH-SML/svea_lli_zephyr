@@ -22,7 +22,6 @@ LOG_MODULE_REGISTER(control, LOG_LEVEL_INF);
 /* ───── 1. servo bookkeeping (unchanged) ──────────────────────────────── */
 bool servos_initialized = false;
 bool remote_connected = true;
-bool in_override_mode = true;
 bool forward_guess = true;     // Guess forward direction
 static bool diff_state = true; // persistent diff state (true = engaged)
 static inline bool diff_next_state(bool current) {
@@ -141,7 +140,6 @@ static void control_thread(void *, void *, void *) {
         remote_connected = rc_input_connected();
         // TODO: ros_connected
         rc_override_mode_t override_mode = rc_get_override_mode();
-        in_override_mode = (override_mode != RC_OVERRIDE_ROS); // for ros publish
 
         // 2) Decide command sources
         // - Compute booleans first (like gear), then map to pulses together
@@ -154,8 +152,7 @@ static void control_thread(void *, void *, void *) {
         uint32_t diff_rear_us = DIFF_OPEN_REAR_US;
         bool mute_outputs = false;
 
-        if (remote_connected) {
-
+        if (remote_connected && override_mode != RC_OVERRIDE_MUTE) {
             switch (override_mode) {
             case RC_OVERRIDE_REMOTE:
                 // Manual override passthrough
@@ -180,20 +177,7 @@ static void control_thread(void *, void *, void *) {
                 }
 
                 break;
-            case RC_OVERRIDE_MUTE:
-                // Override engaged, but mute all outputs
-                mute_outputs = true;
-                // Allow diff toggle while muted so it takes effect when unmuted
-                diff_state = diff_next_state(diff_state);
-                diff_engaged = diff_state;
 
-                steer_us = 0;
-                thr_us = 0;
-                gear_us = 0;
-                diff_front_us = 0;
-                diff_rear_us = 0;
-
-                break;
             case RC_OVERRIDE_ROS:
                 // TODO ADD CHECK IF ROS IS ACTIVE, OTHERWISE FALLBACK TO MANUAL
                 // ROS control
@@ -227,18 +211,16 @@ static void control_thread(void *, void *, void *) {
                 break;
             }
 
-            // 3) Apply throttle ramping (accel/decel) unless muted
-            if (!mute_outputs) {
-                int32_t accel = max_thr_accel;
-                int32_t decel = max_thr_decel;
-                if (gear_us == GEAR_HIGH_US) {
-                    // In high gear, be gentler on accel
-                    accel /= 5;
-                }
-                thr_us = clamp_throttle(thr_us, prev_thr, accel, decel);
-                prev_thr = thr_us;
-                forward_guess = thr_us > 1450; // simple heuristic
+            // 3) Apply throttle ramping (accel/decel)
+            int32_t accel = max_thr_accel;
+            int32_t decel = max_thr_decel;
+            if (gear_us == GEAR_HIGH_US) {
+                // In high gear, be gentler on accel
+                accel /= 5;
             }
+            thr_us = clamp_throttle(thr_us, prev_thr, accel, decel);
+            prev_thr = thr_us;
+            forward_guess = thr_us > 1450; // simple heuristic
 
             // 4) Write outputs
             servo_set_ticks(&servos[SERVO_STEERING].spec, steer_us);
@@ -253,6 +235,7 @@ static void control_thread(void *, void *, void *) {
             servo_set_ticks(&servos[SERVO_GEAR].spec, 0);
             servo_set_ticks(&servos[SERVO_DIFF].spec, 0);
             servo_set_ticks(&servos[SERVO_DIFF_REAR].spec, 0);
+            prev_thr = SERVO_NEUTRAL_US;
         }
         // 5) Keep the loop period
         const uint64_t elapsed_us = k_ticks_to_us_floor64(k_uptime_ticks()) - loop_start_us;
@@ -260,6 +243,7 @@ static void control_thread(void *, void *, void *) {
         if (sleep_time > 0) {
             k_sleep(K_USEC(sleep_time));
         } else {
+            LOG_INF("Control loop overrun by %d us", -sleep_time);
             k_sleep(K_USEC(100)); // yield to lower-prio tasks at least a lil bit
         }
     }
