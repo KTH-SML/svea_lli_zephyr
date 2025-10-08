@@ -7,6 +7,12 @@
 /* rc_input.c – SBUS via Zephyr input (futaba,sbus) */
 
 #include "rc_input.h"
+#include "control.h"
+#include "ros_iface.h"
+
+#include <limits.h>
+#include <std_msgs/msg/bool.h>
+#include <std_msgs/msg/int8.h>
 #include <string.h>
 #include <zephyr/input/input.h>
 #include <zephyr/kernel.h>
@@ -32,6 +38,18 @@ static inline uint32_t map_sbus_to_us(uint16_t v) {
         v = 1811;
     // Linear mapping from [172, 1811] -> [1000, 2000]
     return 1000 + ((uint32_t)(v - 172) * 1000U) / (1811 - 172);
+}
+
+static inline int8_t pulse_to_int8(int32_t us) {
+    if (us < 1000)
+        us = 1000;
+    if (us > 2000)
+        us = 2000;
+    return (int8_t)(((us - 1500) * 127) / 500);
+}
+
+static inline bool pulse_to_bool(uint32_t us) {
+    return us > 1500;
 }
 
 static void sbus_input_cb(struct input_event *evt, void *user_data) {
@@ -103,6 +121,17 @@ static void rc_debug_thread(void *a, void *b, void *c);
 static K_THREAD_STACK_DEFINE(rc_dbg_stack, 1024);
 static struct k_thread rc_dbg_thread_data;
 
+static void rc_remote_publish_thread(void *a, void *b, void *c);
+static K_THREAD_STACK_DEFINE(rc_remote_pub_stack, 1024);
+static struct k_thread rc_remote_pub_thread_data;
+
+static void rc_connected_publish_thread(void *a, void *b, void *c);
+static K_THREAD_STACK_DEFINE(rc_connected_pub_stack, 1024);
+static struct k_thread rc_connected_pub_thread_data;
+
+#define REMOTE_PUBLISH_PERIOD_MS 21
+#define REMOTE_CONNECTED_PUBLISH_PERIOD_MS 100
+
 void rc_input_init(void) {
     /* Do not reset sbus_raw here; callback may already have populated it
      * before this init runs. Just announce readiness and start debug thread.
@@ -112,8 +141,18 @@ void rc_input_init(void) {
 
     k_thread_create(&rc_dbg_thread_data, rc_dbg_stack, K_THREAD_STACK_SIZEOF(rc_dbg_stack),
                     rc_debug_thread, NULL, NULL, NULL,
-                    5, 0, K_NO_WAIT);
+                    10, 0, K_NO_WAIT);
     k_thread_name_set(&rc_dbg_thread_data, "rc_dbg");
+
+    k_thread_create(&rc_remote_pub_thread_data, rc_remote_pub_stack, K_THREAD_STACK_SIZEOF(rc_remote_pub_stack),
+                    rc_remote_publish_thread, NULL, NULL, NULL,
+                    5, 0, K_NO_WAIT);
+    k_thread_name_set(&rc_remote_pub_thread_data, "rc_remote_pub");
+
+    k_thread_create(&rc_connected_pub_thread_data, rc_connected_pub_stack, K_THREAD_STACK_SIZEOF(rc_connected_pub_stack),
+                    rc_connected_publish_thread, NULL, NULL, NULL,
+                    5, 0, K_NO_WAIT);
+    k_thread_name_set(&rc_connected_pub_thread_data, "rc_remote_conn");
 }
 
 uint32_t rc_get_pulse_us(rc_channel_t ch) {
@@ -176,9 +215,17 @@ static void rc_debug_thread(void *a, void *b, void *c) {
 /* (moved to top of file before rc_input_init) */
 
 bool rc_input_connected(void) {
-    /* Consider link lost if we haven't seen a frame in 100 ms */
-    const uint32_t age_ms = k_uptime_get_32() - last_frame_ms;
-    return age_ms <= 500U;
+    /* Diff-toggle channel is bistable: failsafe drives it into the mid band */
+    uint16_t ch4_raw = sbus_raw[3];
+    bool connected = (ch4_raw < 800U) || (ch4_raw > 1200U);
+
+    static bool last_state = true;
+    if (connected != last_state) {
+        LOG_INF("RC link %s (ch4 raw=%u)", connected ? "reconnected" : "lost", ch4_raw);
+        last_state = connected;
+    }
+
+    return connected;
 }
 
 // Classify override channel into three discrete modes using wide bands
@@ -200,4 +247,149 @@ rc_override_mode_t rc_get_override_mode(void) {
 bool rc_consume_diff_toggle_event(void) {
     /* Atomically fetch-and-clear latch; true if a rising edge was latched */
     return atomic_set(&diff_toggle_ev, 0) != 0;
+}
+
+static void rc_remote_publish_thread(void *a, void *b, void *c) {
+    ARG_UNUSED(a);
+    ARG_UNUSED(b);
+    ARG_UNUSED(c);
+
+    static std_msgs__msg__Int8 steer_msg;
+    static std_msgs__msg__Int8 throttle_msg;
+    static std_msgs__msg__Bool gear_msg;
+    static std_msgs__msg__Bool override_msg;
+
+    bool first_run = true;
+    bool last_connected = false;
+    uint32_t last_publish_ms = 0U;
+    uint32_t min_period_ms = UINT32_MAX;
+    uint32_t max_period_ms = 0U;
+    uint32_t period_samples = 0U;
+
+    while (1) {
+        if (!ros_initialized) {
+            k_msleep(REMOTE_PUBLISH_PERIOD_MS);
+            continue;
+        }
+
+        bool connected = rc_input_connected();
+
+        if (first_run) {
+            last_connected = connected;
+            first_run = false;
+        }
+
+        if (connected != last_connected) {
+            LOG_INF("Remote RC link %s", connected ? "reconnected" : "disconnected");
+            last_connected = connected;
+        }
+
+        uint32_t now_ms = k_uptime_get_32();
+        if (last_publish_ms != 0U) {
+            uint32_t period_ms = now_ms - last_publish_ms;
+            if (period_ms < min_period_ms)
+                min_period_ms = period_ms;
+            if (period_ms > max_period_ms)
+                max_period_ms = period_ms;
+            if (++period_samples >= 50U) {
+                LOG_DBG("Remote publish period min=%u ms max=%u ms", min_period_ms, max_period_ms);
+                min_period_ms = UINT32_MAX;
+                max_period_ms = 0U;
+                period_samples = 0U;
+            }
+        }
+        last_publish_ms = now_ms;
+
+        int32_t steer_us = rc_get_pulse_us(RC_STEER);
+        int32_t throttle_us = rc_get_pulse_us(RC_THROTTLE);
+        uint32_t gear_us = rc_get_pulse_us(RC_HIGH_GEAR);
+        bool override_active = (rc_get_override_mode() != RC_OVERRIDE_ROS);
+
+        if (!connected) {
+            steer_us = 1500;
+            throttle_us = 1500;
+            gear_us = 1500;
+            override_active = true;
+        }
+
+        steer_msg.data = pulse_to_int8(steer_us);
+        throttle_msg.data = pulse_to_int8(throttle_us);
+        gear_msg.data = pulse_to_bool(gear_us);
+        override_msg.data = override_active;
+
+        bool publish_failed = false;
+        rcl_ret_t rc;
+
+        rc = rcl_publish(&pub_remote_steer, &steer_msg, NULL);
+        if (rc != RCL_RET_OK) {
+            LOG_WRN("Remote publish steer failed rc=%d", (int)rc);
+            publish_failed = true;
+        }
+        rc = rcl_publish(&pub_remote_throttle, &throttle_msg, NULL);
+        if (rc != RCL_RET_OK) {
+            LOG_WRN("Remote publish throttle failed rc=%d", (int)rc);
+            publish_failed = true;
+        }
+        rc = rcl_publish(&pub_remote_gear, &gear_msg, NULL);
+        if (rc != RCL_RET_OK) {
+            LOG_WRN("Remote publish gear failed rc=%d", (int)rc);
+            publish_failed = true;
+        }
+        rc = rcl_publish(&pub_remote_override, &override_msg, NULL);
+        if (rc != RCL_RET_OK) {
+            LOG_WRN("Remote publish override failed rc=%d", (int)rc);
+            publish_failed = true;
+        }
+
+        if (publish_failed) {
+            ros_iface_handle_remote_publish_error();
+        }
+
+        k_msleep(REMOTE_PUBLISH_PERIOD_MS);
+    }
+}
+
+static void rc_connected_publish_thread(void *a, void *b, void *c) {
+    ARG_UNUSED(a);
+    ARG_UNUSED(b);
+    ARG_UNUSED(c);
+
+    static std_msgs__msg__Bool connected_msg;
+    uint32_t last_publish_ms = 0U;
+    uint32_t min_period_ms = UINT32_MAX;
+    uint32_t max_period_ms = 0U;
+    uint32_t samples = 0U;
+
+    while (1) {
+        if (!ros_initialized) {
+            k_msleep(REMOTE_CONNECTED_PUBLISH_PERIOD_MS);
+            continue;
+        }
+
+        connected_msg.data = remote_connected;
+
+        uint32_t now_ms = k_uptime_get_32();
+        if (last_publish_ms != 0U) {
+            uint32_t period_ms = now_ms - last_publish_ms;
+            if (period_ms < min_period_ms)
+                min_period_ms = period_ms;
+            if (period_ms > max_period_ms)
+                max_period_ms = period_ms;
+            if (++samples >= 50U) {
+                LOG_DBG("Remote connected publish period min=%u ms max=%u ms", min_period_ms, max_period_ms);
+                min_period_ms = UINT32_MAX;
+                max_period_ms = 0U;
+                samples = 0U;
+            }
+        }
+        last_publish_ms = now_ms;
+
+        rcl_ret_t rc = rcl_publish(&pub_remote_connected, &connected_msg, NULL);
+        if (rc != RCL_RET_OK) {
+            LOG_WRN("Remote connected publish failed rc=%d", (int)rc);
+            ros_iface_handle_remote_publish_error();
+        }
+
+        k_msleep(REMOTE_CONNECTED_PUBLISH_PERIOD_MS);
+    }
 }

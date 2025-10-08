@@ -67,15 +67,8 @@ static rcl_node_t node;
 static rclc_executor_t executor;
 
 // Publishers
-static rcl_publisher_t pub_steer, pub_throttle, pub_gear, pub_override, pub_connected;
-rcl_publisher_t imu_pub, encoders_pub, ina3221_pub, battery_pub; // Remove static keyword for these
-
-// Messages - ensure proper alignment
-static std_msgs__msg__Int8 msg_steer __aligned(4);
-static std_msgs__msg__Int8 msg_throttle __aligned(4);
-static std_msgs__msg__Bool msg_gear __aligned(4);
-static std_msgs__msg__Bool msg_override __aligned(4);
-static std_msgs__msg__Bool msg_connected __aligned(4);
+rcl_publisher_t pub_remote_steer, pub_remote_throttle, pub_remote_gear, pub_remote_override, pub_remote_connected;
+rcl_publisher_t imu_pub, encoders_pub, ina3221_pub, battery_pub;
 
 // Subscriptions - ensure proper alignment
 static rcl_subscription_t sub_steer, sub_throttle, sub_gear, sub_diff;
@@ -83,9 +76,6 @@ static std_msgs__msg__Int8 submsg_steer __aligned(4);
 static std_msgs__msg__Int8 submsg_throttle __aligned(4);
 static std_msgs__msg__Bool submsg_gear __aligned(4);
 static std_msgs__msg__Bool submsg_diff __aligned(4);
-
-// Timers
-static rcl_timer_t pub_timer;
 
 // Time synchronization variables
 static uint64_t epoch_off_ns;
@@ -99,20 +89,6 @@ enum states {
     AGENT_CONNECTED,
     AGENT_DISCONNECTED
 } state;
-
-// Map pulse [1000,2000] to int8 [-127,127]
-static inline int8_t pulse_to_int8(int32_t us) {
-    if (us < 1000)
-        us = 1000;
-    if (us > 2000)
-        us = 2000;
-    return (int8_t)(((us - 1500) * 127) / 500);
-}
-
-// Map pulse to bool (>1500 true)
-static inline bool pulse_to_bool(uint32_t us) {
-    return us > 1500;
-}
 
 // Subscription callbacks
 static void steer_cb(const void *msg) {
@@ -138,49 +114,6 @@ static void diff_cb(const void *msg) {
     bool value = ((std_msgs__msg__Bool *)msg)->data;
     LOG_DBG("Received diff command: %s", value ? "true" : "false");
     g_ros_ctrl.diff = value;
-}
-
-// Timer callback for publisher
-void pub_timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
-    RCLC_UNUSED(last_call_time);
-
-    if (timer != NULL && state == AGENT_CONNECTED && ros_initialized) {
-        bool publish_failed = false;
-
-        // Only publish remote state if remote is connected
-        if (remote_connected) {
-            int32_t steer_us = rc_get_pulse_us(RC_STEER);
-            int32_t throttle_us = rc_get_pulse_us(RC_THROTTLE);
-            uint32_t gear_us = rc_get_pulse_us(RC_HIGH_GEAR);
-
-            msg_steer.data = pulse_to_int8(steer_us);
-            msg_throttle.data = pulse_to_int8(throttle_us);
-            msg_gear.data = pulse_to_bool(gear_us);
-            msg_override.data = (rc_get_override_mode() != RC_OVERRIDE_ROS);
-
-            if (rcl_publish(&pub_steer, &msg_steer, NULL) != RCL_RET_OK)
-                publish_failed = true;
-            if (rcl_publish(&pub_throttle, &msg_throttle, NULL) != RCL_RET_OK)
-                publish_failed = true;
-            if (rcl_publish(&pub_gear, &msg_gear, NULL) != RCL_RET_OK)
-                publish_failed = true;
-            if (rcl_publish(&pub_override, &msg_override, NULL) != RCL_RET_OK)
-                publish_failed = true;
-        }
-
-        // Always try to publish connected status
-        msg_connected.data = remote_connected;
-        if (rcl_publish(&pub_connected, &msg_connected, NULL) != RCL_RET_OK) {
-            publish_failed = true;
-        }
-
-        // If any publish failed, signal disconnection
-        if (publish_failed) {
-            LOG_WRN("Publish failed, signaling disconnection");
-            state = AGENT_DISCONNECTED;
-            ros_initialized = false;
-        }
-    }
 }
 
 // Create allocator, support, pub, sub, executor for node if agent connection is successful
@@ -211,11 +144,11 @@ bool create_entities() {
     }
 
     // Publishers
-    RCCHECK(rclc_publisher_init_best_effort(&pub_steer, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/remote/steering"));
-    RCCHECK(rclc_publisher_init_best_effort(&pub_throttle, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/remote/throttle"));
-    RCCHECK(rclc_publisher_init_best_effort(&pub_gear, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/remote/high_gear"));
-    RCCHECK(rclc_publisher_init_best_effort(&pub_override, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/remote/override"));
-    RCCHECK(rclc_publisher_init_default(&pub_connected, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/remote/connected"));
+    RCCHECK(rclc_publisher_init_best_effort(&pub_remote_steer, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/remote/steering"));
+    RCCHECK(rclc_publisher_init_best_effort(&pub_remote_throttle, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/remote/throttle"));
+    RCCHECK(rclc_publisher_init_best_effort(&pub_remote_gear, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/remote/high_gear"));
+    RCCHECK(rclc_publisher_init_best_effort(&pub_remote_override, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/remote/override"));
+    RCCHECK(rclc_publisher_init_default(&pub_remote_connected, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/remote/connected"));
 
     // Sensor publishers
     RCCHECK(rclc_publisher_init_best_effort(&imu_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu), "/lli/sensor/imu"));
@@ -229,17 +162,12 @@ bool create_entities() {
     RCCHECK(rclc_subscription_init_best_effort(&sub_gear, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/ctrl/high_gear"));
     RCCHECK(rclc_subscription_init_best_effort(&sub_diff, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "/lli/ctrl/diff"));
 
-    // Timer
-    const unsigned int timer_timeout_ms = 21; // ~48Hz
-    RCCHECK(rclc_timer_init_default2(&pub_timer, &support, RCL_MS_TO_NS(timer_timeout_ms), pub_timer_callback, true));
-
     // Executor
-    RCCHECK(rclc_executor_init(&executor, &support.context, 5, &allocator));
+    RCCHECK(rclc_executor_init(&executor, &support.context, 4, &allocator));
     RCCHECK(rclc_executor_add_subscription(&executor, &sub_steer, &submsg_steer, steer_cb, ON_NEW_DATA));
     RCCHECK(rclc_executor_add_subscription(&executor, &sub_throttle, &submsg_throttle, throttle_cb, ON_NEW_DATA));
     RCCHECK(rclc_executor_add_subscription(&executor, &sub_gear, &submsg_gear, gear_cb, ON_NEW_DATA));
     RCCHECK(rclc_executor_add_subscription(&executor, &sub_diff, &submsg_diff, diff_cb, ON_NEW_DATA));
-    RCCHECK(rclc_executor_add_timer(&executor, &pub_timer));
 
     return true;
 }
@@ -250,11 +178,11 @@ bool destroy_entities() {
     rmw_context_t *rmw_context = rcl_context_get_rmw_context(&support.context);
     (void)rmw_uros_set_context_entity_destroy_session_timeout(rmw_context, 0);
 
-    RCSOFTCHECK(rcl_publisher_fini(&pub_steer, &node));
-    RCSOFTCHECK(rcl_publisher_fini(&pub_throttle, &node));
-    RCSOFTCHECK(rcl_publisher_fini(&pub_gear, &node));
-    RCSOFTCHECK(rcl_publisher_fini(&pub_override, &node));
-    RCSOFTCHECK(rcl_publisher_fini(&pub_connected, &node));
+    RCSOFTCHECK(rcl_publisher_fini(&pub_remote_steer, &node));
+    RCSOFTCHECK(rcl_publisher_fini(&pub_remote_throttle, &node));
+    RCSOFTCHECK(rcl_publisher_fini(&pub_remote_gear, &node));
+    RCSOFTCHECK(rcl_publisher_fini(&pub_remote_override, &node));
+    RCSOFTCHECK(rcl_publisher_fini(&pub_remote_connected, &node));
     RCSOFTCHECK(rcl_publisher_fini(&imu_pub, &node));
     RCSOFTCHECK(rcl_publisher_fini(&encoders_pub, &node));
     RCSOFTCHECK(rcl_publisher_fini(&ina3221_pub, &node));
@@ -263,12 +191,17 @@ bool destroy_entities() {
     RCSOFTCHECK(rcl_subscription_fini(&sub_throttle, &node));
     RCSOFTCHECK(rcl_subscription_fini(&sub_gear, &node));
     RCSOFTCHECK(rcl_subscription_fini(&sub_diff, &node));
-    RCSOFTCHECK(rcl_timer_fini(&pub_timer));
     RCSOFTCHECK(rclc_executor_fini(&executor));
     RCSOFTCHECK(rcl_node_fini(&node));
     RCSOFTCHECK(rclc_support_fini(&support));
 
     return true;
+}
+
+void ros_iface_handle_remote_publish_error(void) {
+    LOG_WRN("Remote publish error, forcing reconnect");
+    state = AGENT_DISCONNECTED;
+    ros_initialized = false;
 }
 
 // Sync time thread: updates virtual clock every second
@@ -341,7 +274,7 @@ static void ros_iface_thread(void *a, void *b, void *c) {
                 break;
             }
             ros_initialized = true;
-            k_msleep(1);
+            k_msleep(5);
             break;
 
         case AGENT_DISCONNECTED:

@@ -32,10 +32,17 @@ void ros_get_command(ros_command_t *cmd);
 extern bool ros_initialized;
 
 // Sensors
+extern rcl_publisher_t pub_remote_steer;
+extern rcl_publisher_t pub_remote_throttle;
+extern rcl_publisher_t pub_remote_gear;
+extern rcl_publisher_t pub_remote_override;
+extern rcl_publisher_t pub_remote_connected;
 extern rcl_publisher_t imu_pub;
 extern rcl_publisher_t encoders_pub;
 extern rcl_publisher_t ina3221_pub;
 extern rcl_publisher_t battery_pub;
+
+void ros_iface_handle_remote_publish_error(void);
 
 uint64_t ros_iface_epoch_millis(void);
 uint64_t ros_iface_epoch_nanos(void);
