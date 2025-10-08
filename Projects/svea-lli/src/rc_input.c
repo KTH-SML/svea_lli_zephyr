@@ -12,8 +12,8 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
-#include <zephyr/sys/util.h>
 #include <zephyr/sys/printk.h>
+#include <zephyr/sys/util.h>
 
 LOG_MODULE_REGISTER(rc_input_hw, LOG_LEVEL_INF);
 
@@ -69,7 +69,7 @@ static void sbus_input_cb(struct input_event *evt, void *user_data) {
         sbus_raw[3] = evt->value; /* ch4 */
 
         bool high = sbus_raw[3] > 500U;
-        printk("obama");
+
         if (high && !last_ch4_high) {
             atomic_or(&diff_toggle_ev, 1);
         }
