@@ -76,11 +76,12 @@ static inline void servo_set_ticks(const struct pwm_dt_spec *s, uint16_t t_us) {
 #define DIFF_OPEN_FRONT_US 1100
 #define DIFF_OPEN_REAR_US 1900
 
-// Throttle ramp profile, prevents overcurrent trips but shouldn't be noticable
-#define THROTTLE_RAMP_DELTA_US 600  // change to consider (us)
-#define THROTTLE_RAMP_TIME_MS 200   // time to make that change (ms)
-#define THROTTLE_DECEL_DELTA_US 500 // decel towards neutral
-#define THROTTLE_DECEL_TIME_MS 600  // time to make that change (ms)
+// Throttle smoothing parameters for first-order filter
+#define THROTTLE_FILTER_ACCEL_TAU_MS 220      // base smoothing time constant (ms)
+#define THROTTLE_FILTER_STANDSTILL_TAU_MS 450 // slower response when leaving neutral (ms)
+#define THROTTLE_FILTER_DECEL_TAU_MS 120      // quicker response when reducing throttle (ms)
+#define THROTTLE_FILTER_SOFT_ZONE_US 150      // +/- range around neutral treated as standstill
+#define THROTTLE_FILTER_HIGH_GEAR_SCALE 1.8f  // smoothing multiplier when high gear engaged
 
 // Remove old pulse_to_us, use new int8 mapping
 static inline uint32_t int8_to_us(int8_t val) {
@@ -88,35 +89,9 @@ static inline uint32_t int8_to_us(int8_t val) {
     return 1500 + ((int32_t)val * 500) / 127;
 }
 
-static inline int32_t clamp_delta(int32_t value, int32_t prev, int32_t max_step) {
-    int32_t delta = value - prev;
-    if (delta > max_step)
-        return prev + max_step;
-    if (delta < -max_step)
-        return prev - max_step;
-    return value;
-}
-
-static inline int32_t clamp_throttle(int32_t value, int32_t prev, int32_t max_accel, int32_t max_decel) {
-    int32_t delta = value - prev;
-    // Determine if moving away from 1500 (acceleration) or towards 1500 (deceleration)
-    int32_t prev_dist = abs(prev - 1500);
-    int32_t value_dist = abs(value - 1500);
-
-    if (value_dist > prev_dist) {
-        // Acceleration (moving away from 1500)
-        if (delta > max_accel)
-            return prev + max_accel;
-        if (delta < -max_accel)
-            return prev - max_accel;
-    } else {
-        // Deceleration
-        if (delta > max_decel)
-            return prev + max_decel;
-        if (delta < -max_decel)
-            return prev - max_decel;
-    }
-    return value;
+static inline uint32_t int8_to_throttle_us(int8_t val) {
+    // Positive values command forward, map to lower pulse widths
+    return SERVO_NEUTRAL_US - ((int32_t)val * 500) / 127;
 }
 
 static void control_thread(void *, void *, void *) {
@@ -126,15 +101,17 @@ static void control_thread(void *, void *, void *) {
 
     LOG_INF("Control thread started, servos initialized.");
 
-    uint32_t prev_thr = SERVO_NEUTRAL_US; // Start at neutral
+    float filtered_thr = (float)SERVO_NEUTRAL_US;
     g_ros_ctrl.diff = diff_state;
 
-    // Per-loop ramp limits (us per loop)
-    const int32_t max_thr_accel = (THROTTLE_RAMP_DELTA_US * LOOP_MS) / THROTTLE_RAMP_TIME_MS;
-    const int32_t max_thr_decel = (THROTTLE_DECEL_DELTA_US * LOOP_MS) / THROTTLE_DECEL_TIME_MS;
+    uint64_t prev_loop_us = k_ticks_to_us_floor64(k_uptime_ticks());
 
     for (;;) {
         const uint64_t loop_start_us = k_ticks_to_us_floor64(k_uptime_ticks());
+        uint64_t dt_us = loop_start_us - prev_loop_us;
+        if (dt_us == 0U) {
+            dt_us = LOOP_MS * 1000ULL;
+        }
 
         // 1) Connection + override state (three-way)
         remote_connected = rc_input_connected();
@@ -144,24 +121,36 @@ static void control_thread(void *, void *, void *) {
         // 2) Decide command sources
         // - Compute booleans first (like gear), then map to pulses together
         uint32_t steer_us = SERVO_NEUTRAL_US;
-        uint32_t thr_us = SERVO_NEUTRAL_US;
+        uint32_t thr_target_us = SERVO_NEUTRAL_US;
         bool high_gear = false;
         bool diff_engaged = diff_state; // start from persisted state
         uint32_t gear_us = GEAR_LOW_US;
         uint32_t diff_front_us = DIFF_OPEN_FRONT_US;
         uint32_t diff_rear_us = DIFF_OPEN_REAR_US;
-        bool mute_outputs = false;
 
         if (remote_connected && override_mode != RC_OVERRIDE_MUTE) {
             switch (override_mode) {
             case RC_OVERRIDE_REMOTE:
                 // Manual override passthrough
                 steer_us = rc_get_pulse_us(RC_STEER);
-                thr_us = rc_get_pulse_us(RC_THROTTLE);
+                thr_target_us = rc_get_pulse_us(RC_THROTTLE);
                 high_gear = (rc_get_pulse_us(RC_HIGH_GEAR) > SERVO_NEUTRAL_US);
                 // Update ROS shadow for better transition in case ros agent is off
-                g_ros_ctrl.steering = (int8_t)(((int32_t)steer_us - SERVO_NEUTRAL_US) * 127 / 500);
-                g_ros_ctrl.throttle = (int8_t)(((int32_t)thr_us - SERVO_NEUTRAL_US) * 127 / 500);
+                int32_t steer_delta = (int32_t)steer_us - SERVO_NEUTRAL_US;
+                int32_t steer_val = (steer_delta * 127) / 500;
+                if (steer_val > 127)
+                    steer_val = 127;
+                if (steer_val < -127)
+                    steer_val = -127;
+                g_ros_ctrl.steering = (int8_t)steer_val;
+
+                int32_t thr_delta = (int32_t)SERVO_NEUTRAL_US - (int32_t)thr_target_us;
+                int32_t thr_val = (thr_delta * 127) / 500;
+                if (thr_val > 127)
+                    thr_val = 127;
+                if (thr_val < -127)
+                    thr_val = -127;
+                g_ros_ctrl.throttle = (int8_t)thr_val;
                 g_ros_ctrl.high_gear = high_gear;
                 // Diff next state from latched RC event
                 diff_state = diff_next_state(diff_state);
@@ -183,16 +172,15 @@ static void control_thread(void *, void *, void *) {
                 // ROS control
 
                 steer_us = int8_to_us(g_ros_ctrl.steering);
-                thr_us = SERVO_NEUTRAL_US;
+                thr_target_us = SERVO_NEUTRAL_US;
 
                 uint32_t now_ms = k_uptime_get_32();
                 uint32_t age_ms = now_ms - g_ros_ctrl.timestamp;
                 if (age_ms < 150U) {
-                    thr_us = int8_to_throttle_us(g_ros_ctrl.throttle);
+                    thr_target_us = int8_to_throttle_us(g_ros_ctrl.throttle);
                 } else {
-                thr_us = 0;
-                if (g_ros_ctrl.timestamp < 100) {
-                    thr_us = int8_to_us(g_ros_ctrl.throttle);
+                    thr_target_us = SERVO_NEUTRAL_US;
+                    filtered_thr = (float)SERVO_NEUTRAL_US;
                 }
 
                 high_gear = g_ros_ctrl.high_gear;
@@ -218,20 +206,46 @@ static void control_thread(void *, void *, void *) {
                 break;
             }
 
-            // 3) Apply throttle ramping (accel/decel)
-            int32_t accel = max_thr_accel;
-            int32_t decel = max_thr_decel;
-            if (gear_us == GEAR_HIGH_US) {
-                // In high gear, be gentler on accel
-                accel /= 5;
+            // 3) Apply throttle smoothing via first-order filter
+            int32_t neutral_filtered = abs((int32_t)filtered_thr - (int32_t)SERVO_NEUTRAL_US);
+            int32_t neutral_target = abs((int32_t)thr_target_us - (int32_t)SERVO_NEUTRAL_US);
+            bool accelerating = neutral_target > neutral_filtered;
+
+            float tau_ms = THROTTLE_FILTER_ACCEL_TAU_MS;
+            if (!accelerating) {
+                tau_ms = THROTTLE_FILTER_DECEL_TAU_MS;
+            } else if (neutral_filtered < THROTTLE_FILTER_SOFT_ZONE_US) {
+                tau_ms = THROTTLE_FILTER_STANDSTILL_TAU_MS;
             }
-            thr_us = clamp_throttle(thr_us, prev_thr, accel, decel);
-            prev_thr = thr_us;
-            forward_guess = thr_us > 1450; // simple heuristic
+
+            if (high_gear) {
+                tau_ms *= THROTTLE_FILTER_HIGH_GEAR_SCALE;
+            }
+
+            float dt_ms = (float)dt_us / 1000.0f;
+            if (dt_ms < 0.0f) {
+                dt_ms = 0.0f;
+            }
+
+            float alpha = dt_ms / (tau_ms + dt_ms);
+            if (alpha > 1.0f)
+                alpha = 1.0f;
+            else if (alpha < 0.0f)
+                alpha = 0.0f;
+
+            filtered_thr += alpha * ((float)thr_target_us - filtered_thr);
+
+            if (filtered_thr < 1000.0f)
+                filtered_thr = 1000.0f;
+            if (filtered_thr > 2000.0f)
+                filtered_thr = 2000.0f;
+
+            uint32_t thr_output_us = (uint32_t)(filtered_thr + 0.5f);
+            forward_guess = thr_output_us > 1450; // simple heuristic
 
             // 4) Write outputs
             servo_set_ticks(&servos[SERVO_STEERING].spec, steer_us);
-            servo_set_ticks(&servos[SERVO_THROTTLE].spec, thr_us);
+            servo_set_ticks(&servos[SERVO_THROTTLE].spec, thr_output_us);
             servo_set_ticks(&servos[SERVO_GEAR].spec, gear_us);
             servo_set_ticks(&servos[SERVO_DIFF].spec, diff_front_us);
             servo_set_ticks(&servos[SERVO_DIFF_REAR].spec, diff_rear_us);
@@ -242,8 +256,9 @@ static void control_thread(void *, void *, void *) {
             servo_set_ticks(&servos[SERVO_GEAR].spec, 0);
             servo_set_ticks(&servos[SERVO_DIFF].spec, 0);
             servo_set_ticks(&servos[SERVO_DIFF_REAR].spec, 0);
-            prev_thr = SERVO_NEUTRAL_US;
+            filtered_thr = (float)SERVO_NEUTRAL_US;
         }
+        prev_loop_us = loop_start_us;
         // 5) Keep the loop period
         const uint64_t elapsed_us = k_ticks_to_us_floor64(k_uptime_ticks()) - loop_start_us;
         const int32_t sleep_time = (int32_t)(LOOP_MS * 1000) - (int32_t)elapsed_us;
