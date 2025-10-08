@@ -1,5 +1,5 @@
 &cdc_acm_uart0 { // For mikroros
-    current-speed = <115200>;
+    current-speed = <1000000>;
 };
 
 &usart1 {
@@ -10,7 +10,7 @@
     status = "okay";
     pinctrl-0 = <&usart3_tx_pd8 &usart3_rx_pd9>;
     pinctrl-names = "default";
-    current-speed = <115200>;
+    current-speed = <1000000>;
 };
 
 /* For input event codes used by futaba,sbus */
