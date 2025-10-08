@@ -27,7 +27,7 @@ static float peak_charge_a;
 static float peak_discharge_a;
 
 #define BATTERY_PUBLISHER_STACK_SIZE 2048
-#define BATTERY_PUBLISHER_PRIORITY 5
+#define BATTERY_PUBLISHER_PRIORITY 6
 
 static K_THREAD_STACK_DEFINE(battery_thread_stack, BATTERY_PUBLISHER_STACK_SIZE);
 static struct k_thread battery_thread_data;
