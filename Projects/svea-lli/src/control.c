@@ -81,7 +81,7 @@ static inline void servo_set_ticks(const struct pwm_dt_spec *s, uint16_t t_us) {
 #define THROTTLE_FILTER_STANDSTILL_TAU_MS 450 // slower response when leaving neutral (ms)
 #define THROTTLE_FILTER_DECEL_TAU_MS 120      // quicker response when reducing throttle (ms)
 #define THROTTLE_FILTER_SOFT_ZONE_US 50       // +/- range around neutral treated as standstill
-#define THROTTLE_FILTER_HIGH_GEAR_SCALE 1.8f  // smoothing multiplier when high gear engaged
+#define THROTTLE_FILTER_HIGH_GEAR_SCALE 1.8f  // smoothing multiplier when high gear engaged, >1 slower response
 
 // Remove old pulse_to_us, use new int8 mapping
 static inline uint32_t int8_to_us(int8_t val) {
