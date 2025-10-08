@@ -183,6 +183,13 @@ static void control_thread(void *, void *, void *) {
                 // ROS control
 
                 steer_us = int8_to_us(g_ros_ctrl.steering);
+                thr_us = SERVO_NEUTRAL_US;
+
+                uint32_t now_ms = k_uptime_get_32();
+                uint32_t age_ms = now_ms - g_ros_ctrl.timestamp;
+                if (age_ms < 150U) {
+                    thr_us = int8_to_throttle_us(g_ros_ctrl.throttle);
+                } else {
                 thr_us = 0;
                 if (g_ros_ctrl.timestamp < 100) {
                     thr_us = int8_to_us(g_ros_ctrl.throttle);

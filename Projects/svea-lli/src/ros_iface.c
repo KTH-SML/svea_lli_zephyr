@@ -101,7 +101,7 @@ static void throttle_cb(const void *msg) {
     int8_t value = ((std_msgs__msg__Int8 *)msg)->data;
     LOG_DBG("Received throttle command: %d", value);
     g_ros_ctrl.throttle = value;
-    g_ros_ctrl.timestamp = k_uptime_get();
+    g_ros_ctrl.timestamp = k_uptime_get_32();
 }
 
 static void gear_cb(const void *msg) {
