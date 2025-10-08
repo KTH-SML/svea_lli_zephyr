@@ -154,13 +154,8 @@ static void control_thread(void *, void *, void *) {
         uint32_t diff_rear_us = DIFF_OPEN_REAR_US;
         bool mute_outputs = false;
 
-        if (!remote_connected) {
-            // Disconnected: null all primary outputs
-            steer_us = SERVO_NEUTRAL_US;
-            thr_us = SERVO_NEUTRAL_US;
-            high_gear = false;
-            diff_engaged = false;
-        } else {
+        if (remote_connected) {
+
             switch (override_mode) {
             case RC_OVERRIDE_REMOTE:
                 // Manual override passthrough
@@ -227,28 +222,34 @@ static void control_thread(void *, void *, void *) {
                 // Use defaults
                 break;
             }
-        }
 
-        // 3) Apply throttle ramping (accel/decel) unless muted
-        if (!mute_outputs) {
-            int32_t accel = max_thr_accel;
-            int32_t decel = max_thr_decel;
-            if (gear_us == GEAR_HIGH_US) {
-                // In high gear, be gentler on accel
-                accel /= 5;
+            // 3) Apply throttle ramping (accel/decel) unless muted
+            if (!mute_outputs) {
+                int32_t accel = max_thr_accel;
+                int32_t decel = max_thr_decel;
+                if (gear_us == GEAR_HIGH_US) {
+                    // In high gear, be gentler on accel
+                    accel /= 5;
+                }
+                thr_us = clamp_throttle(thr_us, prev_thr, accel, decel);
+                prev_thr = thr_us;
+                forward_guess = thr_us > 1450; // simple heuristic
             }
-            thr_us = clamp_throttle(thr_us, prev_thr, accel, decel);
-            prev_thr = thr_us;
-            forward_guess = thr_us > 1450; // simple heuristic
+
+            // 4) Write outputs
+            servo_set_ticks(&servos[SERVO_STEERING].spec, steer_us);
+            servo_set_ticks(&servos[SERVO_THROTTLE].spec, thr_us);
+            servo_set_ticks(&servos[SERVO_GEAR].spec, gear_us);
+            servo_set_ticks(&servos[SERVO_DIFF].spec, diff_front_us);
+            servo_set_ticks(&servos[SERVO_DIFF_REAR].spec, diff_rear_us);
+        } else {
+            // No RC connection, safe neutral outputs
+            servo_set_ticks(&servos[SERVO_STEERING].spec, 0);
+            servo_set_ticks(&servos[SERVO_THROTTLE].spec, 0);
+            servo_set_ticks(&servos[SERVO_GEAR].spec, 0);
+            servo_set_ticks(&servos[SERVO_DIFF].spec, 0);
+            servo_set_ticks(&servos[SERVO_DIFF_REAR].spec, 0);
         }
-
-        // 4) Write outputs
-        servo_set_ticks(&servos[SERVO_STEERING].spec, steer_us);
-        servo_set_ticks(&servos[SERVO_THROTTLE].spec, thr_us);
-        servo_set_ticks(&servos[SERVO_GEAR].spec, gear_us);
-        servo_set_ticks(&servos[SERVO_DIFF].spec, diff_front_us);
-        servo_set_ticks(&servos[SERVO_DIFF_REAR].spec, diff_rear_us);
-
         // 5) Keep the loop period
         const uint64_t elapsed_us = k_ticks_to_us_floor64(k_uptime_ticks()) - loop_start_us;
         const int32_t sleep_time = (int32_t)(LOOP_MS * 1000) - (int32_t)elapsed_us;
