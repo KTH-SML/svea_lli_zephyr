@@ -156,10 +156,10 @@ void bms_init_config(Bms *bms, int type, float nominal_capacity)
             bms->conf.cell_ov_limit = 4.25F;        // absolute max
             bms->conf.cell_chg_voltage = 4.10F;     // normal full charge (~90%)
             bms->conf.cell_ov_reset = 4.20F;        // hysteresis after OV
-            bms->conf.bal_cell_voltage_min = 4.10F; // balance near top
-            bms->conf.cell_dis_voltage = 3.20F;     // soft discharge stop
-            bms->conf.cell_uv_limit = 3.00F;        // absolute minimum
-            bms->conf.cell_uv_reset = 3.20F;        // margin for recovery
+            bms->conf.bal_cell_voltage_min = 4.05F; // balance near top
+            bms->conf.cell_dis_voltage = 3.45F;     // soft discharge stop (~10% SOC)
+            bms->conf.cell_uv_limit = 3.30F;        // absolute minimum
+            bms->conf.cell_uv_reset = 3.45F;        // margin for recovery
             bms->conf.ocv = ocv_lipo;
 
             // Limits when battery is considered invalid and should not be used
@@ -182,13 +182,15 @@ void bms_init_config(Bms *bms, int type, float nominal_capacity)
             (double)bms->conf.chg_oc_limit, bms->conf.chg_oc_delay_ms,
             (double)bms->conf.dis_sc_limit, bms->conf.dis_sc_delay_us);
 
-    LOG_DBG("Voltage limits: chg=%.3f V, dis=%.3f V, ov=%.3f/%.3f V, uv=%.3f/%.3f V, delays=%d/%d s",
-            (double)bms->conf.cell_chg_voltage, (double)bms->conf.cell_dis_voltage,
-            (double)bms->conf.cell_ov_limit, (double)bms->conf.cell_ov_reset,
-            (double)bms->conf.cell_uv_limit, (double)bms->conf.cell_uv_reset,
-            bms->conf.cell_ov_delay_s, bms->conf.cell_uv_delay_s);
+    LOG_DBG(
+        "Voltage limits: chg=%.3f V, dis=%.3f V, ov=%.3f/%.3f V, uv=%.3f/%.3f V, delays=%d/%d s",
+        (double)bms->conf.cell_chg_voltage, (double)bms->conf.cell_dis_voltage,
+        (double)bms->conf.cell_ov_limit, (double)bms->conf.cell_ov_reset,
+        (double)bms->conf.cell_uv_limit, (double)bms->conf.cell_uv_reset, bms->conf.cell_ov_delay_s,
+        bms->conf.cell_uv_delay_s);
 
-    LOG_DBG("Temperature limits: dis_ut=%.1f °C, dis_ot=%.1f °C, chg_ut=%.1f °C, chg_ot=%.1f °C, hyst=%.1f °C",
+    LOG_DBG("Temperature limits: dis_ut=%.1f °C, dis_ot=%.1f °C, chg_ut=%.1f °C, chg_ot=%.1f °C, "
+            "hyst=%.1f °C",
             (double)bms->conf.dis_ut_limit, (double)bms->conf.dis_ot_limit,
             (double)bms->conf.chg_ut_limit, (double)bms->conf.chg_ot_limit,
             (double)bms->conf.t_limit_hyst);
