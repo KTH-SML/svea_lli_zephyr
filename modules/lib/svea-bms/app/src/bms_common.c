@@ -154,7 +154,7 @@ void bms_init_config(Bms *bms, int type, float nominal_capacity)
             break;
         case CELL_TYPE_GENERIC_LIPO:
             bms->conf.cell_ov_limit = 4.25F;        // absolute max
-            bms->conf.cell_chg_voltage = 4.20F;     // normal full charge
+            bms->conf.cell_chg_voltage = 4.10F;     // normal full charge (~90%)
             bms->conf.cell_ov_reset = 4.20F;        // hysteresis after OV
             bms->conf.bal_cell_voltage_min = 4.10F; // balance near top
             bms->conf.cell_dis_voltage = 3.20F;     // soft discharge stop
