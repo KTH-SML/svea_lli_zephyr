@@ -157,9 +157,9 @@ void bms_init_config(Bms *bms, int type, float nominal_capacity)
             bms->conf.cell_chg_voltage = 4.20F;     // normal full charge
             bms->conf.cell_ov_reset = 4.18F;        // hysteresis after OV
             bms->conf.bal_cell_voltage_min = 4.10F; // balance near top
-            bms->conf.cell_dis_voltage = 3.20F;     // soft discharge stop
-            bms->conf.cell_uv_limit = 3.00F;        // absolute minimum
-            bms->conf.cell_uv_reset = 3.20F;        // margin for recovery
+            bms->conf.cell_dis_voltage = 3.23F;     // soft discharge stop
+            bms->conf.cell_uv_limit = 3.20F;        // absolute minimum
+            bms->conf.cell_uv_reset = 3.25F;        // margin for recovery
             bms->conf.ocv = ocv_lipo;
 
             // Limits when battery is considered invalid and should not be used
