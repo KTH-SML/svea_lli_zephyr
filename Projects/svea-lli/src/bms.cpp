@@ -195,7 +195,7 @@ static void soc_indicator_init(void) {
 
 static void print_bms_status(const Bms *bms) {
 
-    return;
+    // return;
     if (bms->status.pack_current > peak_charge_a) {
         peak_charge_a = bms->status.pack_current;
     }
@@ -412,6 +412,9 @@ static int setup_bms(void) {
         k_sleep(K_MSEC(1000));
     }
     LOG_INF("BMS hardware initialized");
+
+    g_bms.conf.enable_cell_protection = false;
+    LOG_INF("Internal cell UV/OV protection disabled (external protection active)");
 
     (void)bms_configure(&g_bms);
     bms_update(&g_bms);

@@ -94,6 +94,8 @@ typedef struct
     float cell_uv_reset;      ///< Cell under-voltage error reset threshold (V)
     uint32_t cell_uv_delay_s; ///< Cell under-voltage delay (ms)
 
+    bool enable_cell_protection; ///< Enable programming of hardware UV/OV protection thresholds
+
     float valid_min_voltage;
     float valid_max_voltage;
 

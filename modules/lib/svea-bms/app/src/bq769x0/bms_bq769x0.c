@@ -348,6 +348,23 @@ static int bms_apply_cell_ovp(Bms *bms)
     return 0;
 }
 
+static int bms_disable_cell_hw_protection(Bms *bms)
+{
+    PROTECT3_Type protect3;
+
+    protect3.byte = bq769x0_read_byte(BQ769X0_PROTECT3);
+    protect3.UV_DELAY = 0;
+    protect3.OV_DELAY = 0;
+    bq769x0_write_byte(BQ769X0_PROTECT3, protect3.byte);
+
+    bq769x0_write_byte(BQ769X0_UV_TRIP, 0x00);
+    bq769x0_write_byte(BQ769X0_OV_TRIP, 0xFF);
+
+    LOG_INF("Disabled hardware cell UV/OV protection (external protection assumed)");
+
+    return 0;
+}
+
 static int bms_apply_temp_limits(Bms *bms)
 {
     // bq769x0 don't support temperature limits --> has to be solved in software
@@ -498,10 +515,18 @@ void bms_update_error_flags(Bms *bms)
     sys_stat.byte = bq769x0_read_byte(BQ769X0_SYS_STAT);
 
     uint32_t error_flags_temp = 0;
-    if (sys_stat.UV)
-        error_flags_temp |= 1U << BMS_ERR_CELL_UNDERVOLTAGE;
-    if (sys_stat.OV)
-        error_flags_temp |= 1U << BMS_ERR_CELL_OVERVOLTAGE;
+    if (bms->conf.enable_cell_protection) {
+        if (sys_stat.UV)
+            error_flags_temp |= 1U << BMS_ERR_CELL_UNDERVOLTAGE;
+        if (sys_stat.OV)
+            error_flags_temp |= 1U << BMS_ERR_CELL_OVERVOLTAGE;
+    }
+    else {
+        if (bms->status.cell_voltage_min < bms->conf.cell_uv_limit)
+            error_flags_temp |= 1U << BMS_ERR_CELL_UNDERVOLTAGE;
+        if (bms->status.cell_voltage_max > bms->conf.cell_ov_limit)
+            error_flags_temp |= 1U << BMS_ERR_CELL_OVERVOLTAGE;
+    }
     if (sys_stat.SCD)
         error_flags_temp |= 1U << BMS_ERR_SHORT_CIRCUIT;
     if (sys_stat.OCD)
@@ -579,6 +604,12 @@ void bms_handle_errors(Bms *bms)
     SYS_STAT_Type sys_stat;
     sys_stat.byte = bq769x0_read_byte(BQ769X0_SYS_STAT);
     error_status = sys_stat.byte;
+
+    if (!bms->conf.enable_cell_protection) {
+        sys_stat.UV = 0;
+        sys_stat.OV = 0;
+        error_status &= ~(BQ769X0_SYS_STAT_UV | BQ769X0_SYS_STAT_OV);
+    }
 
     if (!bq769x0_alert_flag() && error_status == 0) {
         return;
@@ -685,8 +716,13 @@ int bms_configure(Bms *bms)
 {
     int err = 0;
 
-    err += bms_apply_cell_ovp(bms);
-    err += bms_apply_cell_uvp(bms);
+    if (bms->conf.enable_cell_protection) {
+        err += bms_apply_cell_ovp(bms);
+        err += bms_apply_cell_uvp(bms);
+    }
+    else {
+        err += bms_disable_cell_hw_protection(bms);
+    }
 
     err += bms_apply_dis_scp(bms);
     err += bms_apply_dis_ocp(bms);

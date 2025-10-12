@@ -27,6 +27,7 @@ int adc_offset; // factory-calibrated, read out from chip (mV)
 // indicates if a new current reading or an error is available from BMS IC
 static bool alert_interrupt_flag;
 static time_t alert_interrupt_timestamp;
+static bool alert_supported;
 
 #ifndef UNIT_TEST
 
@@ -34,8 +35,10 @@ static const struct device *i2c_dev = DEVICE_DT_GET(DT_PARENT(BQ769X0_NODE));
 static int i2c_address = DT_REG_ADDR(BQ769X0_NODE);
 static bool crc_enabled; // determined automatically
 
+#if DT_NODE_HAS_PROP(BQ769X0_NODE, alert_gpios)
 static const struct gpio_dt_spec alert = GPIO_DT_SPEC_GET(BQ769X0_NODE, alert_gpios);
 static struct gpio_callback alert_cb;
+#endif
 
 /* Optional precharge control GPIO (e.g., BQ76200 PCHG) */
 static const struct gpio_dt_spec pchg = GPIO_DT_SPEC_GET_OR(BQ769X0_NODE, pchg_gpios, {0});
@@ -49,6 +52,15 @@ static void bq769x0_alert_isr(const struct device *port, struct gpio_callback *c
     alert_interrupt_timestamp = uptime();
     alert_interrupt_flag = true;
 }
+#else
+static void bq769x0_alert_isr(const struct device *port, struct gpio_callback *cb,
+                              gpio_port_pins_t pins)
+{
+    ARG_UNUSED(port);
+    ARG_UNUSED(cb);
+    ARG_UNUSED(pins);
+}
+#endif
 
 void bq769x0_write_byte(uint8_t reg_addr, uint8_t data)
 {
@@ -140,6 +152,8 @@ static int determine_address_and_crc(void)
 
 int bq769x0_init()
 {
+#if DT_NODE_HAS_PROP(BQ769X0_NODE, alert_gpios)
+    alert_supported = true;
     if (!device_is_ready(alert.port)) {
         return -ENODEV;
     }
@@ -147,6 +161,10 @@ int bq769x0_init()
     gpio_pin_configure_dt(&alert, GPIO_INPUT);
     gpio_init_callback(&alert_cb, bq769x0_alert_isr, BIT(alert.pin));
     gpio_add_callback(alert.port, &alert_cb);
+#else
+    alert_supported = false;
+    LOG_WRN("BQ769x0 ALERT GPIO not defined; falling back to polling");
+#endif
 
     if (!device_is_ready(i2c_dev)) {
         LOG_ERR("I2C device not ready");
@@ -191,11 +209,17 @@ int bq769x0_init()
 
 bool bq769x0_alert_flag()
 {
+    if (!alert_supported) {
+        return true;
+    }
     return alert_interrupt_flag;
 }
 
 void bq769x0_alert_flag_reset()
 {
+    if (!alert_supported) {
+        return;
+    }
     alert_interrupt_flag = false;
 }
 

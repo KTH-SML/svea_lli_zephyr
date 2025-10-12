@@ -109,7 +109,7 @@ icm42670: icm42670@68 {
         compatible = "ti,bq769x0";
         reg = <0x08>;
         /* ALERT pin from BMS IC to MCU GPIO (adjust to your wiring) */
-        alert-gpios = <&gpiod 6 GPIO_ACTIVE_HIGH>; /* ALERT rerouted to PD6 */
+        // alert-gpios = <&gpiod 6 GPIO_ACTIVE_HIGH>; /* ALERT rerouted to PD6 */
         /* Precharge control (BQ76200 PCHG) connected to PD2 */
         pchg-gpios = <&gpiod 2 GPIO_ACTIVE_HIGH>;
         status = "okay";
@@ -215,7 +215,7 @@ icm42670: icm42670@68 {
     pcb {
         compatible = "bms";
         /* Adjust these to your pack and shunt */
-        num-cells-max = <5>;              /* e.g. 3S-5S bq76920 */
+        num-cells-max = <3>;              /* e.g. 3S-5S bq76920 */
         num-thermistors-max = <0>;        /* set 0/1/2/3 matching your wiring */
         current-max = <30>;               /* A, informational */
         shunt-res = <4000>;               /* mOhm in milli (e.g. 4 mOhm => 4000) */
@@ -226,7 +226,7 @@ icm42670: icm42670@68 {
 
     /* TS1 wake control GPIO for the BMS IC (used by wake_chip.c) */
     zephyr,user {
-        ts1_wake_gpios = <&gpiod 5 GPIO_ACTIVE_HIGH>; /* adjust to your wiring */
+        //ts1_wake_gpios = <&gpiod 5 GPIO_ACTIVE_HIGH>; /* adjust to your wiring */
         /* MikroBUS RST pin selects the CS analog mux (keep host -> IMU path) */
         imu_reset_gpios = <&gpioc 15 GPIO_ACTIVE_LOW>; /* mikroBUS1 RST */
         soc_button_gpios = <&gpioe 10 GPIO_ACTIVE_LOW>; /* User BTN1 */
