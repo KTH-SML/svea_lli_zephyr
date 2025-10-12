@@ -28,14 +28,31 @@
 
 LOG_MODULE_REGISTER(imu_sensor, LOG_LEVEL_INF);
 
+#if DT_NODE_HAS_PROP(DT_PATH(zephyr_user), imu_calib_button_gpios)
+static const struct gpio_dt_spec imu_calib_button =
+    GPIO_DT_SPEC_GET(DT_PATH(zephyr_user), imu_calib_button_gpios);
+#define IMU_CALIB_BUTTON_PRESENT 1
+#else
+#define IMU_CALIB_BUTTON_PRESENT 0
+#endif
+
 static K_THREAD_STACK_DEFINE(imu_sensor_stack, 2048);
 static struct k_thread imu_thread_data;
 
-static const struct device *imu_dev;
 static sensor_msgs__msg__Imu imu_msg;
+static struct gpio_callback imu_calib_button_cb;
+
+static void imu_calib_button_isr(const struct device *port, struct gpio_callback *cb, uint32_t pins) {
+    ARG_UNUSED(port);
+    ARG_UNUSED(cb);
+    ARG_UNUSED(pins);
+    LOG_INF("IMU calibration button interrupt");
+    /* Defer heavy work to thread context */
+    extern volatile bool g_imu_calib_request;
+    g_imu_calib_request = true;
+}
 
 static void imu_sensor_thread(void *p1, void *p2, void *p3);
-static int imu_device_retry_init(const struct device *dev);
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -47,6 +64,7 @@ static int imu_device_retry_init(const struct device *dev);
 /* With ODR set to 100 Hz we have BW ≈ ODR/2 */
 #define IMU_EFFECTIVE_BW_HZ (50.0)
 
+// Covariance calculation based on IMU noise density and effective bandwidth
 static const double acc_noise_rms = (IMU_ACCEL_NOISE_DENSITY_G * STANDARD_GRAVITY) *
                                     sqrt(IMU_EFFECTIVE_BW_HZ);
 static const double gyro_noise_rms = ((IMU_GYRO_NOISE_DENSITY_MDPS * 1e-3) * (M_PI / 180.0)) *
@@ -54,65 +72,14 @@ static const double gyro_noise_rms = ((IMU_GYRO_NOISE_DENSITY_MDPS * 1e-3) * (M_
 static const double acc_variance = acc_noise_rms * acc_noise_rms;
 static const double gyro_variance = gyro_noise_rms * gyro_noise_rms;
 
-#if DT_NODE_HAS_PROP(DT_PATH(zephyr_user), imu_reset_gpios)
-static const struct gpio_dt_spec imu_reset_gpio =
-    GPIO_DT_SPEC_GET(DT_PATH(zephyr_user), imu_reset_gpios);
-#define HAS_IMU_RESET_GPIO 1
-#else
-#define HAS_IMU_RESET_GPIO 0
-#endif
-
-static int imu_device_retry_init(const struct device *dev) {
-    extern const struct init_entry __init_POST_KERNEL_start[];
-    extern const struct init_entry __init_APPLICATION_start[];
-    const struct init_entry *entry;
-
-    for (entry = __init_POST_KERNEL_start; entry < __init_APPLICATION_start; ++entry) {
-        if ((entry->dev != dev) || (entry->init_fn.dev == NULL)) {
-            continue;
-        }
-
-        dev->state->initialized = false;
-        dev->state->init_res = 0U;
-
-        int rc = entry->init_fn.dev(dev);
-
-        if (rc != 0) {
-            unsigned int stored = (unsigned int)((rc < 0) ? MIN(-rc, (int)UINT8_MAX)
-                                                          : MIN(rc, (int)UINT8_MAX));
-            dev->state->init_res = (uint8_t)stored;
-        } else if (IS_ENABLED(CONFIG_PM_DEVICE_RUNTIME)) {
-            (void)pm_device_runtime_auto_enable(dev);
-        }
-
-        dev->state->initialized = true;
-        return rc;
-    }
-
-    return -ENOENT;
-}
-
-static int device_init_status(const struct device *dev) {
-    const struct device_state *state = dev->state;
-
-    if (state == NULL) {
-        return -EIO;
-    }
-
-    if (!state->initialized) {
-        int rc = device_init(dev);
-        LOG_DBG("IMU device_init() invoked manually, rc=%d", rc);
-        return rc;
-    }
-
-    if (state->init_res != 0U) {
-        int rc = -((int)state->init_res);
-        LOG_DBG("IMU driver cached init_res=%u (errno=%d)", state->init_res, rc);
-        return rc;
-    }
-
-    return 0;
-}
+/* ── calibration state ─────────────────────────────────────────────── */
+volatile bool g_imu_calib_request; /* set from ISR */
+static bool calib_in_progress;
+static uint64_t calib_start_ms;
+static double sum_ax, sum_ay, sum_az, sum_gx, sum_gy, sum_gz;
+static uint32_t calib_count;
+static double accel_bias[3]; /* add to raw to get corrected */
+static double gyro_bias[3];  /* add to raw to get corrected */
 
 void imu_sensor_start(void) {
     LOG_INF("Starting IMU sensor thread");
@@ -127,54 +94,41 @@ static void imu_sensor_thread(void *p1, void *p2, void *p3) {
 
     LOG_INF("Initializing IMU");
 
-#if HAS_IMU_RESET_GPIO
-    if (!gpio_is_ready_dt(&imu_reset_gpio)) {
-        LOG_WRN("IMU reset GPIO not ready");
-    } else {
-        int rst_rc = gpio_pin_configure_dt(&imu_reset_gpio, GPIO_OUTPUT_ACTIVE);
-        if (rst_rc) {
-            LOG_WRN("Failed to configure IMU reset GPIO: %d", rst_rc);
-        } else {
-            /* Assert reset (active low) briefly before release */
-            gpio_pin_set_dt(&imu_reset_gpio, 0);
-            k_msleep(5);
-            gpio_pin_set_dt(&imu_reset_gpio, 1);
-            k_msleep(5);
-        }
-    }
-#endif
+    const struct device *imu_dev = DEVICE_DT_GET(DT_ALIAS(imu));
 
-    const struct device *dev = DEVICE_DT_GET(DT_ALIAS(imu));
-    const int MAX_IMU_INIT_ATTEMPTS = 20;
-    int init_attempts = 0;
-
-    while (dev && !device_is_ready(dev) && (init_attempts < MAX_IMU_INIT_ATTEMPTS)) {
-        int rc = device_init_status(dev);
-        if (rc != 0) {
-            LOG_WRN("IMU init attempt %d/%d failed (rc=%d)", init_attempts + 1,
-                    MAX_IMU_INIT_ATTEMPTS, rc);
-        }
-
-        int retry = imu_device_retry_init(dev);
-        init_attempts++;
-
-        if (retry) {
-            LOG_WRN("IMU re-init attempt %d/%d failed: %d", init_attempts, MAX_IMU_INIT_ATTEMPTS, retry);
-        } else {
-            LOG_INF("IMU re-init attempt %d/%d succeeded", init_attempts, MAX_IMU_INIT_ATTEMPTS);
-        }
-
-        if (!device_is_ready(dev)) {
-            k_msleep(100);
-        }
-    }
-
-    if (!dev || !device_is_ready(dev)) {
-        LOG_ERR("IMU initialization failed after %d attempts, giving up", init_attempts);
+    if (!imu_dev || !device_is_ready(imu_dev)) {
+        LOG_ERR("IMU initialization failed, giving up");
         return;
     }
+#if IMU_CALIB_BUTTON_PRESENT
+    LOG_INF("IMU calibration button using %s pin %u",
+            imu_calib_button.port->name, imu_calib_button.pin);
+    if (!device_is_ready(imu_calib_button.port)) {
+        LOG_ERR("IMU calibration button port not ready");
+    } else {
+        int ret = gpio_pin_configure_dt(&imu_calib_button, GPIO_INPUT);
+        if (ret != 0) {
+            LOG_ERR("IMU calibration button configure failed: %d", ret);
+        } else {
+            gpio_init_callback(&imu_calib_button_cb, imu_calib_button_isr,
+                               BIT(imu_calib_button.pin));
+            ret = gpio_add_callback(imu_calib_button.port, &imu_calib_button_cb);
+            if (ret != 0) {
+                LOG_ERR("IMU calibration button callback add failed: %d", ret);
+            } else {
+                ret = gpio_pin_interrupt_configure_dt(&imu_calib_button, GPIO_INT_EDGE_TO_ACTIVE);
+                if (ret != 0) {
+                    LOG_ERR("IMU calibration button interrupt configure failed: %d", ret);
+                } else {
+                    LOG_INF("IMU calibration button interrupt configured");
+                }
+            }
+        }
+    }
+#else
+    LOG_WRN("IMU calibration button GPIO not defined in devicetree");
+#endif
 
-    imu_dev = dev;
     LOG_INF("IMU device loop starting: %s", imu_dev->name);
 
     struct sensor_value accel[3];
@@ -196,12 +150,64 @@ static void imu_sensor_thread(void *p1, void *p2, void *p3) {
             k_sleep(K_MSEC(100));
             continue;
         }
-        imu_msg.linear_acceleration.x = sensor_value_to_double(&accel[0]);
-        imu_msg.linear_acceleration.y = sensor_value_to_double(&accel[1]);
-        imu_msg.linear_acceleration.z = sensor_value_to_double(&accel[2]);
-        imu_msg.angular_velocity.x = sensor_value_to_double(&gyro[0]);
-        imu_msg.angular_velocity.y = sensor_value_to_double(&gyro[1]);
-        imu_msg.angular_velocity.z = sensor_value_to_double(&gyro[2]);
+
+        /* Convert raw to doubles */
+        double ax = sensor_value_to_double(&accel[0]);
+        double ay = sensor_value_to_double(&accel[1]);
+        double az = sensor_value_to_double(&accel[2]);
+        double gx = sensor_value_to_double(&gyro[0]);
+        double gy = sensor_value_to_double(&gyro[1]);
+        double gz = sensor_value_to_double(&gyro[2]);
+
+        /* Handle calibration trigger (1 s averaging window) */
+        if (g_imu_calib_request && !calib_in_progress) {
+            g_imu_calib_request = false;
+            calib_in_progress = true;
+            calib_start_ms = k_uptime_get();
+            sum_ax = sum_ay = sum_az = 0.0;
+            sum_gx = sum_gy = sum_gz = 0.0;
+            calib_count = 0;
+            LOG_INF("IMU calibration: started 1s averaging");
+        }
+        if (calib_in_progress) {
+            sum_ax += ax; sum_ay += ay; sum_az += az;
+            sum_gx += gx; sum_gy += gy; sum_gz += gz;
+            calib_count++;
+            if ((k_uptime_get() - calib_start_ms) >= 1000U) {
+                /* Compute means */
+                double n = (calib_count > 0) ? (double)calib_count : 1.0;
+                double mean_ax = sum_ax / n;
+                double mean_ay = sum_ay / n;
+                double mean_az = sum_az / n;
+                double mean_gx = sum_gx / n;
+                double mean_gy = sum_gy / n;
+                double mean_gz = sum_gz / n;
+
+                /* Bias so that corrected = raw + bias → targets are (0,0,-g) and (0,0,0) */
+                accel_bias[0] = 0.0 - mean_ax;
+                accel_bias[1] = 0.0 - mean_ay;
+                accel_bias[2] = -STANDARD_GRAVITY - mean_az;
+                gyro_bias[0]  = 0.0 - mean_gx;
+                gyro_bias[1]  = 0.0 - mean_gy;
+                gyro_bias[2]  = 0.0 - mean_gz;
+
+                calib_in_progress = false;
+                LOG_INF("IMU calibration: done (%u samples)\n"
+                        "  accel bias = [%.6f, %.6f, %.6f]\n"
+                        "  gyro  bias = [%.6f, %.6f, %.6f]",
+                        calib_count,
+                        accel_bias[0], accel_bias[1], accel_bias[2],
+                        gyro_bias[0], gyro_bias[1], gyro_bias[2]);
+            }
+        }
+
+        /* Apply biases */
+        imu_msg.linear_acceleration.x = ax + accel_bias[0];
+        imu_msg.linear_acceleration.y = ay + accel_bias[1];
+        imu_msg.linear_acceleration.z = az + accel_bias[2];
+        imu_msg.angular_velocity.x = gx + gyro_bias[0];
+        imu_msg.angular_velocity.y = gy + gyro_bias[1];
+        imu_msg.angular_velocity.z = gz + gyro_bias[2];
 
         imu_msg.header.stamp.sec = (int32_t)(ros_iface_epoch_millis() / 1000ULL);
         imu_msg.header.stamp.nanosec = (uint32_t)(ros_iface_epoch_nanos() % 1000000000ULL);

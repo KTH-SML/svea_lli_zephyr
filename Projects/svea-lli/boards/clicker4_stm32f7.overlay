@@ -60,6 +60,10 @@
     };
 };
 
+&button4 {
+    status = "disabled";
+};
+
 &i2c2 {
     status = "okay";
     clock-frequency = <I2C_BITRATE_FAST>; // Somethings weird with it, fast only works with too aggressive a pullup
@@ -230,6 +234,7 @@ icm42670: icm42670@68 {
         /* MikroBUS RST pin selects the CS analog mux (keep host -> IMU path) */
         imu_reset_gpios = <&gpioc 15 GPIO_ACTIVE_LOW>; /* mikroBUS1 RST */
         soc_button_gpios = <&gpioe 10 GPIO_ACTIVE_LOW>; /* User BTN1 */
+        imu_calib_button_gpios = <&gpioe 13 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>; /* User BTN4 */
         wheel_left_gpios = <&gpiob 2 GPIO_ACTIVE_HIGH>;
         wheel_right_gpios = <&gpioc 7 GPIO_ACTIVE_HIGH>;
     };
@@ -269,7 +274,6 @@ icm42670: icm42670@68 {
         max-pulse = <PWM_USEC(2100)>;
     };
 };
-
 
 / {
     chosen {
