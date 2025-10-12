@@ -129,9 +129,6 @@ static void rc_connected_publish_thread(void *a, void *b, void *c);
 static K_THREAD_STACK_DEFINE(rc_connected_pub_stack, 1024);
 static struct k_thread rc_connected_pub_thread_data;
 
-#define REMOTE_PUBLISH_PERIOD_MS 21
-#define REMOTE_CONNECTED_PUBLISH_PERIOD_MS 100
-
 void rc_input_init(void) {
     /* Do not reset sbus_raw here; callback may already have populated it
      * before this init runs. Just announce readiness and start debug thread.
@@ -268,7 +265,7 @@ static void rc_remote_publish_thread(void *a, void *b, void *c) {
 
     while (1) {
         if (!ros_initialized) {
-            k_msleep(REMOTE_PUBLISH_PERIOD_MS);
+            k_msleep(10);
             continue;
         }
 
@@ -336,7 +333,7 @@ static void rc_remote_publish_thread(void *a, void *b, void *c) {
             // LOG_WRN("Remote publish override failed rc=%d", (int)rc);
         }
 
-        k_msleep(REMOTE_PUBLISH_PERIOD_MS);
+        k_msleep(60);
     }
 }
 
@@ -354,7 +351,7 @@ static void rc_connected_publish_thread(void *a, void *b, void *c) {
 
     while (1) {
         if (!ros_initialized) {
-            k_msleep(REMOTE_CONNECTED_PUBLISH_PERIOD_MS);
+            k_msleep(10);
             continue;
         }
 
@@ -391,6 +388,6 @@ static void rc_connected_publish_thread(void *a, void *b, void *c) {
             fail_streak = 0;
         }
 
-        k_msleep(REMOTE_CONNECTED_PUBLISH_PERIOD_MS);
+        k_msleep(200);
     }
 }
