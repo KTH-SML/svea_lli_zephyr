@@ -313,7 +313,8 @@ uint64_t ros_iface_epoch_nanos(void) {
 }
 
 void ros_iface_init(void) {
-    k_mutex_init(&ros_pub_mutex);
+    k_mutex_init(&ros_pub_mutex_be);
+    k_mutex_init(&ros_pub_mutex_rel);
     // Setup custom transports for microros
     rmw_uros_set_custom_transport(
         MICRO_ROS_FRAMING_REQUIRED,
@@ -335,12 +336,29 @@ void ros_iface_init(void) {
                     4, 0, K_NO_WAIT);
     k_thread_name_set(&time_sync_thread_data, "time_sync");
 }
-// Serialize access to rcl_publish across all threads
-struct k_mutex ros_pub_mutex;
+// Serialize access to rcl_publish across streams
+struct k_mutex ros_pub_mutex_be;
+struct k_mutex ros_pub_mutex_rel;
 
-rcl_ret_t ros_publish_locked(rcl_publisher_t *pub, const void *msg) {
-    k_mutex_lock(&ros_pub_mutex, K_FOREVER);
+rcl_ret_t ros_publish_be_locked(rcl_publisher_t *pub, const void *msg) {
+    k_mutex_lock(&ros_pub_mutex_be, K_FOREVER);
     rcl_ret_t rc = rcl_publish(pub, msg, NULL);
-    k_mutex_unlock(&ros_pub_mutex);
+    k_mutex_unlock(&ros_pub_mutex_be);
+    return rc;
+}
+
+rcl_ret_t ros_publish_try(rcl_publisher_t *pub, const void *msg) {
+    if (k_mutex_lock(&ros_pub_mutex_be, K_NO_WAIT) != 0) {
+        return RCL_RET_ERROR;
+    }
+    rcl_ret_t rc = rcl_publish(pub, msg, NULL);
+    k_mutex_unlock(&ros_pub_mutex_be);
+    return rc;
+}
+
+rcl_ret_t ros_publish_rel_locked(rcl_publisher_t *pub, const void *msg) {
+    k_mutex_lock(&ros_pub_mutex_rel, K_FOREVER);
+    rcl_ret_t rc = rcl_publish(pub, msg, NULL);
+    k_mutex_unlock(&ros_pub_mutex_rel);
     return rc;
 }

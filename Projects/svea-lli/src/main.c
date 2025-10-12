@@ -58,10 +58,14 @@ int main(void) {
 
     rc_input_init();
     servo_init();
+    /* When using micro-ROS USB CDC transport, the transport/class may
+     * enable the USB device stack itself. Avoid double-enabling. */
+#if !IS_ENABLED(CONFIG_MICROROS_TRANSPORT_SERIAL_USB)
     int usb_rc = usb_enable(NULL);
     if (usb_rc) {
         LOG_ERR("USB enable failed: %d", usb_rc);
     }
+#endif
 
     if (ina3221_sensor_init() != 0) {
         LOG_WRN("INA3221 sensor init failed");

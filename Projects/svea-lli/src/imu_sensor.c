@@ -302,9 +302,10 @@ static void imu_sensor_thread(void *p1, void *p2, void *p3) {
         }
 
         if (ros_initialized) {
-            rcl_ret_t pub_rc = ros_publish_locked(&imu_pub, &imu_msg);
+            rcl_ret_t pub_rc = ros_publish_try(&imu_pub, &imu_msg);
             if (pub_rc != RCL_RET_OK) {
-                LOG_ERR("IMU publish failed: %d", pub_rc);
+                /* Skip if transport busy to keep rate consistent */
+                /* LOG_DBG("IMU publish skipped (busy)"); */
             }
         } else {
             static uint64_t last_log_time;

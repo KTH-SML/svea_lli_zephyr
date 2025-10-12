@@ -317,32 +317,23 @@ static void rc_remote_publish_thread(void *a, void *b, void *c) {
         gear_msg.data = pulse_to_bool(gear_us);
         override_msg.data = override_active;
 
-        bool publish_failed = false;
         rcl_ret_t rc;
 
-        rc = ros_publish_locked(&pub_remote_steer, &steer_msg);
+        rc = ros_publish_try(&pub_remote_steer, &steer_msg);
         if (rc != RCL_RET_OK) {
-            LOG_WRN("Remote publish steer failed rc=%d", (int)rc);
-            publish_failed = true;
+            // LOG_WRN("Remote publish steer failed rc=%d", (int)rc);
         }
-        rc = ros_publish_locked(&pub_remote_throttle, &throttle_msg);
+        rc = ros_publish_try(&pub_remote_throttle, &throttle_msg);
         if (rc != RCL_RET_OK) {
-            LOG_WRN("Remote publish throttle failed rc=%d", (int)rc);
-            publish_failed = true;
+            // LOG_WRN("Remote publish throttle failed rc=%d", (int)rc);
         }
-        rc = ros_publish_locked(&pub_remote_gear, &gear_msg);
+        rc = ros_publish_try(&pub_remote_gear, &gear_msg);
         if (rc != RCL_RET_OK) {
-            LOG_WRN("Remote publish gear failed rc=%d", (int)rc);
-            publish_failed = true;
+            // LOG_WRN("Remote publish gear failed rc=%d", (int)rc);
         }
-        rc = ros_publish_locked(&pub_remote_override, &override_msg);
+        rc = ros_publish_try(&pub_remote_override, &override_msg);
         if (rc != RCL_RET_OK) {
-            LOG_WRN("Remote publish override failed rc=%d", (int)rc);
-            publish_failed = true;
-        }
-
-        if (publish_failed) {
-            ros_iface_handle_remote_publish_error();
+            // LOG_WRN("Remote publish override failed rc=%d", (int)rc);
         }
 
         k_msleep(REMOTE_PUBLISH_PERIOD_MS);
@@ -355,6 +346,7 @@ static void rc_connected_publish_thread(void *a, void *b, void *c) {
     ARG_UNUSED(c);
 
     static std_msgs__msg__Bool connected_msg;
+    static uint8_t fail_streak = 0;
     uint32_t last_publish_ms = 0U;
     uint32_t min_period_ms = UINT32_MAX;
     uint32_t max_period_ms = 0U;
@@ -384,10 +376,19 @@ static void rc_connected_publish_thread(void *a, void *b, void *c) {
         }
         last_publish_ms = now_ms;
 
-        rcl_ret_t rc = ros_publish_locked(&pub_remote_connected, &connected_msg);
+        rcl_ret_t rc = ros_publish_rel_locked(&pub_remote_connected, &connected_msg);
         if (rc != RCL_RET_OK) {
-            LOG_WRN("Remote connected publish failed rc=%d", (int)rc);
-            ros_iface_handle_remote_publish_error();
+            if (fail_streak < 255)
+                fail_streak++;
+            if (fail_streak >= 2) {
+                LOG_WRN("Remote connected reliable publish failing (%u), forcing reconnect", fail_streak);
+                ros_iface_handle_remote_publish_error();
+                fail_streak = 0;
+            } else {
+                LOG_WRN("Remote connected publish failed rc=%d", (int)rc);
+            }
+        } else {
+            fail_streak = 0;
         }
 
         k_msleep(REMOTE_CONNECTED_PUBLISH_PERIOD_MS);
