@@ -24,6 +24,7 @@
 #include <string.h>
 
 #include <microros_transports.h>
+#include <errno.h>
 
 #define RING_BUF_SIZE 8192
 
@@ -82,31 +83,44 @@ bool zephyr_transport_open(struct uxrCustomTransport *transport) {
     }
 
     ring_buf_init(&out_ringbuf, sizeof(uart_out_buffer), uart_out_buffer);
-    ring_buf_init(&in_ringbuf, sizeof(uart_in_buffer), uart_out_buffer);
+    /* BUGFIX: initialize RX ring with uart_in_buffer (was uart_out_buffer) */
+    ring_buf_init(&in_ringbuf, sizeof(uart_in_buffer), uart_in_buffer);
 
     printk("Waiting for agent connection\n");
 
-    while (true) {
-        uart_line_ctrl_get(params->uart_dev, UART_LINE_CTRL_DTR, &dtr);
-        if (dtr) {
+    /* Proceed when DTR asserted, unsupported, or after timeout */
+    const int wait_total_ms = 2000;
+    int waited_ms = 0;
+    int dtr_rc = 0;
+    for (;;) {
+        dtr_rc = uart_line_ctrl_get(params->uart_dev, UART_LINE_CTRL_DTR, &dtr);
+        if (dtr_rc < 0) {
+            printk("CDC: DTR not supported (ret=%d), proceeding\n", dtr_rc);
             break;
-        } else {
-            /* Give CPU resources to low priority threads. */
-            k_sleep(K_MSEC(100));
         }
+        if (dtr) {
+            printk("CDC: DTR asserted by host\n");
+            break;
+        }
+        if (waited_ms >= wait_total_ms) {
+            printk("CDC: DTR timeout after %d ms, proceeding\n", wait_total_ms);
+            break;
+        }
+        k_sleep(K_MSEC(100));
+        waited_ms += 100;
     }
 
-    printk("Serial port connected!\n");
+    printk("Serial port connected (CDC)\n");
 
     /* They are optional, we use them to test the interrupt endpoint */
     ret = uart_line_ctrl_set(params->uart_dev, UART_LINE_CTRL_DCD, 1);
     if (ret) {
-        printk("Failed to set DCD, ret code %d\n", ret);
+        printk("CDC: Failed to set DCD (ret=%d)\n", ret);
     }
 
     ret = uart_line_ctrl_set(params->uart_dev, UART_LINE_CTRL_DSR, 1);
     if (ret) {
-        printk("Failed to set DSR, ret code %d\n", ret);
+        printk("CDC: Failed to set DSR (ret=%d)\n", ret);
     }
 
     /* Wait 1 sec for the host to do all settings */
@@ -114,7 +128,9 @@ bool zephyr_transport_open(struct uxrCustomTransport *transport) {
 
     ret = uart_line_ctrl_get(params->uart_dev, UART_LINE_CTRL_BAUD_RATE, &baudrate);
     if (ret) {
-        printk("Failed to get baudrate, ret code %d\n", ret);
+        printk("CDC: Failed to get baudrate (ret=%d)\n", ret);
+    } else {
+        printk("CDC: Host baudrate reported: %u\n", (unsigned)baudrate);
     }
 
     uart_irq_callback_set(params->uart_dev, uart_fifo_callback);
@@ -135,16 +151,20 @@ bool zephyr_transport_close(struct uxrCustomTransport *transport) {
 size_t zephyr_transport_write(struct uxrCustomTransport *transport, const uint8_t *buf, size_t len, uint8_t *err) {
     zephyr_transport_params_t *params = (zephyr_transport_params_t *)transport->args;
 
-    size_t wrote;
-
-    wrote = ring_buf_put(&out_ringbuf, buf, len);
+    size_t wrote = ring_buf_put(&out_ringbuf, buf, len);
 
     uart_irq_tx_enable(params->uart_dev);
 
     while (!ring_buf_is_empty(&out_ringbuf)) {
         k_sleep(K_MSEC(5));
     }
-
+    if (wrote < len) {
+        /* Ring full or partial write */
+        printk("CDC: write partial %u/%u bytes\n", (unsigned)wrote, (unsigned)len);
+        if (err) { *err = 1; }
+    } else {
+        if (err) { *err = 0; }
+    }
     return wrote;
 }
 
@@ -161,6 +181,12 @@ size_t zephyr_transport_read(struct uxrCustomTransport *transport, uint8_t *buf,
 
     uart_irq_rx_disable(params->uart_dev);
     read = ring_buf_get(&in_ringbuf, buf, len);
+    if ((read == 0) && (spent_time >= timeout)) {
+        /* Timed out without data: normal during idle polling; do not spam logs */
+        if (err) { *err = 2; }
+    } else if (err) {
+        *err = 0;
+    }
     uart_irq_rx_enable(params->uart_dev);
 
     return read;
