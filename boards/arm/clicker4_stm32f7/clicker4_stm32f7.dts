@@ -13,8 +13,8 @@
     compatible = "mikroe,clicker4-stm32f7", "st,stm32f745";
 
     chosen {
-        zephyr,console = &usart1;
-        zephyr,shell-uart = &usart1;
+        //zephyr,console = &usart1;
+        //zephyr,shell-uart = &usart1;
         zephyr,sram = &sram0;
         zephyr,flash = &flash0;
         zephyr,code-partition = &slot0_partition;
@@ -269,6 +269,12 @@
     status = "okay";
 };
 
+&usart3 {
+    status = "okay";
+    pinctrl-0 = <&usart3_tx_pd8 &usart3_rx_pd9>;
+    pinctrl-names = "default";
+    current-speed = <1000000>;
+};
 
 /* I2C2 - Shared across mikroBUS sockets */
 &i2c2 {
