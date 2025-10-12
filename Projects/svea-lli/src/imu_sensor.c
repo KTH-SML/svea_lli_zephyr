@@ -302,7 +302,7 @@ static void imu_sensor_thread(void *p1, void *p2, void *p3) {
         }
 
         if (ros_initialized) {
-            rcl_ret_t pub_rc = rcl_publish(&imu_pub, &imu_msg, NULL);
+            rcl_ret_t pub_rc = ros_publish_locked(&imu_pub, &imu_msg);
             if (pub_rc != RCL_RET_OK) {
                 LOG_ERR("IMU publish failed: %d", pub_rc);
             }

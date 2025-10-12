@@ -130,7 +130,7 @@ static void ina3221_thread(void *a, void *b, void *c) {
                 ina_msg.data.data[7] = sensor_value_to_float(&sample.shunt_current[2]);
                 ina_msg.data.data[8] = sensor_value_to_float(&sample.power[2]);
 
-                rcl_ret_t pub_rc = rcl_publish(&ina3221_pub, &ina_msg, NULL);
+                rcl_ret_t pub_rc = ros_publish_locked(&ina3221_pub, &ina_msg);
                 if (pub_rc != RCL_RET_OK) {
                     LOG_WRN("INA3221 ROS publish failed: %d", pub_rc);
                 }

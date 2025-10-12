@@ -218,7 +218,7 @@ static void odom_thread(void *a, void *b, void *c) {
         strncpy(odom_msg.header.frame_id.data, frame, odom_msg.header.frame_id.capacity);
         odom_msg.header.frame_id.size = strlen(frame); /* keep capacity unchanged */
 
-        rcl_ret_t rc = rcl_publish(&encoders_pub, &odom_msg, NULL);
+        rcl_ret_t rc = ros_publish_locked(&encoders_pub, &odom_msg);
         if (rc != RCL_RET_OK) {
             LOG_WRN("Wheel encoder publish failed: %d", rc);
         }

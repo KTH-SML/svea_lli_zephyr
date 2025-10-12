@@ -372,7 +372,7 @@ static void battery_publisher_thread(void *, void *, void *) {
         battery_msg.power_supply_technology = sensor_msgs__msg__BatteryState__POWER_SUPPLY_TECHNOLOGY_LIPO;
 
         if (ros_initialized) {
-            rcl_ret_t rc = rcl_publish(&battery_pub, &battery_msg, NULL);
+        rcl_ret_t rc = ros_publish_locked(&battery_pub, &battery_msg);
             if (rc != RCL_RET_OK) {
                 LOG_WRN("BatteryState publish failed: %d", rc);
             }

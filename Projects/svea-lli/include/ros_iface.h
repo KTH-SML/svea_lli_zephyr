@@ -42,6 +42,11 @@ extern rcl_publisher_t encoders_pub;
 extern rcl_publisher_t ina3221_pub;
 extern rcl_publisher_t battery_pub;
 
+// Global publish mutex to serialize XRCE writes across threads
+extern struct k_mutex ros_pub_mutex;
+// Thread-safe publish helper (locks/unlocks around rcl_publish)
+rcl_ret_t ros_publish_locked(rcl_publisher_t *pub, const void *msg);
+
 void ros_iface_handle_remote_publish_error(void);
 
 uint64_t ros_iface_epoch_millis(void);

@@ -320,22 +320,22 @@ static void rc_remote_publish_thread(void *a, void *b, void *c) {
         bool publish_failed = false;
         rcl_ret_t rc;
 
-        rc = rcl_publish(&pub_remote_steer, &steer_msg, NULL);
+        rc = ros_publish_locked(&pub_remote_steer, &steer_msg);
         if (rc != RCL_RET_OK) {
             LOG_WRN("Remote publish steer failed rc=%d", (int)rc);
             publish_failed = true;
         }
-        rc = rcl_publish(&pub_remote_throttle, &throttle_msg, NULL);
+        rc = ros_publish_locked(&pub_remote_throttle, &throttle_msg);
         if (rc != RCL_RET_OK) {
             LOG_WRN("Remote publish throttle failed rc=%d", (int)rc);
             publish_failed = true;
         }
-        rc = rcl_publish(&pub_remote_gear, &gear_msg, NULL);
+        rc = ros_publish_locked(&pub_remote_gear, &gear_msg);
         if (rc != RCL_RET_OK) {
             LOG_WRN("Remote publish gear failed rc=%d", (int)rc);
             publish_failed = true;
         }
-        rc = rcl_publish(&pub_remote_override, &override_msg, NULL);
+        rc = ros_publish_locked(&pub_remote_override, &override_msg);
         if (rc != RCL_RET_OK) {
             LOG_WRN("Remote publish override failed rc=%d", (int)rc);
             publish_failed = true;
@@ -384,7 +384,7 @@ static void rc_connected_publish_thread(void *a, void *b, void *c) {
         }
         last_publish_ms = now_ms;
 
-        rcl_ret_t rc = rcl_publish(&pub_remote_connected, &connected_msg, NULL);
+        rcl_ret_t rc = ros_publish_locked(&pub_remote_connected, &connected_msg);
         if (rc != RCL_RET_OK) {
             LOG_WRN("Remote connected publish failed rc=%d", (int)rc);
             ros_iface_handle_remote_publish_error();
