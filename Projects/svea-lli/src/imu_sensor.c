@@ -60,7 +60,7 @@ static void imu_sensor_thread(void *p1, void *p2, void *p3);
 
 #define IMU_ACCEL_NOISE_DENSITY_G (90e-6) /* 90 µg/√Hz from datasheet */
 #define IMU_GYRO_NOISE_DENSITY_MDPS (3.8) /* 3.8 mdps/√Hz from datasheet */
-#define STANDARD_GRAVITY (9.80665)
+#define STANDARD_GRAVITY (-9.80665)
 /* With ODR set to 100 Hz we have BW ≈ ODR/2 */
 #define IMU_EFFECTIVE_BW_HZ (50.0)
 
@@ -73,13 +73,52 @@ static const double acc_variance = acc_noise_rms * acc_noise_rms;
 static const double gyro_variance = gyro_noise_rms * gyro_noise_rms;
 
 /* ── calibration state ─────────────────────────────────────────────── */
-volatile bool g_imu_calib_request; /* set from ISR */
+volatile bool g_imu_calib_request = true; /* set from ISR */
 static bool calib_in_progress;
 static uint64_t calib_start_ms;
 static double sum_ax, sum_ay, sum_az, sum_gx, sum_gy, sum_gz;
 static uint32_t calib_count;
 static double accel_bias[3]; /* add to raw to get corrected */
 static double gyro_bias[3];  /* add to raw to get corrected */
+
+/* ── simple rolling average (compile-time window) ───────────────────── */
+#ifndef IMU_SMOOTH_WINDOW
+#define IMU_SMOOTH_WINDOW 4
+#endif
+
+struct avg_win {
+    double buf[IMU_SMOOTH_WINDOW];
+    uint8_t idx;
+    uint8_t len;
+    double sum;
+};
+
+static inline void avg_reset(struct avg_win *w) {
+    w->idx = 0;
+    w->len = 0;
+    w->sum = 0.0;
+}
+
+static inline void avg_push(struct avg_win *w, double v) {
+    if (w->len < IMU_SMOOTH_WINDOW) {
+        w->buf[w->idx] = v;
+        w->sum += v;
+        w->idx = (w->idx + 1) % IMU_SMOOTH_WINDOW;
+        w->len++;
+    } else {
+        double old = w->buf[w->idx];
+        w->buf[w->idx] = v;
+        w->sum += v - old;
+        w->idx = (w->idx + 1) % IMU_SMOOTH_WINDOW;
+    }
+}
+
+static inline double avg_mean(const struct avg_win *w) {
+    return (w->len ? (w->sum / (double)w->len) : 0.0);
+}
+
+static struct avg_win acc_win[3];
+static struct avg_win gyro_win[3];
 
 void imu_sensor_start(void) {
     LOG_INF("Starting IMU sensor thread");
@@ -170,8 +209,12 @@ static void imu_sensor_thread(void *p1, void *p2, void *p3) {
             LOG_INF("IMU calibration: started 1s averaging");
         }
         if (calib_in_progress) {
-            sum_ax += ax; sum_ay += ay; sum_az += az;
-            sum_gx += gx; sum_gy += gy; sum_gz += gz;
+            sum_ax += ax;
+            sum_ay += ay;
+            sum_az += az;
+            sum_gx += gx;
+            sum_gy += gy;
+            sum_gz += gz;
             calib_count++;
             if ((k_uptime_get() - calib_start_ms) >= 1000U) {
                 /* Compute means */
@@ -187,11 +230,16 @@ static void imu_sensor_thread(void *p1, void *p2, void *p3) {
                 accel_bias[0] = 0.0 - mean_ax;
                 accel_bias[1] = 0.0 - mean_ay;
                 accel_bias[2] = -STANDARD_GRAVITY - mean_az;
-                gyro_bias[0]  = 0.0 - mean_gx;
-                gyro_bias[1]  = 0.0 - mean_gy;
-                gyro_bias[2]  = 0.0 - mean_gz;
+                gyro_bias[0] = 0.0 - mean_gx;
+                gyro_bias[1] = 0.0 - mean_gy;
+                gyro_bias[2] = 0.0 - mean_gz;
 
                 calib_in_progress = false;
+                /* Reset smoothing windows to avoid mixing pre/post-bias */
+                for (int i = 0; i < 3; ++i) {
+                    avg_reset(&acc_win[i]);
+                    avg_reset(&gyro_win[i]);
+                }
                 LOG_INF("IMU calibration: done (%u samples)\n"
                         "  accel bias = [%.6f, %.6f, %.6f]\n"
                         "  gyro  bias = [%.6f, %.6f, %.6f]",
@@ -201,13 +249,27 @@ static void imu_sensor_thread(void *p1, void *p2, void *p3) {
             }
         }
 
-        /* Apply biases */
-        imu_msg.linear_acceleration.x = ax + accel_bias[0];
-        imu_msg.linear_acceleration.y = ay + accel_bias[1];
-        imu_msg.linear_acceleration.z = az + accel_bias[2];
-        imu_msg.angular_velocity.x = gx + gyro_bias[0];
-        imu_msg.angular_velocity.y = gy + gyro_bias[1];
-        imu_msg.angular_velocity.z = gz + gyro_bias[2];
+        /* Apply biases and push into smoothing windows */
+        double ax_c = ax + accel_bias[0];
+        double ay_c = ay + accel_bias[1];
+        double az_c = az + accel_bias[2];
+        double gx_c = gx + gyro_bias[0];
+        double gy_c = gy + gyro_bias[1];
+        double gz_c = gz + gyro_bias[2];
+
+        avg_push(&acc_win[0], ax_c);
+        avg_push(&acc_win[1], ay_c);
+        avg_push(&acc_win[2], az_c);
+        avg_push(&gyro_win[0], gx_c);
+        avg_push(&gyro_win[1], gy_c);
+        avg_push(&gyro_win[2], gz_c);
+
+        imu_msg.linear_acceleration.x = avg_mean(&acc_win[0]);
+        imu_msg.linear_acceleration.y = avg_mean(&acc_win[1]);
+        imu_msg.linear_acceleration.z = avg_mean(&acc_win[2]);
+        imu_msg.angular_velocity.x = avg_mean(&gyro_win[0]);
+        imu_msg.angular_velocity.y = avg_mean(&gyro_win[1]);
+        imu_msg.angular_velocity.z = avg_mean(&gyro_win[2]);
 
         imu_msg.header.stamp.sec = (int32_t)(ros_iface_epoch_millis() / 1000ULL);
         imu_msg.header.stamp.nanosec = (uint32_t)(ros_iface_epoch_nanos() % 1000000000ULL);
@@ -258,6 +320,6 @@ static void imu_sensor_thread(void *p1, void *p2, void *p3) {
                 last_log_time = now;
             }
         }
-        k_sleep(K_MSEC(40)); // yield to lower-prio tasks at least a lil bit
+        k_sleep(K_MSEC(5)); // yield to lower-prio tasks at least a lil bit
     }
 }
