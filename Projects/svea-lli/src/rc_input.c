@@ -190,12 +190,23 @@ void rc_input_debug_dump(void) {
     rc_override_mode_t mode = rc_get_override_mode();
     const char *mstr = (mode == RC_OVERRIDE_ROS) ? "ROS" : (mode == RC_OVERRIDE_MUTE) ? "MUTE"
                                                                                       : "FULL";
-    // Print ch4_diff_button as raw value and mapped to us
-    LOG_DBG("SBUS raw ch1=%u ch2=%u ch4=%u ch5=%u ch6=%u us[steer=%u thr=%u diff=%u gear=%u ovr=%u mode=%s] age=%u us",
-            sbus_raw[0], sbus_raw[1], sbus_raw[3], sbus_raw[4], sbus_raw[5],
-            map_sbus_to_us(sbus_raw[0]), map_sbus_to_us(sbus_raw[1]),
-            map_sbus_to_us(sbus_raw[3]), map_sbus_to_us(sbus_raw[5]), map_sbus_to_us(sbus_raw[4]), mstr,
-            k_uptime_get_32() - last_frame_ms);
+    // Compute mapped microseconds and int8-scaled values used by ROS
+    uint32_t steer_us = rc_get_pulse_us(RC_STEER);
+    uint32_t throttle_us = rc_get_pulse_us(RC_THROTTLE);
+    uint32_t diff_us = rc_get_pulse_us(RC_DIFF_TOGGLE);
+    uint32_t gear_us = rc_get_pulse_us(RC_HIGH_GEAR);
+    uint32_t ovr_us = rc_get_pulse_us(RC_OVERRIDE);
+
+    int8_t steer_i8 = pulse_to_int8(steer_us);
+    int8_t throttle_i8 = pulse_to_int8(throttle_us);
+
+    // Print raw values, mapped microseconds, and scaled int8 values
+    LOG_INF(
+        "SBUS raw ch1=%u ch2=%u ch4=%u ch5=%u ch6=%u us[steer=%u thr=%u diff=%u gear=%u ovr=%u] i8[steer=%d thr=%d] mode=%s age=%u us",
+        sbus_raw[0], sbus_raw[1], sbus_raw[3], sbus_raw[4], sbus_raw[5],
+        steer_us, throttle_us, diff_us, gear_us, ovr_us,
+        (int)steer_i8, (int)throttle_i8, mstr,
+        k_uptime_get_32() - last_frame_ms);
 }
 
 /* Simple periodic debug printer thread */
@@ -204,8 +215,10 @@ static void rc_debug_thread(void *a, void *b, void *c) {
     ARG_UNUSED(b);
     ARG_UNUSED(c);
     while (1) {
-        rc_input_debug_dump();
-        k_msleep(100000);
+        if (!ros_initialized) {
+            rc_input_debug_dump();
+        }
+        k_msleep(1000);
     }
 }
 
@@ -316,24 +329,28 @@ static void rc_remote_publish_thread(void *a, void *b, void *c) {
 
         rcl_ret_t rc;
 
+        // publish speed throttle
+
         rc = ros_publish_try(&pub_remote_steer, &steer_msg);
         if (rc != RCL_RET_OK) {
             // LOG_WRN("Remote publish steer failed rc=%d", (int)rc);
         }
+        k_msleep(5); // small delay to avoid flooding the transport
         rc = ros_publish_try(&pub_remote_throttle, &throttle_msg);
         if (rc != RCL_RET_OK) {
             // LOG_WRN("Remote publish throttle failed rc=%d", (int)rc);
         }
+        k_msleep(5); // small delay to avoid flooding the transport
         rc = ros_publish_try(&pub_remote_gear, &gear_msg);
         if (rc != RCL_RET_OK) {
             // LOG_WRN("Remote publish gear failed rc=%d", (int)rc);
         }
+        k_msleep(5); // small delay to avoid flooding the transport
         rc = ros_publish_try(&pub_remote_override, &override_msg);
         if (rc != RCL_RET_OK) {
             // LOG_WRN("Remote publish override failed rc=%d", (int)rc);
         }
-
-        k_msleep(60);
+        k_msleep(25); // small delay to avoid flooding the transport
     }
 }
 

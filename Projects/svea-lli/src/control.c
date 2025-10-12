@@ -61,7 +61,7 @@ static inline void servo_set_ticks(const struct pwm_dt_spec *s, uint16_t t_us) {
     }
 }
 /* ───── 3. control thread – readable, explicit conditions ───────────── */
-#define LOOP_MS 25 // 40 Hz
+#define LOOP_MS 10 // 100 Hz for snappier response
 
 // Neutral/safe outputs
 #define SERVO_NEUTRAL_US 1500
@@ -76,12 +76,7 @@ static inline void servo_set_ticks(const struct pwm_dt_spec *s, uint16_t t_us) {
 #define DIFF_OPEN_FRONT_US 1100
 #define DIFF_OPEN_REAR_US 1900
 
-// Throttle smoothing parameters for first-order filter
-#define THROTTLE_FILTER_ACCEL_TAU_MS 220      // base smoothing time constant (ms)
-#define THROTTLE_FILTER_STANDSTILL_TAU_MS 450 // slower response when leaving neutral (ms)
-#define THROTTLE_FILTER_DECEL_TAU_MS 120      // quicker response when reducing throttle (ms)
-#define THROTTLE_FILTER_SOFT_ZONE_US 50       // +/- range around neutral treated as standstill
-#define THROTTLE_FILTER_HIGH_GEAR_SCALE 1.8f  // smoothing multiplier when high gear engaged, >1 slower response
+// No throttle smoothing/clamping: immediate target application
 
 // Max allowed age of ROS command before forcing throttle to neutral (ms)
 #ifndef ROS_CMD_MAX_AGE_MS
@@ -211,39 +206,8 @@ static void control_thread(void *, void *, void *) {
                 break;
             }
 
-            // 3) Apply throttle smoothing via first-order filter
-            int32_t neutral_filtered = abs((int32_t)filtered_thr - (int32_t)SERVO_NEUTRAL_US);
-            int32_t neutral_target = abs((int32_t)thr_target_us - (int32_t)SERVO_NEUTRAL_US);
-            bool accelerating = neutral_target > neutral_filtered;
-
-            float tau_ms = THROTTLE_FILTER_ACCEL_TAU_MS;
-            if (!accelerating) {
-                tau_ms = THROTTLE_FILTER_DECEL_TAU_MS;
-            } else if (neutral_filtered < THROTTLE_FILTER_SOFT_ZONE_US) {
-                tau_ms = THROTTLE_FILTER_STANDSTILL_TAU_MS;
-            }
-
-            if (high_gear) {
-                tau_ms *= THROTTLE_FILTER_HIGH_GEAR_SCALE;
-            }
-
-            float dt_ms = (float)dt_us / 1000.0f;
-            if (dt_ms < 0.0f) {
-                dt_ms = 0.0f;
-            }
-
-            float alpha = dt_ms / (tau_ms + dt_ms);
-            if (alpha > 1.0f)
-                alpha = 1.0f;
-            else if (alpha < 0.0f)
-                alpha = 0.0f;
-
-            filtered_thr += alpha * ((float)thr_target_us - filtered_thr);
-
-            if (filtered_thr < 1000.0f)
-                filtered_thr = 1000.0f;
-            if (filtered_thr > 2000.0f)
-                filtered_thr = 2000.0f;
+            // 3) No smoothing: apply target directly
+            filtered_thr = (float)thr_target_us;
 
             uint32_t thr_output_us = (uint32_t)(filtered_thr + 0.5f);
             forward_guess = thr_output_us > 1450; // simple heuristic
