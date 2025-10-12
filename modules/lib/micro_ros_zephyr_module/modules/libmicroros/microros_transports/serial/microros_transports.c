@@ -24,7 +24,7 @@
 #include <string.h>
 
 #define RING_BUF_SIZE 8192
-#define UART_NODE DT_NODELABEL(cdc_acm_uart0)
+#define UART_NODE DT_NODELABEL(bbb)
 
 char uart_in_buffer[RING_BUF_SIZE];
 char uart_out_buffer[RING_BUF_SIZE];
