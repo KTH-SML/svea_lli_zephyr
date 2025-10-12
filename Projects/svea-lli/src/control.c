@@ -83,6 +83,11 @@ static inline void servo_set_ticks(const struct pwm_dt_spec *s, uint16_t t_us) {
 #define THROTTLE_FILTER_SOFT_ZONE_US 50       // +/- range around neutral treated as standstill
 #define THROTTLE_FILTER_HIGH_GEAR_SCALE 1.8f  // smoothing multiplier when high gear engaged, >1 slower response
 
+// Max allowed age of ROS command before forcing throttle to neutral (ms)
+#ifndef ROS_CMD_MAX_AGE_MS
+#define ROS_CMD_MAX_AGE_MS 100U
+#endif
+
 // Remove old pulse_to_us, use new int8 mapping
 static inline uint32_t int8_to_us(int8_t val) {
     // Map [-127,127] to [1000,2000]us, 0 = 1500us
@@ -176,7 +181,7 @@ static void control_thread(void *, void *, void *) {
 
                 uint32_t now_ms = k_uptime_get_32();
                 uint32_t age_ms = now_ms - g_ros_ctrl.timestamp;
-                if (age_ms < 150U) {
+                if (age_ms < ROS_CMD_MAX_AGE_MS) {
                     thr_target_us = int8_to_throttle_us(g_ros_ctrl.throttle);
                 } else {
                     thr_target_us = SERVO_NEUTRAL_US;
