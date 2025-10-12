@@ -74,8 +74,10 @@ bool zephyr_transport_open(struct uxrCustomTransport *transport) {
     }
 
     ret = usb_enable(NULL);
-    if (ret != 0) {
-        printk("Failed to enable USB\n");
+    if (ret == -EALREADY) {
+        printk("USB already enabled\n");
+    } else if (ret != 0) {
+        printk("Failed to enable USB (ret=%d)\n", ret);
         return false;
     }
 
