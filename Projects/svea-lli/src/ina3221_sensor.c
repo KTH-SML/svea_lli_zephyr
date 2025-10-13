@@ -13,6 +13,8 @@
 #include <stdbool.h>
 #include <string.h>
 #include <zephyr/device.h>
+#include <zephyr/devicetree.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
@@ -25,6 +27,9 @@ LOG_MODULE_REGISTER(ina3221_sensor, LOG_LEVEL_INF);
 #define INA3221_THREAD_STACK_SIZE 1536
 #define INA3221_THREAD_PRIORITY 7
 #define INA3221_SAMPLE_PERIOD_MS 200
+#define ESC_UNDERVOLT_DISABLE_V 11.3f
+#define ESC_UNDERVOLT_ENABLE_V 11.5f
+#define ESC_LED_BLINK_MS 500U
 
 static const struct device *ina_dev;
 static K_THREAD_STACK_DEFINE(ina_thread_stack, INA3221_THREAD_STACK_SIZE);
@@ -35,6 +40,21 @@ static struct k_mutex measurement_lock;
 static std_msgs__msg__Float32MultiArray ina_msg;
 static bool ina_msg_initialized;
 
+// Support both DT alias "esc_en_gpio" and node-label "esc_en"
+static const struct gpio_dt_spec esc_en_pin =
+    GPIO_DT_SPEC_GET_OR(DT_PATH(zephyr_user), esc_en_gpios, {0});
+
+static bool esc_en_pin_ready;
+
+// Prefer DT alias "led6" (avoids label collisions), fallback to node-label
+
+static const struct gpio_dt_spec led6_gpio = GPIO_DT_SPEC_GET(DT_NODELABEL(led6), gpios);
+
+static bool led6_gpio_ready;
+
+static bool esc_uv_lockout;
+static int64_t led6_next_toggle_ms;
+
 static int ina3221_set_channel(uint8_t channel) {
     struct sensor_value sel = {
         .val1 = channel + 1, /* driver expects channels 1-3 */
@@ -43,6 +63,29 @@ static int ina3221_set_channel(uint8_t channel) {
 
     return sensor_attr_set(ina_dev, SENSOR_CHAN_ALL,
                            SENSOR_ATTR_INA3221_SELECTED_CHANNEL, &sel);
+}
+
+static int esc_en_set_release(bool release) {
+    if (!esc_en_pin.port) {
+        LOG_WRN("ESC_EN pin spec missing");
+        return -ENODEV;
+    }
+    if (!device_is_ready(esc_en_pin.port)) {
+        LOG_WRN("ESC_EN port not ready");
+        return -ENODEV;
+    }
+    if (!esc_en_pin_ready) {
+        LOG_WRN("ESC_EN not configured");
+        return -ENODEV;
+    }
+    /* Open-drain semantics: write 1 to release (Hi-Z), 0 to sink low */
+    int rc = gpio_pin_set_dt(&esc_en_pin, release ? 1 : 0);
+    if (rc) {
+        LOG_WRN("ESC_EN write failed rc=%d", rc);
+    } else {
+        LOG_INF("ESC_EN <= %d (OD: 1=release, 0=low)", release ? 1 : 0);
+    }
+    return rc;
 }
 
 static const char *ina3221_channel_label(uint8_t ch) {
@@ -83,16 +126,52 @@ static int ina3221_read_channel(uint8_t ch, struct ina3221_measurement *sample) 
     if (rc) {
         return rc;
     }
-
-    // LOG_INF("INA3221 %s: V=%.3fV I=%.3fA P=%.3fW",
-    //         ina3221_channel_label(ch),
-    //         sensor_value_to_double(&sample->bus_voltage[ch]),
-    //         sensor_value_to_double(&sample->shunt_current[ch]),
-    //         sensor_value_to_double(&sample->power[ch]));
-
     return 0;
 }
 
+static void ina3221_handle_esc_voltage(const struct sensor_value *esc_bus_voltage) {
+    if (esc_bus_voltage == NULL) {
+        return;
+    }
+
+    float esc_voltage = (float)sensor_value_to_double(esc_bus_voltage);
+    int64_t now_ms = k_uptime_get();
+    static bool led_toggle_on = false;
+
+    if (esc_voltage < ESC_UNDERVOLT_DISABLE_V) {
+
+        (void)esc_en_set_release(false);
+
+        led6_next_toggle_ms = now_ms + ESC_LED_BLINK_MS;
+
+        esc_uv_lockout = true;
+        LOG_WRN("ESC supply undervoltage: %.2f V < %.1f V, disabling ESC", esc_voltage,
+                (double)ESC_UNDERVOLT_DISABLE_V);
+    }
+
+    else if (esc_uv_lockout && esc_voltage > ESC_UNDERVOLT_ENABLE_V) {
+        (void)esc_en_set_release(true); /* recover: release (float via pull-up) */
+        esc_uv_lockout = false;
+
+        if (led6_gpio_ready) {
+            (void)gpio_pin_set_dt(&led6_gpio, 0);
+        }
+
+        LOG_INF("ESC supply recovered: %.2f V > %.1f V, enabling ESC", esc_voltage,
+                (double)ESC_UNDERVOLT_ENABLE_V);
+    }
+
+    if (led6_gpio_ready) {
+        if (esc_uv_lockout) {
+            if (now_ms >= led6_next_toggle_ms) {
+                (void)gpio_pin_toggle_dt(&led6_gpio);
+                led6_next_toggle_ms = now_ms + ESC_LED_BLINK_MS;
+            }
+        } else {
+            (void)gpio_pin_set_dt(&led6_gpio, 0);
+        }
+    }
+}
 static void ina3221_thread(void *a, void *b, void *c) {
     ARG_UNUSED(a);
     ARG_UNUSED(b);
@@ -102,6 +181,8 @@ static void ina3221_thread(void *a, void *b, void *c) {
 
     while (true) {
         int rc = 0;
+
+        memset(&sample, 0, sizeof(sample));
 
         for (uint8_t ch = 0U; ch < 3U; ++ch) {
             rc = ina3221_read_channel(ch, &sample);
@@ -149,9 +230,11 @@ static void ina3221_thread(void *a, void *b, void *c) {
                     last_log_time = now;
                 }
             }
+
+            ina3221_handle_esc_voltage(&sample.bus_voltage[0]);
         }
 
-        k_sleep(K_MSEC(1000));
+        k_sleep(K_MSEC(INA3221_SAMPLE_PERIOD_MS));
     }
 }
 
@@ -171,7 +254,35 @@ int ina3221_sensor_init(void) {
         return -ENODEV;
     }
 
+    // esc_en_pin from DT alias "esc_en_gpio" (preferred) or node-label "esc_en"
+    if (esc_en_pin.port && device_is_ready(esc_en_pin.port)) {
+        if (gpio_pin_configure_dt(&esc_en_pin, GPIO_OUTPUT_HIGH) == 0) { // OD: HIGH == released
+            esc_en_pin_ready = true;
+        } else {
+            LOG_WRN("ESC enable GPIO configure failed");
+        }
+    } else {
+        LOG_WRN("ESC enable GPIO not ready/defined");
+    }
+
+    if (led6_gpio.port) {
+        if (device_is_ready(led6_gpio.port)) {
+            if (gpio_pin_configure_dt(&led6_gpio, GPIO_OUTPUT_INACTIVE) == 0) {
+                led6_gpio_ready = true;
+            } else {
+                LOG_WRN("LED6 GPIO configure failed");
+            }
+        } else {
+            LOG_WRN("LED6 GPIO port not ready");
+        }
+    } else {
+        LOG_WRN("LED6 GPIO not defined in devicetree");
+    }
+
     k_mutex_init(&measurement_lock);
+
+    led6_next_toggle_ms = 0;
+    esc_uv_lockout = false;
 
     if (!ina_msg_initialized) {
         if (!std_msgs__msg__Float32MultiArray__init(&ina_msg)) {
