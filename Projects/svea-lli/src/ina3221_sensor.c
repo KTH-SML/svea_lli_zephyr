@@ -131,6 +131,23 @@ static void ina3221_thread(void *a, void *b, void *c) {
                 ina_msg.data.data[8] = sensor_value_to_float(&sample.power[2]);
 
                 (void)ros_publish_try(&ina3221_pub, &ina_msg);
+            } else {
+                // Log to serial if ROS is not connected
+                static uint64_t last_log_time;
+                uint64_t now = k_uptime_get();
+                if ((now - last_log_time) >= 10000U) {
+                    LOG_INF("INA3221 sample: ESC V=%.3fV I=%.3fA P=%.3fW | 12V V=%.3fV I=%.3fA P=%.3fW | 5V V=%.3fV I=%.3fA P=%.3fW",
+                            sensor_value_to_double(&sample.bus_voltage[0]),
+                            sensor_value_to_double(&sample.shunt_current[0]),
+                            sensor_value_to_double(&sample.power[0]),
+                            sensor_value_to_double(&sample.bus_voltage[1]),
+                            sensor_value_to_double(&sample.shunt_current[1]),
+                            sensor_value_to_double(&sample.power[1]),
+                            sensor_value_to_double(&sample.bus_voltage[2]),
+                            sensor_value_to_double(&sample.shunt_current[2]),
+                            sensor_value_to_double(&sample.power[2]));
+                    last_log_time = now;
+                }
             }
         }
 
