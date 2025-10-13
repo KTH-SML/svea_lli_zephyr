@@ -194,8 +194,6 @@ static void soc_indicator_init(void) {
 }
 
 static void print_bms_status(const Bms *bms) {
-
-    return;
     if (bms->status.pack_current > peak_charge_a) {
         peak_charge_a = bms->status.pack_current;
     }
@@ -232,23 +230,27 @@ static void print_bms_status(const Bms *bms) {
     if (bms->status.error_flags) {
         printf("  Active errors:\n");
         const char *err_desc[] = {
-            "Cell undervoltage",                // 0
-            "Cell overvoltage",                 // 1
-            "Pack short circuit (discharge)",   // 2
-            "Pack overcurrent (discharge)",     // 3
-            "Pack overcurrent (charge)",        // 4
-            "Cell open wire",                   // 5
-            "Temp below discharge min",         // 6
-            "Temp above discharge max",         // 7
-            "Temp below charge min",            // 8
-            "Temp above charge max",            // 9
-            "Internal temp above limit",        // 10
-            "Cell failure (voltage diff)",      // 11
-            "Discharge FET off (should be on)", // 12
-            "Charge FET off (should be on)",    // 13
-            "MOSFET temp above limit"           // 14
+            "Cell undervoltage",                     // 0
+            "Cell overvoltage",                      // 1
+            "Pack short circuit (discharge)",        // 2
+            "Pack overcurrent (discharge)",          // 3
+            "Pack overcurrent (charge)",             // 4
+            "Cell open wire",                        // 5
+            "Temp below discharge min",              // 6
+            "Temp above discharge max",              // 7
+            "Temp below charge min",                 // 8
+            "Temp above charge max",                 // 9
+            "Internal temp above limit",             // 10
+            "Cell failure (voltage diff)",           // 11
+            "Discharge FET off (should be on)",      // 12
+            "Charge FET off (should be on)",         // 13
+            "MOSFET temp above limit",               // 14
+            "No alert from monitor",                 // 15
+            "ADC calibration registers bad",         // 16
+            "Measured cell voltage implausibly low", // 17
+            "Measured cell voltage implausibly high" // 18
         };
-        for (int i = 0; i < 15; i++) {
+        for (size_t i = 0; i < ARRAY_SIZE(err_desc); i++) {
             if (bms->status.error_flags & (1U << i)) {
                 printf("    - %s\n", err_desc[i]);
             }
@@ -389,7 +391,7 @@ static void battery_publisher_thread(void *, void *, void *) {
             }
         }
 
-        k_sleep(K_MSEC(1000));
+        k_sleep(K_MSEC(5000));
     }
 }
 

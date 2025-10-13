@@ -46,7 +46,7 @@ static int bms_dis_switch_safe(Bms *bms, bool enable)
 {
     static bool dsg_cmd_on;
     if (enable) {
-        if (dsg_cmd_on) {
+        if (dsg_cmd_on == true) {
             return 0; // already on
         }
         (void)bq769x0_pchg_set(true);
@@ -59,13 +59,17 @@ static int bms_dis_switch_safe(Bms *bms, bool enable)
         return r;
     }
     else {
-        if (!dsg_cmd_on) {
-            return 0; // already off
+        int r;
+        if (dsg_cmd_on == false) {
+            r = bms_dis_switch(bms, false);
+            (void)bq769x0_pchg_set(false);
         }
-        (void)bq769x0_pchg_set(true);
-        int r = bms_dis_switch(bms, false);
-        k_msleep(BMS_PRECHARGE_MS);
-        (void)bq769x0_pchg_set(false);
+        else {
+            (void)bq769x0_pchg_set(true);
+            int r = bms_dis_switch(bms, false);
+            k_msleep(BMS_PRECHARGE_MS);
+            (void)bq769x0_pchg_set(false);
+        }
         if (r == 0) {
             dsg_cmd_on = false;
         }
@@ -107,6 +111,9 @@ void bms_init_config(Bms *bms, int type, float nominal_capacity)
 
     bms->conf.cell_ov_delay_s = 1; // Think its more like seconds, not ms
     bms->conf.cell_uv_delay_s = 1;
+
+    bms->conf.valid_min_voltage = 2.90F;
+    bms->conf.valid_max_voltage = 4.30F;
 
     switch (type) {
         case CELL_TYPE_LFP:
@@ -213,10 +220,16 @@ __weak int bms_state_machine(Bms *bms)
                 bms->status.state = BMS_STATE_DIS;
                 LOG_INF("OFF -> DIS (error flags: 0x%08x)", bms->status.error_flags);
             }
-            else if (bms_chg_allowed(bms)) {
+            else {
+                bms_dis_switch_safe(bms, false);
+            }
+            if (bms_chg_allowed(bms)) {
                 bms_chg_switch(bms, true);
                 bms->status.state = BMS_STATE_CHG;
                 LOG_INF("OFF -> CHG (error flags: 0x%08x)", bms->status.error_flags);
+            }
+            else {
+                bms_chg_switch(bms, false);
             }
             break;
 
@@ -287,7 +300,9 @@ bool bms_chg_error(uint32_t error_flags)
            || (error_flags & (1U << BMS_ERR_INT_OVERTEMP))
            || (error_flags & (1U << BMS_ERR_CELL_FAILURE))
            || (error_flags & (1U << BMS_ERR_CHG_OFF)) //|| (error_flags & (1U << BMS_ERR_NO_ALERT))
-           || (error_flags & (1U << BMS_ERR_GIBBERISH_REGISTERS));
+           //|| (error_flags & (1U << BMS_ERR_GIBBERISH_REGISTERS))
+           || (error_flags & (1U << BMS_ERR_MEAS_VOLTAGE_TOO_LOW))
+           || (error_flags & (1U << BMS_ERR_MEAS_VOLTAGE_TOO_HIGH));
 }
 
 bool bms_dis_error(uint32_t error_flags)
@@ -301,7 +316,9 @@ bool bms_dis_error(uint32_t error_flags)
            || (error_flags & (1U << BMS_ERR_INT_OVERTEMP))
            || (error_flags & (1U << BMS_ERR_CELL_FAILURE))
            || (error_flags & (1U << BMS_ERR_DIS_OFF)) //|| (error_flags & (1U << BMS_ERR_NO_ALERT))
-           || (error_flags & (1U << BMS_ERR_GIBBERISH_REGISTERS));
+           //|| (error_flags & (1U << BMS_ERR_GIBBERISH_REGISTERS))
+           || (error_flags & (1U << BMS_ERR_MEAS_VOLTAGE_TOO_LOW))
+           || (error_flags & (1U << BMS_ERR_MEAS_VOLTAGE_TOO_HIGH));
 }
 
 bool bms_chg_allowed(Bms *bms)

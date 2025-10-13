@@ -65,9 +65,13 @@ static void print_bms_status(const Bms *bms)
             "Cell failure (voltage diff)",      // 11
             "Discharge FET off (should be on)", // 12
             "Charge FET off (should be on)",    // 13
-            "MOSFET temp above limit"           // 14
+            "MOSFET temp above limit",          // 14
+            "No alert from monitor",            // 15
+            "ADC calibration registers bad",    // 16
+            "Measured cell voltage implausibly low",  // 17
+            "Measured cell voltage implausibly high"  // 18
         };
-        for (int i = 0; i < 15; i++) {
+        for (size_t i = 0; i < ARRAY_SIZE(err_desc); i++) {
             if (bms->status.error_flags & (1U << i)) {
                 printf("    - %s\n", err_desc[i]);
             }

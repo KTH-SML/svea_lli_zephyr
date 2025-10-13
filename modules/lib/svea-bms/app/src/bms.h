@@ -157,23 +157,25 @@ typedef struct
  */
 enum BmsErrorFlag
 {
-    BMS_ERR_CELL_UNDERVOLTAGE = 0, ///< Cell undervoltage flag
-    BMS_ERR_CELL_OVERVOLTAGE = 1,  ///< Cell undervoltage flag
-    BMS_ERR_SHORT_CIRCUIT = 2,     ///< Pack short circuit (discharge direction)
-    BMS_ERR_DIS_OVERCURRENT = 3,   ///< Pack overcurrent (discharge direction)
-    BMS_ERR_CHG_OVERCURRENT = 4,   ///< Pack overcurrent (charge direction)
-    BMS_ERR_OPEN_WIRE = 5,         ///< Cell open wire
-    BMS_ERR_DIS_UNDERTEMP = 6,     ///< Temperature below discharge minimum limit
-    BMS_ERR_DIS_OVERTEMP = 7,      ///< Temperature above discharge maximum limit
-    BMS_ERR_CHG_UNDERTEMP = 8,     ///< Temperature below charge maximum limit
-    BMS_ERR_CHG_OVERTEMP = 9,      ///< Temperature above charge maximum limit
-    BMS_ERR_INT_OVERTEMP = 10,     ///< Internal temperature above limit (e.g. BMS IC)
-    BMS_ERR_CELL_FAILURE = 11,     ///< Cell failure (too high voltage difference)
-    BMS_ERR_DIS_OFF = 12,          ///< Discharge FET is off even though it should be on
-    BMS_ERR_CHG_OFF = 13,          ///< Charge FET is off even though it should be on
-    BMS_ERR_FET_OVERTEMP = 14,     ///< MOSFET temperature above limit
-    BMS_ERR_NO_ALERT = 15,         ///< No alert
-    BMS_ERR_GIBBERISH_REGISTERS = 16
+    BMS_ERR_CELL_UNDERVOLTAGE = 0, //< Cell undervoltage flag
+    BMS_ERR_CELL_OVERVOLTAGE = 1,  //< Cell undervoltage flag
+    BMS_ERR_SHORT_CIRCUIT = 2,     //< Pack short circuit (discharge direction)
+    BMS_ERR_DIS_OVERCURRENT = 3,   //< Pack overcurrent (discharge direction)
+    BMS_ERR_CHG_OVERCURRENT = 4,   //< Pack overcurrent (charge direction)
+    BMS_ERR_OPEN_WIRE = 5,         //< Cell open wire
+    BMS_ERR_DIS_UNDERTEMP = 6,     //< Temperature below discharge minimum limit
+    BMS_ERR_DIS_OVERTEMP = 7,      //< Temperature above discharge maximum limit
+    BMS_ERR_CHG_UNDERTEMP = 8,     //< Temperature below charge maximum limit
+    BMS_ERR_CHG_OVERTEMP = 9,      //< Temperature above charge maximum limit
+    BMS_ERR_INT_OVERTEMP = 10,     //< Internal temperature above limit (e.g. BMS IC)
+    BMS_ERR_CELL_FAILURE = 11,     //< Cell failure (too high voltage difference)
+    BMS_ERR_DIS_OFF = 12,          //< Discharge FET is off even though it should be on
+    BMS_ERR_CHG_OFF = 13,          //< Charge FET is off even though it should be on
+    BMS_ERR_FET_OVERTEMP = 14,     //< MOSFET temperature above limit
+    BMS_ERR_NO_ALERT = 15,         //< No alert
+    BMS_ERR_GIBBERISH_REGISTERS = 16,
+    BMS_ERR_MEAS_VOLTAGE_TOO_LOW = 17,  //< Measured cell voltage implausibly low
+    BMS_ERR_MEAS_VOLTAGE_TOO_HIGH = 18 //< Measured cell voltage implausibly high
 };
 
 typedef struct
@@ -372,7 +374,6 @@ void bms_print_register(uint16_t addr);
  * Print all BMS IC registers
  */
 void bms_print_registers();
-
 
 #ifdef __cplusplus
 }

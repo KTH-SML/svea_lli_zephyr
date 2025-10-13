@@ -23,6 +23,10 @@ LOG_MODULE_REGISTER(bq769x0, CONFIG_LOG_DEFAULT_LEVEL);
 extern int adc_gain;   // factory-calibrated, read out from chip (uV/LSB)
 extern int adc_offset; // factory-calibrated, read out from chip (mV)
 
+#ifndef BMS_INVALID_VOLT_CLEAR_MS
+#define BMS_INVALID_VOLT_CLEAR_MS 1000
+#endif
+
 /**
  * Checks if temperatures are within the limits, otherwise disables CHG/DSG FET
  *
@@ -39,11 +43,11 @@ int bms_init_hardware(Bms *bms)
 
 void bms_update(Bms *bms)
 {
-    bms_update_error_flags(bms);
     bms_read_voltages(bms);
     bms_read_current(bms);
     bms_soc_update(bms);
     bms_read_temperatures(bms);
+    bms_update_error_flags(bms);
     bms_check_cell_temp(bms); // bq769x0 doesn't support temperature settings
 
     bms_update_balancing(bms);
@@ -544,6 +548,32 @@ void bms_update_error_flags(Bms *bms)
         || (bms->status.error_flags & (1UL << BMS_ERR_DIS_UNDERTEMP)))
     {
         error_flags_temp |= 1U << BMS_ERR_DIS_UNDERTEMP;
+    }
+
+    // Makes sure that a broken bms isn't treated as working
+    // Fail safe, requires valid readings for a second before considered non gibberish
+    static int64_t invalid_low_clear_time;
+    static int64_t invalid_high_clear_time;
+    int64_t now_ms = k_uptime_get();
+
+    if (bms->status.cell_voltage_min < bms->conf.valid_min_voltage) {
+        invalid_low_clear_time = now_ms + BMS_INVALID_VOLT_CLEAR_MS;
+        error_flags_temp |= 1U << BMS_ERR_MEAS_VOLTAGE_TOO_LOW;
+    }
+    else if ((bms->status.error_flags & (1UL << BMS_ERR_MEAS_VOLTAGE_TOO_LOW))
+             && now_ms < invalid_low_clear_time)
+    {
+        error_flags_temp |= 1U << BMS_ERR_MEAS_VOLTAGE_TOO_LOW;
+    }
+
+    if (bms->status.cell_voltage_max > bms->conf.valid_max_voltage) {
+        invalid_high_clear_time = now_ms + BMS_INVALID_VOLT_CLEAR_MS;
+        error_flags_temp |= 1U << BMS_ERR_MEAS_VOLTAGE_TOO_HIGH;
+    }
+    else if ((bms->status.error_flags & (1UL << BMS_ERR_MEAS_VOLTAGE_TOO_HIGH))
+             && now_ms < invalid_high_clear_time)
+    {
+        error_flags_temp |= 1U << BMS_ERR_MEAS_VOLTAGE_TOO_HIGH;
     }
     // printf("CHECKING AGE OF STAMP\n");
     // if (uptime() - bq769x0_alert_timestamp() > 500) { // Older than 500ms
