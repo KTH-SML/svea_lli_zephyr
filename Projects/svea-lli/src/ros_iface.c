@@ -351,6 +351,10 @@ rcl_ret_t ros_publish_try(rcl_publisher_t *pub, const void *msg) {
     if (k_mutex_lock(&ros_pub_mutex_be, K_NO_WAIT) != 0) {
         return RCL_RET_ERROR;
     }
+    if (!ros_initialized) {
+        k_mutex_unlock(&ros_pub_mutex_be);
+        return RCL_RET_ERROR;
+    }
     rcl_ret_t rc = rcl_publish(pub, msg, NULL);
     k_mutex_unlock(&ros_pub_mutex_be);
     return rc;
