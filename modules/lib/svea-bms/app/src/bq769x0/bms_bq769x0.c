@@ -24,7 +24,7 @@ extern int adc_gain;   // factory-calibrated, read out from chip (uV/LSB)
 extern int adc_offset; // factory-calibrated, read out from chip (mV)
 
 #ifndef BMS_INVALID_VOLT_CLEAR_MS
-#define BMS_INVALID_VOLT_CLEAR_MS 1000
+#define BMS_INVALID_VOLT_CLEAR_MS 10000 // require a long time of validity to clear
 #endif
 
 /**
