@@ -94,8 +94,8 @@ icm42670: icm42670@68 {
         compatible = "ti,ina3221";
         reg = <0x40>;
         shunt-resistors = <4 8 8>; /* ESC=4 mOhm, 12V=8 mOhm, 5V=8 mOhm */
-        avg-mode = <4>;              /* 128-sample average for less noise */
-        conv-time-bus = <4>;         /* 1.1 ms */
+        avg-mode = <1>;              /* 128-sample average for less noise */
+        conv-time-bus = <2>;         
         conv-time-shunt = <4>;       /* 1.1 ms */
         status = "okay";
     };
@@ -235,7 +235,7 @@ icm42670: icm42670@68 {
         imu_reset_gpios = <&gpioc 15 GPIO_ACTIVE_LOW>; /* mikroBUS1 RST */
         soc_button_gpios = <&gpioe 10 GPIO_ACTIVE_LOW>; /* User BTN1 */
         imu_calib_button_gpios = <&gpioe 13 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>; /* User BTN4 */
-        esc_en_gpios = <&gpiod 6 GPIO_ACTIVE_HIGH>; /* PD6 to enable ESCs (active high) */
+        esc_en_gpios = <&gpiod 6 (GPIO_OPEN_DRAIN | GPIO_ACTIVE_HIGH)>; /* PD6 to enable ESCs (active high) */
         wheel_left_gpios = <&gpiob 2 GPIO_ACTIVE_HIGH>;
         wheel_right_gpios = <&gpioc 7 GPIO_ACTIVE_HIGH>;
     };

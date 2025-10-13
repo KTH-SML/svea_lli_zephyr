@@ -25,10 +25,10 @@ LOG_MODULE_REGISTER(ina3221_sensor, LOG_LEVEL_INF);
 #endif
 
 #define INA3221_THREAD_STACK_SIZE 1536
-#define INA3221_THREAD_PRIORITY 7
+#define INA3221_THREAD_PRIORITY 5
 #define INA3221_SAMPLE_PERIOD_MS 200
-#define ESC_UNDERVOLT_DISABLE_V 11.3f
-#define ESC_UNDERVOLT_ENABLE_V 11.5f
+#define ESC_UNDERVOLT_DISABLE_V 11.5f
+#define ESC_UNDERVOLT_ENABLE_V 11.7f
 #define ESC_LED_BLINK_MS 500U
 
 static const struct device *ina_dev;
@@ -78,12 +78,17 @@ static int esc_en_set_release(bool release) {
         LOG_WRN("ESC_EN not configured");
         return -ENODEV;
     }
+    static int last = -1;
     /* Open-drain semantics: write 1 to release (Hi-Z), 0 to sink low */
-    int rc = gpio_pin_set_dt(&esc_en_pin, release ? 1 : 0);
-    if (rc) {
-        LOG_WRN("ESC_EN write failed rc=%d", rc);
-    } else {
-        LOG_INF("ESC_EN <= %d (OD: 1=release, 0=low)", release ? 1 : 0);
+    int rc = 0;
+    if (last != (int)release) {
+        rc = gpio_pin_set_dt(&esc_en_pin, release ? 1 : 0);
+        if (rc) {
+            LOG_WRN("ESC_EN write failed rc=%d", rc);
+        } else {
+            LOG_INF("ESC_EN <= %d (OD: 1=release, 0=low)", release ? 1 : 0);
+            last = (int)release;
+        }
     }
     return rc;
 }
@@ -139,19 +144,20 @@ static void ina3221_handle_esc_voltage(const struct sensor_value *esc_bus_voltag
     static bool led_toggle_on = false;
 
     if (esc_voltage < ESC_UNDERVOLT_DISABLE_V) {
-
-        (void)esc_en_set_release(false);
-
-        led6_next_toggle_ms = now_ms + ESC_LED_BLINK_MS;
-
-        esc_uv_lockout = true;
-        LOG_WRN("ESC supply undervoltage: %.2f V < %.1f V, disabling ESC", esc_voltage,
-                (double)ESC_UNDERVOLT_DISABLE_V);
+        if (!esc_uv_lockout) {
+            esc_uv_lockout = true;
+            (void)esc_en_set_release(false);
+            /* start blinking immediately; do not continuously reset the deadline */
+            led6_next_toggle_ms = now_ms;
+            LOG_WRN("ESC supply undervoltage: %.2f V < %.1f V, disabling ESC", esc_voltage,
+                    (double)ESC_UNDERVOLT_DISABLE_V);
+        }
     }
 
     else if (esc_uv_lockout && esc_voltage > ESC_UNDERVOLT_ENABLE_V) {
         (void)esc_en_set_release(true); /* recover: release (float via pull-up) */
         esc_uv_lockout = false;
+        led6_next_toggle_ms = 0;
 
         if (led6_gpio_ready) {
             (void)gpio_pin_set_dt(&led6_gpio, 0);
@@ -302,21 +308,5 @@ int ina3221_sensor_init(void) {
 
     LOG_INF("INA3221 polling thread started");
 
-    return 0;
-}
-
-int ina3221_sensor_get_latest(struct ina3221_measurement *sample) {
-    if ((sample == NULL) || (ina_dev == NULL)) {
-        return -EINVAL;
-    }
-
-    k_mutex_lock(&measurement_lock, K_FOREVER);
-    if (!latest_valid) {
-        k_mutex_unlock(&measurement_lock);
-        return -EAGAIN;
-    }
-
-    memcpy(sample, &latest_measurement, sizeof(*sample));
-    k_mutex_unlock(&measurement_lock);
     return 0;
 }
