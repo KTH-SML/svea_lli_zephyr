@@ -23,8 +23,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <microros_transports.h>
 #include <errno.h>
+#include <microros_transports.h>
 
 #define RING_BUF_SIZE 8192
 
@@ -89,8 +89,6 @@ bool zephyr_transport_open(struct uxrCustomTransport *transport) {
     printk("Waiting for agent connection\n");
 
     /* Proceed when DTR asserted, unsupported, or after timeout */
-    const int wait_total_ms = 2000;
-    int waited_ms = 0;
     int dtr_rc = 0;
     for (;;) {
         dtr_rc = uart_line_ctrl_get(params->uart_dev, UART_LINE_CTRL_DTR, &dtr);
@@ -102,12 +100,7 @@ bool zephyr_transport_open(struct uxrCustomTransport *transport) {
             printk("CDC: DTR asserted by host\n");
             break;
         }
-        if (waited_ms >= wait_total_ms) {
-            printk("CDC: DTR timeout after %d ms, proceeding\n", wait_total_ms);
-            break;
-        }
         k_sleep(K_MSEC(100));
-        waited_ms += 100;
     }
 
     printk("Serial port connected (CDC)\n");
@@ -161,9 +154,13 @@ size_t zephyr_transport_write(struct uxrCustomTransport *transport, const uint8_
     if (wrote < len) {
         /* Ring full or partial write */
         printk("CDC: write partial %u/%u bytes\n", (unsigned)wrote, (unsigned)len);
-        if (err) { *err = 1; }
+        if (err) {
+            *err = 1;
+        }
     } else {
-        if (err) { *err = 0; }
+        if (err) {
+            *err = 0;
+        }
     }
     return wrote;
 }
@@ -183,7 +180,9 @@ size_t zephyr_transport_read(struct uxrCustomTransport *transport, uint8_t *buf,
     read = ring_buf_get(&in_ringbuf, buf, len);
     if ((read == 0) && (spent_time >= timeout)) {
         /* Timed out without data: normal during idle polling; do not spam logs */
-        if (err) { *err = 2; }
+        if (err) {
+            *err = 2;
+        }
     } else if (err) {
         *err = 0;
     }
