@@ -187,6 +187,7 @@ uint32_t rc_get_period_us(rc_channel_t idx) {
 }
 
 void rc_input_debug_dump(void) {
+    return;
     rc_override_mode_t mode = rc_get_override_mode();
     const char *mstr = (mode == RC_OVERRIDE_ROS) ? "ROS" : (mode == RC_OVERRIDE_MUTE) ? "MUTE"
                                                                                       : "FULL";
@@ -335,17 +336,17 @@ static void rc_remote_publish_thread(void *a, void *b, void *c) {
         if (rc != RCL_RET_OK) {
             // LOG_WRN("Remote publish steer failed rc=%d", (int)rc);
         }
-        k_msleep(5); // small delay to avoid flooding the transport
+        k_msleep(25); // small delay to avoid flooding the transport
         rc = ros_publish_try(&pub_remote_throttle, &throttle_msg);
         if (rc != RCL_RET_OK) {
             // LOG_WRN("Remote publish throttle failed rc=%d", (int)rc);
         }
-        k_msleep(5); // small delay to avoid flooding the transport
+        k_msleep(25); // small delay to avoid flooding the transport
         rc = ros_publish_try(&pub_remote_gear, &gear_msg);
         if (rc != RCL_RET_OK) {
             // LOG_WRN("Remote publish gear failed rc=%d", (int)rc);
         }
-        k_msleep(5); // small delay to avoid flooding the transport
+        k_msleep(25); // small delay to avoid flooding the transport
         rc = ros_publish_try(&pub_remote_override, &override_msg);
         if (rc != RCL_RET_OK) {
             // LOG_WRN("Remote publish override failed rc=%d", (int)rc);
