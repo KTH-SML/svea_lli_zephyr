@@ -310,7 +310,7 @@ static void imu_sensor_thread(void *p1, void *p2, void *p3) {
         } else {
             static uint64_t last_log_time;
             uint64_t now = k_uptime_get();
-            if ((now - last_log_time) >= 5000U) {
+            if ((now - last_log_time) >= 50000U) {
                 LOG_INF("IMU sample (accel=%.6f/%.6f/%.6f m/s^2, gyro=%.6f/%.6f/%.6f rad/s)",
                         (double)imu_msg.linear_acceleration.x,
                         (double)imu_msg.linear_acceleration.y,
@@ -321,6 +321,6 @@ static void imu_sensor_thread(void *p1, void *p2, void *p3) {
                 last_log_time = now;
             }
         }
-        k_sleep(K_MSEC(40)); // yield to lower-prio tasks at least a lil bit
+        k_sleep(K_MSEC(20)); // yield to lower-prio tasks at least a lil bit
     }
 }
