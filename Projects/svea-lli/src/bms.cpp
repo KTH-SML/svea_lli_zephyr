@@ -391,7 +391,7 @@ static void battery_publisher_thread(void *, void *, void *) {
                 last_debug_ms = now_ms;
             }
         }
-        k_sleep(K_MSEC(5000));
+        k_sleep(K_MSEC(BMS_PUBLISH_LOOP_DELAY_MS));
     }
 }
 
