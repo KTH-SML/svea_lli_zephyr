@@ -99,6 +99,14 @@ static inline uint32_t int8_to_throttle_us(int8_t val) {
     return SERVO_NEUTRAL_US - ((int32_t)val * 500) / 127;
 }
 
+// Tunables (added once near the top)
+#ifndef THROTTLE_P_GAIN
+#define THROTTLE_P_GAIN 0.02f
+#endif
+#ifndef THROTTLE_MAX_DELTA_US
+#define THROTTLE_MAX_DELTA_US 8.0f
+#endif
+
 static void control_thread(void *, void *, void *) {
     while (!servos_initialized) {
         k_sleep(K_MSEC(10));
@@ -133,8 +141,11 @@ static void control_thread(void *, void *, void *) {
         uint32_t diff_front_us = DIFF_OPEN_FRONT_US;
         uint32_t diff_rear_us = DIFF_OPEN_REAR_US;
         bool thr_forced_neutral = false;
-        const char *ovr_str = (override_mode == RC_OVERRIDE_REMOTE) ? "FULL" :
-                               (override_mode == RC_OVERRIDE_MUTE)   ? "MUTE" : "ROS";
+
+        static uint32_t actuated_throttle = SERVO_NEUTRAL_US;
+
+        const char *ovr_str = (override_mode == RC_OVERRIDE_REMOTE) ? "FULL" : (override_mode == RC_OVERRIDE_MUTE) ? "MUTE"
+                                                                                                                   : "ROS";
 
         if (remote_connected && override_mode != RC_OVERRIDE_MUTE) {
             switch (override_mode) {
@@ -237,16 +248,19 @@ static void control_thread(void *, void *, void *) {
                 break;
             }
 
-            // 3) No smoothing: apply target directly
-            filtered_thr = (float)thr_target_us;
-
-            uint32_t thr_output_us = (uint32_t)(filtered_thr + 0.5f);
-            forward_guess = thr_output_us > 1450; // simple heuristic
+            // Drop-in replacement for the ramp block
+            float e = (float)thr_target_us - (float)actuated_throttle; // signed error
+            float step = THROTTLE_P_GAIN * e;                          // proportional step
+            if (step > THROTTLE_MAX_DELTA_US)
+                step = THROTTLE_MAX_DELTA_US;
+            if (step < -THROTTLE_MAX_DELTA_US)
+                step = -THROTTLE_MAX_DELTA_US;
+            actuated_throttle = (uint16_t)((float)actuated_throttle + step + 0.5f);
 
             // 4) Write outputs
             servo_set_ticks(&servos[SERVO_STEERING].spec, steer_us);
-            servo_set_ticks(&servos[SERVO_THROTTLE].spec, thr_output_us);
-            servo_set_ticks(&servos[SERVO_GEAR].spec, gear_us);
+            servo_set_ticks(&servos[SERVO_THROTTLE].spec, actuated_throttle);
+            servo_set_ticks(&servos[SERVO_GEAR].spec, GEAR_LOW_US); // Force low gear for now
             servo_set_ticks(&servos[SERVO_DIFF].spec, diff_front_us);
             servo_set_ticks(&servos[SERVO_DIFF_REAR].spec, diff_rear_us);
         } else {
