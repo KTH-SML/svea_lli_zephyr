@@ -238,8 +238,8 @@ static void control_thread(void *, void *, void *) {
             servo_set_ticks(&servos[SERVO_STEERING].spec, steer_us);
             servo_set_ticks(&servos[SERVO_THROTTLE].spec, actuated_throttle);
             servo_set_ticks(&servos[SERVO_GEAR].spec, GEAR_LOW_US); // Force low gear for now
-            servo_set_ticks(&servos[SERVO_DIFF].spec, diff_front_us);
-            servo_set_ticks(&servos[SERVO_DIFF_REAR].spec, diff_rear_us);
+            servo_set_ticks(&servos[SERVO_DIFF].spec, DIFF_ENGAGED_FRONT_US);
+            servo_set_ticks(&servos[SERVO_DIFF_REAR].spec, DIFF_ENGAGED_REAR_US);
         } else {
             // No RC connection, safe neutral outputs
             servo_set_ticks(&servos[SERVO_STEERING].spec, 0);
