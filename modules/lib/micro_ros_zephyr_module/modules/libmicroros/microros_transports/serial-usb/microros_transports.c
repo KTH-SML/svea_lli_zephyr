@@ -26,7 +26,7 @@
 #include <errno.h>
 #include <microros_transports.h>
 
-#define RING_BUF_SIZE 8192
+#define RING_BUF_SIZE 16384
 
 char uart_in_buffer[RING_BUF_SIZE];
 char uart_out_buffer[RING_BUF_SIZE];
@@ -38,11 +38,18 @@ static void uart_fifo_callback(const struct device *dev, void *user_data) {
         if (uart_irq_rx_ready(dev)) {
             int recv_len;
             char buffer[64];
-            size_t len = MIN(ring_buf_space_get(&in_ringbuf), sizeof(buffer));
+            size_t space = ring_buf_space_get(&in_ringbuf);
+            size_t len = MIN(space, sizeof(buffer));
 
-            if (len > 0) {
+            if (len == 0) {
+                /* Buffer full: drain UART FIFO to avoid IRQ storm; drop data */
+                (void)uart_fifo_read(dev, buffer, sizeof(buffer));
+            } else {
                 recv_len = uart_fifo_read(dev, buffer, len);
-                ring_buf_put(&in_ringbuf, buffer, recv_len);
+                size_t wrote = ring_buf_put(&in_ringbuf, buffer, recv_len);
+                if (wrote < (size_t)recv_len) {
+                    /* Ring saturated: drop tail (rare due to pre-check) */
+                }
             }
         }
 
@@ -148,19 +155,24 @@ size_t zephyr_transport_write(struct uxrCustomTransport *transport, const uint8_
 
     uart_irq_tx_enable(params->uart_dev);
 
-    while (!ring_buf_is_empty(&out_ringbuf)) {
+    /* Wait for TX to drain, but don’t block forever */
+    int wait_ms = 0;
+    while (!ring_buf_is_empty(&out_ringbuf) && wait_ms < 500) {
         k_sleep(K_MSEC(5));
+        wait_ms += 5;
     }
+
     if (wrote < len) {
-        /* Ring full or partial write */
         printk("CDC: write partial %u/%u bytes\n", (unsigned)wrote, (unsigned)len);
-        if (err) {
-            *err = 1;
-        }
+        if (err)
+            *err = 1; /* partial */
+    } else if (!ring_buf_is_empty(&out_ringbuf)) {
+        printk("CDC: write timeout waiting drain\n");
+        if (err)
+            *err = 2; /* timeout */
     } else {
-        if (err) {
+        if (err)
             *err = 0;
-        }
     }
     return wrote;
 }
