@@ -10,7 +10,6 @@
 #include "control.h"
 #include "loop_delays.h"
 #include "ros_iface.h"
-
 #include <limits.h>
 #include <std_msgs/msg/bool.h>
 #include <std_msgs/msg/int8.h>
@@ -364,19 +363,24 @@ static void rc_connected_publish_thread(void *a, void *b, void *c) {
     static std_msgs__msg__Bool connected_msg;
     static uint8_t fail_streak = 0;
     uint32_t last_publish_ms = 0U;
+
+#if (LOG_LEVEL >= LOG_LEVEL_DBG)
     uint32_t min_period_ms = UINT32_MAX;
     uint32_t max_period_ms = 0U;
     uint32_t samples = 0U;
+#endif
 
     while (1) {
         if (!ros_initialized) {
-            k_msleep(10);
+            k_msleep(100);
             continue;
         }
 
         connected_msg.data = remote_connected;
 
+#if (LOG_LEVEL >= LOG_LEVEL_DBG)
         uint32_t now_ms = k_uptime_get_32();
+
         if (last_publish_ms != 0U) {
             uint32_t period_ms = now_ms - last_publish_ms;
             if (period_ms < min_period_ms)
@@ -390,13 +394,14 @@ static void rc_connected_publish_thread(void *a, void *b, void *c) {
                 samples = 0U;
             }
         }
-        last_publish_ms = now_ms;
 
-        rcl_ret_t rc = ros_publish_rel_locked(&pub_remote_connected, &connected_msg);
+        last_publish_ms = now_ms;
+#endif
+        rcl_ret_t rc = ros_publish_locked(&pub_remote_connected, &connected_msg);
         if (rc != RCL_RET_OK) {
             if (fail_streak < 255)
                 fail_streak++;
-            if (fail_streak >= 2) {
+            if (fail_streak >= 3) {
                 LOG_WRN("Remote connected reliable publish failing (%u), forcing reconnect", fail_streak);
                 ros_iface_handle_remote_publish_error();
                 fail_streak = 0;
@@ -407,6 +412,6 @@ static void rc_connected_publish_thread(void *a, void *b, void *c) {
             fail_streak = 0;
         }
 
-        k_msleep(200);
+        k_msleep(RC_INPUT_PUBLISH_LOOP_DELAY_MS);
     }
 }
