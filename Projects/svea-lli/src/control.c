@@ -3,7 +3,7 @@
  *
  * Part of the SVEA Low‑Level Interface (Zephyr) application.
  * Author: Nils Kiefer
- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /* src/control.c  –  fast, non-blocking servo output -------------------- */
 #include "control.h"
 #include "rc_input.h" /* rc_get_pulse_us() prototype        */
@@ -47,7 +47,7 @@ void servo_init(void) {
         /* Initialize with 0 ns pulse to avoid 16-bit overflow warnings */
         pwm_set_pulse_dt(&servos[i].spec, 0);
         if (!device_is_ready(servos[i].spec.dev)) {
-            LOG_ERR("Servo %d PWM device not ready");
+            LOG_ERR("Servo %d PWM device not ready", i);
         }
     }
     servos_initialized = true;
@@ -77,11 +77,6 @@ static inline void servo_set_ticks(const struct pwm_dt_spec *s, uint16_t t_us) {
 #define DIFF_OPEN_REAR_US 1900
 
 // No throttle smoothing/clamping: immediate target application
-
-// RC throttle stale detection: if value hasn't changed for this long, force neutral
-#define RC_THR_STALE_MS 500
-// Consider readings the same within this epsilon (in microseconds)
-#define RC_THR_CHANGE_THRESH_US 1
 
 // Max allowed age of ROS command before forcing throttle to neutral (ms)
 #ifndef ROS_CMD_MAX_AGE_MS
@@ -114,7 +109,6 @@ static void control_thread(void *, void *, void *) {
 
     LOG_INF("Control thread started, servos initialized.");
 
-    float filtered_thr = (float)SERVO_NEUTRAL_US;
     g_ros_ctrl.diff = diff_state;
 
     uint64_t prev_loop_us = k_ticks_to_us_floor64(k_uptime_ticks());
@@ -155,28 +149,6 @@ static void control_thread(void *, void *, void *) {
                 thr_target_us = rc_get_pulse_us(RC_THROTTLE);
                 high_gear = (rc_get_pulse_us(RC_HIGH_GEAR) > SERVO_NEUTRAL_US);
 
-                // If throttle reading hasn't changed for RC_THR_STALE_MS, assume neutral
-                {
-                    static uint32_t last_rc_thr_us = SERVO_NEUTRAL_US;
-                    static uint32_t last_rc_thr_change_ms = 0U;
-                    uint32_t now_ms_local = k_uptime_get_32();
-                    if (last_rc_thr_change_ms == 0U) {
-                        last_rc_thr_change_ms = now_ms_local;
-                        last_rc_thr_us = thr_target_us;
-                    }
-                    int32_t diff_us = (int32_t)thr_target_us - (int32_t)last_rc_thr_us;
-                    if (diff_us < 0)
-                        diff_us = -diff_us;
-                    if ((uint32_t)diff_us > RC_THR_CHANGE_THRESH_US) {
-                        last_rc_thr_change_ms = now_ms_local;
-                        last_rc_thr_us = thr_target_us;
-                    } else {
-                        if ((now_ms_local - last_rc_thr_change_ms) >= RC_THR_STALE_MS) {
-                            thr_target_us = SERVO_NEUTRAL_US;
-                            thr_forced_neutral = true;
-                        }
-                    }
-                }
                 // Update ROS shadow for better transition in case ros agent is off
                 int32_t steer_delta = (int32_t)steer_us - SERVO_NEUTRAL_US;
                 int32_t steer_val = (steer_delta * 127) / 500;
@@ -222,7 +194,6 @@ static void control_thread(void *, void *, void *) {
                     thr_target_us = int8_to_throttle_us(g_ros_ctrl.throttle);
                 } else {
                     thr_target_us = SERVO_NEUTRAL_US;
-                    filtered_thr = (float)SERVO_NEUTRAL_US;
                 }
 
                 high_gear = g_ros_ctrl.high_gear;
@@ -255,7 +226,13 @@ static void control_thread(void *, void *, void *) {
                 step = THROTTLE_MAX_DELTA_US;
             if (step < -THROTTLE_MAX_DELTA_US)
                 step = -THROTTLE_MAX_DELTA_US;
+
             actuated_throttle = (uint16_t)((float)actuated_throttle + step + 0.5f);
+
+            if (actuated_throttle < 1000U)
+                actuated_throttle = 1001U;
+            if (actuated_throttle > 2000U)
+                actuated_throttle = 1999U;
 
             // 4) Write outputs
             servo_set_ticks(&servos[SERVO_STEERING].spec, steer_us);
@@ -270,7 +247,6 @@ static void control_thread(void *, void *, void *) {
             servo_set_ticks(&servos[SERVO_GEAR].spec, 0);
             servo_set_ticks(&servos[SERVO_DIFF].spec, 0);
             servo_set_ticks(&servos[SERVO_DIFF_REAR].spec, 0);
-            filtered_thr = (float)SERVO_NEUTRAL_US;
         }
 
         // Periodic diagnostics: report RC connectivity and throttle handling once per second
@@ -283,7 +259,7 @@ static void control_thread(void *, void *, void *) {
                         remote_connected ? "yes" : "no",
                         ovr_str,
                         (unsigned)thr_target_us,
-                        (unsigned)(uint32_t)(filtered_thr + 0.5f),
+                        (unsigned)(uint32_t)actuated_throttle,
                         thr_forced_neutral ? "yes" : "no");
             }
         }
