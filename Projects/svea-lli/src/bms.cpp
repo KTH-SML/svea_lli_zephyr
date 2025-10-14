@@ -374,7 +374,7 @@ static void battery_publisher_thread(void *, void *, void *) {
         battery_msg.power_supply_technology = sensor_msgs__msg__BatteryState__POWER_SUPPLY_TECHNOLOGY_LIPO;
 
         if (ros_initialized) {
-            (void)ros_publish_try(&battery_pub, &battery_msg);
+            (void)ros_publish_rel_locked(&battery_pub, &battery_msg);
         } else {
             uint32_t now_ms = k_uptime_get_32();
             if ((now_ms - last_debug_ms) >= 1000U) {
@@ -390,7 +390,6 @@ static void battery_publisher_thread(void *, void *, void *) {
                 last_debug_ms = now_ms;
             }
         }
-
         k_sleep(K_MSEC(5000));
     }
 }
