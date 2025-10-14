@@ -109,8 +109,8 @@ void bms_init_config(Bms *bms, int type, float nominal_capacity)
 
     bms->conf.shunt_res_mOhm = BOARD_SHUNT_RESISTOR;
 
-    bms->conf.cell_ov_delay_s = 1; // Think its more like seconds, not ms
-    bms->conf.cell_uv_delay_s = 1;
+    bms->conf.cell_ov_delay_s = 4; // Think its more like seconds, not ms
+    bms->conf.cell_uv_delay_s = 8;
 
     bms->conf.valid_min_voltage = 2.90F;
     bms->conf.valid_max_voltage = 4.30F;
