@@ -6,8 +6,8 @@
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /* src/control.c  –  fast, non-blocking servo output -------------------- */
 #include "control.h"
-#include "rc_input.h" /* rc_get_pulse_us() prototype        */
-
+#include "loop_delays.h"
+#include "rc_input.h"     /* rc_get_pulse_us() prototype        */
 #include <stdlib.h>       // <-- Add this line
 #include <stm32_ll_tim.h> /* low-level TIM helpers               */
 #include <zephyr/device.h>
@@ -61,7 +61,6 @@ static inline void servo_set_ticks(const struct pwm_dt_spec *s, uint16_t t_us) {
     }
 }
 /* ───── 3. control thread – readable, explicit conditions ───────────── */
-#define LOOP_MS 10 // 100 Hz for snappier response
 
 // Neutral/safe outputs
 #define SERVO_NEUTRAL_US 1500
@@ -117,7 +116,7 @@ static void control_thread(void *, void *, void *) {
         const uint64_t loop_start_us = k_ticks_to_us_floor64(k_uptime_ticks());
         uint64_t dt_us = loop_start_us - prev_loop_us;
         if (dt_us == 0U) {
-            dt_us = LOOP_MS * 1000ULL;
+            dt_us = CONTROL_LOOP_DELAY_MS * 1000ULL;
         }
 
         // 1) Connection + override state (three-way)
@@ -219,7 +218,7 @@ static void control_thread(void *, void *, void *) {
                 break;
             }
 
-            // Drop-in replacement for the ramp block
+            // Simple P type with clamp to limit sudden jumps in throttle (causing large current sinks)
             float e = (float)thr_target_us - (float)actuated_throttle; // signed error
             float step = THROTTLE_P_GAIN * e;                          // proportional step
             if (step > THROTTLE_MAX_DELTA_US)
@@ -266,7 +265,7 @@ static void control_thread(void *, void *, void *) {
         prev_loop_us = loop_start_us;
         // 5) Keep the loop period
         const uint64_t elapsed_us = k_ticks_to_us_floor64(k_uptime_ticks()) - loop_start_us;
-        const int32_t sleep_time = (int32_t)(LOOP_MS * 1000) - (int32_t)elapsed_us;
+        const int32_t sleep_time = (int32_t)(CONTROL_LOOP_DELAY_MS * 1000) - (int32_t)elapsed_us;
         if (sleep_time > 0) {
             k_sleep(K_USEC(sleep_time));
         } else {
