@@ -145,7 +145,7 @@ static void ina3221_handle_esc_voltage(const struct sensor_value *esc_bus_voltag
     int64_t now_ms = k_uptime_get();
     static int64_t latest_under_voltage_ms = 0;
     static bool led_toggle_on = false;
-    if (esc_voltage < ESC_UNDERVOLT_DISABLE_V || esc_current > 10.0f) {
+    if (esc_voltage < ESC_UNDERVOLT_DISABLE_V) {
         latest_under_voltage_ms = now_ms;
         if (!esc_uv_lockout) {
             esc_uv_lockout = true;
@@ -158,7 +158,7 @@ static void ina3221_handle_esc_voltage(const struct sensor_value *esc_bus_voltag
     }
 
     else if (esc_uv_lockout && esc_voltage > ESC_UNDERVOLT_ENABLE_V &&
-             (now_ms - latest_under_voltage_ms) >= ESC_UNDERVOLT_RECOVER_TIMEOUT && esc_current < 10.0f) {
+             (now_ms - latest_under_voltage_ms) >= ESC_UNDERVOLT_RECOVER_TIMEOUT) {
 
         (void)esc_en_set_release(true); /* recover: release (float via pull-up) */
 
@@ -213,22 +213,20 @@ static void ina3221_thread(void *a, void *b, void *c) {
             k_mutex_unlock(&measurement_lock);
 
             if (ros_initialized && ina_msg_initialized) {
-                if (k_uptime_get() - last_publish_time >= INA3221_SAMPLE_PERIOD_MS) {
-                    last_publish_time = k_uptime_get();
 
-                    /* Data layout: [ESC_V, ESC_I, ESC_P, 12V_V, 12V_I, 12V_P, 5V_V, 5V_I, 5V_P] */
-                    ina_msg.data.data[0] = sensor_value_to_float(&sample.bus_voltage[0]);
-                    ina_msg.data.data[1] = sensor_value_to_float(&sample.shunt_current[0]);
-                    ina_msg.data.data[2] = sensor_value_to_float(&sample.power[0]);
-                    ina_msg.data.data[3] = sensor_value_to_float(&sample.bus_voltage[1]);
-                    ina_msg.data.data[4] = sensor_value_to_float(&sample.shunt_current[1]);
-                    ina_msg.data.data[5] = sensor_value_to_float(&sample.power[1]);
-                    ina_msg.data.data[6] = sensor_value_to_float(&sample.bus_voltage[2]);
-                    ina_msg.data.data[7] = sensor_value_to_float(&sample.shunt_current[2]);
-                    ina_msg.data.data[8] = sensor_value_to_float(&sample.power[2]);
+                /* Data layout: [ESC_V, ESC_I, ESC_P, 12V_V, 12V_I, 12V_P, 5V_V, 5V_I, 5V_P] */
+                ina_msg.data.data[0] = sensor_value_to_float(&sample.bus_voltage[0]);
+                ina_msg.data.data[1] = sensor_value_to_float(&sample.shunt_current[0]);
+                ina_msg.data.data[2] = sensor_value_to_float(&sample.power[0]);
+                ina_msg.data.data[3] = sensor_value_to_float(&sample.bus_voltage[1]);
+                ina_msg.data.data[4] = sensor_value_to_float(&sample.shunt_current[1]);
+                ina_msg.data.data[5] = sensor_value_to_float(&sample.power[1]);
+                ina_msg.data.data[6] = sensor_value_to_float(&sample.bus_voltage[2]);
+                ina_msg.data.data[7] = sensor_value_to_float(&sample.shunt_current[2]);
+                ina_msg.data.data[8] = sensor_value_to_float(&sample.power[2]);
 
-                    (void)ros_publish_try(&ina3221_pub, &ina_msg);
-                }
+                (void)ros_publish_try(&ina3221_pub, &ina_msg);
+
             } else {
                 // Log to serial if ROS is not connected
                 static uint64_t last_log_time;
@@ -248,10 +246,10 @@ static void ina3221_thread(void *a, void *b, void *c) {
                 }
             }
 
-            ina3221_handle_esc_voltage(&sample.bus_voltage[0], &sample.shunt_current[0]);
+            // ina3221_handle_esc_voltage(&sample.bus_voltage[0], &sample.shunt_current[0]);
         }
         // For esc cutout
-        k_sleep(K_USEC(500));
+        k_sleep(K_MSEC(INA3221_SAMPLE_PERIOD_MS));
     }
 }
 
