@@ -240,7 +240,7 @@ static void odom_thread(void *a, void *b, void *c) {
         odom_msg.header.stamp.nanosec = (uint32_t)(ros_iface_epoch_nanos() % 1000000000ULL);
 
         (void)ros_publish_try(&encoders_pub, &odom_msg);
-        k_sleep(K_MSEC(30));
+        k_sleep(K_MSEC(WHEEL_ENC_PUBLISH_LOOP_DELAY_MS));
     }
 }
 
