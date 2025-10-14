@@ -60,7 +60,8 @@ struct wheel_ctx {
     volatile uint16_t head;    /* index of oldest entry            */
     volatile uint16_t len;     /* number of valid entries          */
 
-    uint32_t last_us; /* debounce timer (wrap-safe)       */
+    uint32_t last_us;        /* debounce timer (wrap-safe)       */
+    volatile uint16_t burst; /* ticks since last publish         */
 };
 
 static struct wheel_ctx w[2] = {
@@ -98,6 +99,7 @@ static inline void push_tick(struct wheel_ctx *c) {
     c->last_us = now_us;
 
     rb_push(c, k_uptime_get_32());
+    c->burst++;
 }
 
 static void wl_isr(const struct device *d, struct gpio_callback *cb, uint32_t p) {
@@ -160,6 +162,7 @@ void wheel_enc_init(void) {
 
         w[i].head = w[i].len = 0;
         w[i].last_us = 0;
+        w[i].burst = 0;
     }
     wheel_enc_start_odom_thread();
 }
@@ -198,20 +201,33 @@ static void odom_thread(void *a, void *b, void *c) {
         float vL = wheel_left_speed();
         float vR = wheel_right_speed();
 
-        odom_msg.twist.covariance[0] = (double)vL;
-        odom_msg.twist.covariance[7] = (double)vR;
+        // Snapshot tick bursts since last publish
+        unsigned int key_b = irq_lock();
+        uint16_t ticksL = w[0].burst;
+        uint16_t ticksR = w[1].burst;
+        w[0].burst = 0;
+        w[1].burst = 0;
+        irq_unlock(key_b);
+
         bool fwd = 1; // assume forward, done on ros side instead
 
         odom_msg.twist.twist.linear.x = 0.5f * (vL + vR) * (fwd ? 1.f : -1.f);
+        odom_msg.twist.twist.linear.y = (float)ticksL; // publish latest tick counts
+        odom_msg.twist.twist.linear.z = (float)ticksR;
         /* 2× gain compensates empirically for skid-steer slip */
+        odom_msg.twist.twist.angular.x = vL;
+        odom_msg.twist.twist.angular.y = vR;
+
         odom_msg.twist.twist.angular.z = ((vL - vR) / WHEELBASE) *
                                          (fwd ? 1.f : -1.f) * 2.f;
 
         if (!ros_initialized) {
             uint32_t now = k_uptime_get_32();
-            if ((uint32_t)(now - last_log_ms) >= 5000U) {
-                LOG_DBG("Wheel encoders waiting for ROS (vL=%.2f m/s, vR=%.2f m/s)",
-                        (double)vL, (double)vR);
+            if ((uint32_t)(now - last_log_ms) >= 1000U) {
+                LOG_INF("Wheel encoders waiting for ROS (vL=%.2f m/s, vR=%.2f m/s, lin.x=%.3f, ang.z=%.3f)",
+                        (double)vL, (double)vR,
+                        (double)odom_msg.twist.twist.linear.x,
+                        (double)odom_msg.twist.twist.angular.z);
                 last_log_ms = now;
             }
             k_sleep(K_MSEC(50));
