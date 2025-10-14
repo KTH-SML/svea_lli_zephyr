@@ -9,7 +9,6 @@
 #include "control.h"
 #include "loop_delays.h"
 #include "rc_input.h"
-
 #include <geometry_msgs/msg/twist.h>
 #include <geometry_msgs/msg/twist_with_covariance_stamped.h>
 #include <rcl/rcl.h>
@@ -60,6 +59,8 @@ bool ros_initialized = false;
 
 static K_THREAD_STACK_DEFINE(ros_stack, ROS_STACK_SIZE);
 static struct k_thread ros_thread;
+// Global mutex to serialize all micro-ROS transport I/O (publish, spin, sync, epoch reads)
+static struct k_mutex uros_io_mutex;
 
 // Node support
 static rcl_allocator_t allocator;
@@ -90,6 +91,12 @@ enum states {
     AGENT_CONNECTED,
     AGENT_DISCONNECTED
 } state;
+
+// Forward declarations for locked helpers used below
+static void ros_sync_session_locked(int timeout_ms);
+static bool ros_epoch_synchronized_locked(void);
+static uint64_t ros_epoch_nanos_locked(void);
+static rcl_ret_t ros_executor_spin_some_locked(uint64_t timeout_ns);
 
 // Subscription callbacks
 static void steer_cb(const void *msg) {
@@ -213,10 +220,10 @@ static void time_sync_thread(void *a, void *b, void *c) {
 
     while (1) {
         if (state == AGENT_CONNECTED) {
-            rmw_uros_sync_session(200);
+            ros_sync_session_locked(ROS_TIME_SYNC_LOOP_DELAY_MS);
 
-            if (rmw_uros_epoch_synchronized() && !atomic_test_and_set_bit(&epoch_locked, 0)) {
-                uint64_t agent_ns = rmw_uros_epoch_nanos();
+            if (ros_epoch_synchronized_locked() && !atomic_test_and_set_bit(&epoch_locked, 0)) {
+                uint64_t agent_ns = ros_epoch_nanos_locked();
                 uint64_t up_ns = k_uptime_get() * 1000000ULL;
 
                 unsigned int key = irq_lock();
@@ -226,7 +233,7 @@ static void time_sync_thread(void *a, void *b, void *c) {
                 LOG_INF("Time locked to agent, offset = %lld ns", (long long)epoch_off_ns);
             }
         }
-        k_sleep(K_SECONDS(1));
+        k_sleep(K_MSEC(ROS_TIME_SYNC_LOOP_DELAY_MS));
     }
 }
 
@@ -267,7 +274,7 @@ static void ros_iface_thread(void *a, void *b, void *c) {
 
         case AGENT_CONNECTED:
             // Try to spin the executor
-            rcl_ret_t spin_ret = rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10));
+            rcl_ret_t spin_ret = ros_executor_spin_some_locked(RCL_MS_TO_NS(10));
             if (spin_ret != RCL_RET_OK) {
                 LOG_WRN("Executor spin failed (%d), assuming disconnection", spin_ret);
                 state = AGENT_DISCONNECTED;
@@ -314,8 +321,8 @@ uint64_t ros_iface_epoch_nanos(void) {
 }
 
 void ros_iface_init(void) {
-    k_mutex_init(&ros_pub_mutex_be);
-    k_mutex_init(&ros_pub_mutex_rel);
+    // Serialize all USB/micro-ROS access across threads
+    k_mutex_init(&uros_io_mutex);
     // Setup custom transports for microros
     rmw_uros_set_custom_transport(
         MICRO_ROS_FRAMING_REQUIRED,
@@ -337,33 +344,52 @@ void ros_iface_init(void) {
                     4, 0, K_NO_WAIT);
     k_thread_name_set(&time_sync_thread_data, "time_sync");
 }
-// Serialize access to rcl_publish across streams
-struct k_mutex ros_pub_mutex_be;
-struct k_mutex ros_pub_mutex_rel;
 
-rcl_ret_t ros_publish_be_locked(rcl_publisher_t *pub, const void *msg) {
-    k_mutex_lock(&ros_pub_mutex_be, K_FOREVER);
-    rcl_ret_t rc = rcl_publish(pub, msg, NULL);
-    k_mutex_unlock(&ros_pub_mutex_be);
-    return rc;
-}
-
+// Publish with mutex lock, blocking if necessary, making sure we only load the usb port if it is free
 rcl_ret_t ros_publish_try(rcl_publisher_t *pub, const void *msg) {
-    if (k_mutex_lock(&ros_pub_mutex_be, K_NO_WAIT) != 0) {
+    int lock_rc = k_mutex_lock(&uros_io_mutex, K_NO_WAIT);
+    if (lock_rc != 0) {
+        // Transport is busy; skip publish without blocking
         return RCL_RET_ERROR;
     }
-    if (!ros_initialized) {
-        k_mutex_unlock(&ros_pub_mutex_be);
-        return RCL_RET_ERROR;
-    }
+
     rcl_ret_t rc = rcl_publish(pub, msg, NULL);
-    k_mutex_unlock(&ros_pub_mutex_be);
+    k_mutex_unlock(&uros_io_mutex);
     return rc;
 }
 
-rcl_ret_t ros_publish_rel_locked(rcl_publisher_t *pub, const void *msg) {
-    k_mutex_lock(&ros_pub_mutex_rel, K_FOREVER);
+rcl_ret_t ros_publish_locked(rcl_publisher_t *pub, const void *msg) {
+    k_mutex_lock(&uros_io_mutex, K_FOREVER);
     rcl_ret_t rc = rcl_publish(pub, msg, NULL);
-    k_mutex_unlock(&ros_pub_mutex_rel);
+    k_mutex_unlock(&uros_io_mutex);
     return rc;
+}
+
+static rcl_ret_t ros_executor_spin_some_locked(uint64_t timeout_ns) {
+    k_mutex_lock(&uros_io_mutex, K_FOREVER);
+    rcl_ret_t rc = rclc_executor_spin_some(&executor, timeout_ns);
+    k_mutex_unlock(&uros_io_mutex);
+    return rc;
+}
+
+static void ros_sync_session_locked(int timeout_ms) {
+    k_mutex_lock(&uros_io_mutex, K_FOREVER);
+    (void)rmw_uros_sync_session(timeout_ms);
+    k_mutex_unlock(&uros_io_mutex);
+}
+
+static bool ros_epoch_synchronized_locked(void) {
+    bool synced;
+    k_mutex_lock(&uros_io_mutex, K_FOREVER);
+    synced = rmw_uros_epoch_synchronized();
+    k_mutex_unlock(&uros_io_mutex);
+    return synced;
+}
+
+static uint64_t ros_epoch_nanos_locked(void) {
+    uint64_t ns;
+    k_mutex_lock(&uros_io_mutex, K_FOREVER);
+    ns = rmw_uros_epoch_nanos();
+    k_mutex_unlock(&uros_io_mutex);
+    return ns;
 }
