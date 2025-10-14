@@ -6,6 +6,7 @@
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 #include "control.h"
+#include "loop_delays.h"
 #include "ros_iface.h"
 
 #include <math.h>

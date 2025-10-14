@@ -8,6 +8,7 @@
 
 #include "rc_input.h"
 #include "control.h"
+#include "loop_delays.h"
 #include "ros_iface.h"
 
 #include <limits.h>
