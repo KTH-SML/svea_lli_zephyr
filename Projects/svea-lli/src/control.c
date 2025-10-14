@@ -253,7 +253,7 @@ static void control_thread(void *, void *, void *) {
         {
             static uint32_t last_diag_ms;
             uint32_t now_ms = k_uptime_get_32();
-            if (last_diag_ms == 0U || (now_ms - last_diag_ms) >= 1000U) {
+            if (last_diag_ms == 0U || (now_ms - last_diag_ms) >= 100000U) {
                 last_diag_ms = now_ms;
                 LOG_INF("Diag RC connected=%s override=%s thr_target=%u thr_out=%u forced_neutral=%s",
                         remote_connected ? "yes" : "no",
