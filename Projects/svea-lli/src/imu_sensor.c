@@ -6,8 +6,8 @@
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 #include "imu_sensor.h"
+#include "loop_delays.h"
 #include "ros_iface.h"
-
 #include <errno.h>
 #include <limits.h>
 #include <math.h>
@@ -321,6 +321,6 @@ static void imu_sensor_thread(void *p1, void *p2, void *p3) {
                 last_log_time = now;
             }
         }
-        k_sleep(K_MSEC(30)); // yield to lower-prio tasks at least a lil bit
+        k_sleep(K_MSEC(IMU_PUBLISH_LOOP_DELAY_MS)); // yield to lower-prio tasks at least a lil bit
     }
 }
