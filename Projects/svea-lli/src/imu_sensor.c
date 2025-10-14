@@ -303,10 +303,12 @@ static void imu_sensor_thread(void *p1, void *p2, void *p3) {
 
         if (ros_initialized) {
             rcl_ret_t pub_rc = ros_publish_try(&imu_pub, &imu_msg);
+#if (LOG_LEVEL >= LOG_LEVEL_DBG)
             if (pub_rc != RCL_RET_OK) {
                 /* Skip if transport busy to keep rate consistent */
-                /* LOG_DBG("IMU publish skipped (busy)"); */
+                LOG_DBG("IMU publish skipped (busy)");
             }
+#endif
         } else {
             static uint64_t last_log_time;
             uint64_t now = k_uptime_get();
