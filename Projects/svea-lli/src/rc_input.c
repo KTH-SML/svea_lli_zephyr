@@ -336,22 +336,22 @@ static void rc_remote_publish_thread(void *a, void *b, void *c) {
         if (rc != RCL_RET_OK) {
             // LOG_WRN("Remote publish steer failed rc=%d", (int)rc);
         }
-        k_msleep(25); // small delay to avoid flooding the transport
+        k_msleep(50); // small delay to avoid flooding the transport
         rc = ros_publish_try(&pub_remote_throttle, &throttle_msg);
         if (rc != RCL_RET_OK) {
             // LOG_WRN("Remote publish throttle failed rc=%d", (int)rc);
         }
-        k_msleep(25); // small delay to avoid flooding the transport
+        k_msleep(50); // small delay to avoid flooding the transport
         rc = ros_publish_try(&pub_remote_gear, &gear_msg);
         if (rc != RCL_RET_OK) {
             // LOG_WRN("Remote publish gear failed rc=%d", (int)rc);
         }
-        k_msleep(25); // small delay to avoid flooding the transport
+        k_msleep(50); // small delay to avoid flooding the transport
         rc = ros_publish_try(&pub_remote_override, &override_msg);
         if (rc != RCL_RET_OK) {
             // LOG_WRN("Remote publish override failed rc=%d", (int)rc);
         }
-        k_msleep(25); // small delay to avoid flooding the transport
+        k_msleep(50); // small delay to avoid flooding the transport
     }
 }
 
