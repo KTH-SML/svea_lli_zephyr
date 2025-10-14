@@ -11,8 +11,8 @@
 #include <rcl/rcl.h>
 #include <sensor_msgs/msg/imu.h>
 #include <std_msgs/msg/bool.h>
-#include <std_msgs/msg/u_int8.h>
 #include <std_msgs/msg/float32_multi_array.h>
+#include <std_msgs/msg/u_int8.h>
 #include <zephyr/kernel.h>
 
 #ifdef __cplusplus
@@ -42,19 +42,10 @@ extern rcl_publisher_t encoders_pub;
 extern rcl_publisher_t ina3221_pub;
 extern rcl_publisher_t battery_pub;
 
-// Separate mutexes per stream to avoid reliable stalls blocking best-effort
-extern struct k_mutex ros_pub_mutex_be;
-extern struct k_mutex ros_pub_mutex_rel;
-
-// Best-effort helpers
-// Thread-safe publish (blocking) on best-effort stream
-rcl_ret_t ros_publish_be_locked(rcl_publisher_t *pub, const void *msg);
 // Non-blocking best-effort publish; returns RCL_RET_OK on success, RCL_RET_ERROR if skipped
 rcl_ret_t ros_publish_try(rcl_publisher_t *pub, const void *msg);
-
-// Reliable helpers
 // Thread-safe publish (blocking) on reliable stream
-rcl_ret_t ros_publish_rel_locked(rcl_publisher_t *pub, const void *msg);
+rcl_ret_t ros_publish_locked(rcl_publisher_t *pub, const void *msg);
 
 void ros_iface_handle_remote_publish_error(void);
 
