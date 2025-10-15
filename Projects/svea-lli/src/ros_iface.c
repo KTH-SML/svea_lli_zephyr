@@ -162,7 +162,7 @@ bool create_entities() {
     RCCHECK(rclc_publisher_init_best_effort(&imu_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu), "/lli/sensor/imu"));
     RCCHECK(rclc_publisher_init_best_effort(&encoders_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, TwistWithCovarianceStamped), "/lli/sensor/encoders"));
     RCCHECK(rclc_publisher_init_best_effort(&ina3221_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray), "/lli/sensor/ina3221"));
-    RCCHECK(rclc_publisher_init_default(&battery_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, BatteryState), "/lli/battery/state"));
+    RCCHECK(rclc_publisher_init_best_effort(&battery_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, BatteryState), "/lli/battery/state"));
 
     // Subscriptions
     RCCHECK(rclc_subscription_init_best_effort(&sub_steer, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int8), "/lli/ctrl/steering"));
@@ -220,7 +220,7 @@ static void time_sync_thread(void *a, void *b, void *c) {
 
     while (1) {
         if (state == AGENT_CONNECTED) {
-            ros_sync_session_locked(ROS_TIME_SYNC_LOOP_DELAY_MS);
+            ros_sync_session_locked(1);
 
             if (ros_epoch_synchronized_locked() && !atomic_test_and_set_bit(&epoch_locked, 0)) {
                 uint64_t agent_ns = ros_epoch_nanos_locked();
@@ -274,7 +274,7 @@ static void ros_iface_thread(void *a, void *b, void *c) {
 
         case AGENT_CONNECTED:
             // Try to spin the executor
-            rcl_ret_t spin_ret = ros_executor_spin_some_locked(RCL_MS_TO_NS(10));
+            rcl_ret_t spin_ret = ros_executor_spin_some_locked(0);
             if (spin_ret != RCL_RET_OK) {
                 LOG_WRN("Executor spin failed (%d), assuming disconnection", spin_ret);
                 state = AGENT_DISCONNECTED;
@@ -347,7 +347,7 @@ void ros_iface_init(void) {
 
 // Publish with mutex lock, blocking if necessary, making sure we only load the usb port if it is free
 rcl_ret_t ros_publish_try(rcl_publisher_t *pub, const void *msg) {
-    int lock_rc = k_mutex_lock(&uros_io_mutex, K_NO_WAIT);
+    int lock_rc = k_mutex_lock(&uros_io_mutex, K_USEC(100)); // wait a tiny bit at least
     if (lock_rc != 0) {
         // Transport is busy; skip publish without blocking
         return RCL_RET_ERROR;
@@ -373,7 +373,7 @@ static rcl_ret_t ros_executor_spin_some_locked(uint64_t timeout_ns) {
 }
 
 static void ros_sync_session_locked(int timeout_ms) {
-    k_mutex_lock(&uros_io_mutex, K_FOREVER);
+    k_mutex_lock(&uros_io_mutex, K_USEC(100));
     (void)rmw_uros_sync_session(timeout_ms);
     k_mutex_unlock(&uros_io_mutex);
 }
