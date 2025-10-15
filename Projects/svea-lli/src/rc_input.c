@@ -117,9 +117,11 @@ static void sbus_input_cb(struct input_event *evt, void *user_data) {
 INPUT_CALLBACK_DEFINE(NULL, sbus_input_cb, NULL);
 
 /* Debug thread declaration and stack placed before init */
+#if LOG_LEVEL >= LOG_LEVEL_INF
 static void rc_debug_thread(void *a, void *b, void *c);
 static K_THREAD_STACK_DEFINE(rc_dbg_stack, 1024);
 static struct k_thread rc_dbg_thread_data;
+#endif
 
 static void rc_remote_publish_thread(void *a, void *b, void *c);
 static K_THREAD_STACK_DEFINE(rc_remote_pub_stack, 1024);
@@ -136,11 +138,12 @@ void rc_input_init(void) {
     LOG_INF("RC input: futaba,sbus callback registered");
     /* Start periodic debug printer */
 
+#if LOG_LEVEL >= LOG_LEVEL_INF
     k_thread_create(&rc_dbg_thread_data, rc_dbg_stack, K_THREAD_STACK_SIZEOF(rc_dbg_stack),
                     rc_debug_thread, NULL, NULL, NULL,
                     10, 0, K_NO_WAIT);
     k_thread_name_set(&rc_dbg_thread_data, "rc_dbg");
-
+#endif
     k_thread_create(&rc_remote_pub_thread_data, rc_remote_pub_stack, K_THREAD_STACK_SIZEOF(rc_remote_pub_stack),
                     rc_remote_publish_thread, NULL, NULL, NULL,
                     5, 0, K_NO_WAIT);
@@ -186,6 +189,7 @@ uint32_t rc_get_period_us(rc_channel_t idx) {
     return 0;
 }
 
+#if LOG_LEVEL >= LOG_LEVEL_INF
 void rc_input_debug_dump(void) {
     return;
     rc_override_mode_t mode = rc_get_override_mode();
@@ -222,7 +226,7 @@ static void rc_debug_thread(void *a, void *b, void *c) {
         k_msleep(1000);
     }
 }
-
+#endif
 /* (moved to top of file before rc_input_init) */
 
 bool rc_input_connected(void) {
