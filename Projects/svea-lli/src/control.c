@@ -8,14 +8,14 @@
 #include "control.h"
 #include "loop_delays.h"
 #include "rc_input.h"     /* rc_get_pulse_us() prototype        */
+#include "ros_iface.h"    /* ros_executor_spin_some_locked()   */
 #include <stdlib.h>       // <-- Add this line
 #include <stm32_ll_tim.h> /* low-level TIM helpers               */
+#include <stm32_ll_tim.h> /* already included, but make sure */
 #include <zephyr/device.h>
 #include <zephyr/drivers/pwm.h> // Make sure this is included
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-
-#include <stm32_ll_tim.h> /* already included, but make sure */
 
 LOG_MODULE_REGISTER(control, LOG_LEVEL_INF);
 
@@ -78,9 +78,8 @@ static inline void servo_set_ticks(const struct pwm_dt_spec *s, uint16_t t_us) {
 // No throttle smoothing/clamping: immediate target application
 
 // Max allowed age of ROS command before forcing throttle to neutral (ms)
-#ifndef ROS_CMD_MAX_AGE_MS
+
 #define ROS_CMD_MAX_AGE_MS 100U
-#endif
 
 // Remove old pulse_to_us, use new int8 mapping
 static inline uint32_t int8_to_us(int8_t val) {
@@ -98,7 +97,7 @@ static inline uint32_t int8_to_throttle_us(int8_t val) {
 #define THROTTLE_P_GAIN 0.02f
 #endif
 #ifndef THROTTLE_MAX_DELTA_US
-#define THROTTLE_MAX_DELTA_US 8.0f
+#define THROTTLE_MAX_DELTA_US 15.0f
 #endif
 
 #define remote_throttle_deadband_us 10U

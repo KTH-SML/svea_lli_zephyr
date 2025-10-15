@@ -152,7 +152,6 @@ static void ina3221_thread(void *a, void *b, void *c) {
                 }
             }
         }
-        // For esc cutout
         k_sleep(K_MSEC(INA3221_SAMPLE_PERIOD_MS));
     }
 }

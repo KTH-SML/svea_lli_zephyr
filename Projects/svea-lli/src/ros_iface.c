@@ -101,26 +101,34 @@ static rcl_ret_t ros_executor_spin_some_locked(uint64_t timeout_ns);
 // Subscription callbacks
 static void steer_cb(const void *msg) {
     int8_t value = ((std_msgs__msg__Int8 *)msg)->data;
+#if LOG_LEVEL >= LOG_LEVEL_DBG
     LOG_DBG("Received steering command: %d", value);
+#endif
     g_ros_ctrl.steering = value;
 }
 
 static void throttle_cb(const void *msg) {
     int8_t value = ((std_msgs__msg__Int8 *)msg)->data;
+#if LOG_LEVEL >= LOG_LEVEL_DBG
     LOG_DBG("Received throttle command: %d", value);
+#endif
     g_ros_ctrl.throttle = value;
     g_ros_ctrl.timestamp = k_uptime_get_32();
 }
 
 static void gear_cb(const void *msg) {
     bool value = ((std_msgs__msg__Bool *)msg)->data;
+#if LOG_LEVEL >= LOG_LEVEL_DBG
     LOG_DBG("Received high gear command: %s", value ? "true" : "false");
+#endif
     g_ros_ctrl.high_gear = value;
 }
 
 static void diff_cb(const void *msg) {
     bool value = ((std_msgs__msg__Bool *)msg)->data;
+#if LOG_LEVEL >= LOG_LEVEL_DBG
     LOG_DBG("Received diff command: %s", value ? "true" : "false");
+#endif
     g_ros_ctrl.diff = value;
 }
 
@@ -347,7 +355,7 @@ void ros_iface_init(void) {
 
 // Publish with mutex lock, blocking if necessary, making sure we only load the usb port if it is free
 rcl_ret_t ros_publish_try(rcl_publisher_t *pub, const void *msg) {
-    int lock_rc = k_mutex_lock(&uros_io_mutex, K_MSEC(200)); // wait a tiny bit at least
+    int lock_rc = k_mutex_lock(&uros_io_mutex, K_FOREVER); // wait a tiny bit at least
     if (lock_rc != 0) {
         // Transport is busy; skip publish without blocking
         return RCL_RET_ERROR;
@@ -373,7 +381,7 @@ static rcl_ret_t ros_executor_spin_some_locked(uint64_t timeout_ns) {
 }
 
 static void ros_sync_session_locked(int timeout_ms) {
-    k_mutex_lock(&uros_io_mutex, K_USEC(100));
+    k_mutex_lock(&uros_io_mutex, K_FOREVER);
     (void)rmw_uros_sync_session(timeout_ms);
     k_mutex_unlock(&uros_io_mutex);
 }
