@@ -101,6 +101,7 @@ static inline uint32_t int8_to_throttle_us(int8_t val) {
 #define THROTTLE_MAX_DELTA_US 8.0f
 #endif
 
+#define remote_throttle_deadband_us 10U
 static void control_thread(void *, void *, void *) {
     while (!servos_initialized) {
         k_sleep(K_MSEC(10));
@@ -146,6 +147,10 @@ static void control_thread(void *, void *, void *) {
                 // Manual override passthrough
                 steer_us = rc_get_pulse_us(RC_STEER);
                 thr_target_us = rc_get_pulse_us(RC_THROTTLE);
+                if (abs(thr_target_us - SERVO_NEUTRAL_US) < remote_throttle_deadband_us) {
+                    thr_target_us = SERVO_NEUTRAL_US;
+                }
+
                 high_gear = (rc_get_pulse_us(RC_HIGH_GEAR) > SERVO_NEUTRAL_US);
 
                 // Update ROS shadow for better transition in case ros agent is off
