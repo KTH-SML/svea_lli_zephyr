@@ -79,7 +79,7 @@ icm42670: icm42670@68 {
     gyro-fs = <1000>;
     status = "disabled";
 };
-   ism330dlc: ism330dlc@6a {
+   ism330dlc: ism330dlc@6b {
         compatible = "st,ism330dlc";
         reg = <0x6b>;
         //drdy-gpios = <&gpiod 0 GPIO_ACTIVE_HIGH>;
