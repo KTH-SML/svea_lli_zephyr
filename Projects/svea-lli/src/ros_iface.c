@@ -347,7 +347,7 @@ void ros_iface_init(void) {
 
 // Publish with mutex lock, blocking if necessary, making sure we only load the usb port if it is free
 rcl_ret_t ros_publish_try(rcl_publisher_t *pub, const void *msg) {
-    int lock_rc = k_mutex_lock(&uros_io_mutex, K_USEC(100)); // wait a tiny bit at least
+    int lock_rc = k_mutex_lock(&uros_io_mutex, K_MSEC(200)); // wait a tiny bit at least
     if (lock_rc != 0) {
         // Transport is busy; skip publish without blocking
         return RCL_RET_ERROR;

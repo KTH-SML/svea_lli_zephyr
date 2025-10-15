@@ -8,11 +8,11 @@
 #define HZ_TO_MS(hz) MAX_U(1U, (uint32_t)DIV_ROUND_CLOSEST(1000U, (hz)))
 
 /* Frequencies (Hz) */
-#define IMU_PUBLISH_HZ 41U
+#define IMU_PUBLISH_HZ 25U
 #define RC_INPUT_PUBLISH_HZ 5U
 #define RC_INPUT_CONNECTED_PUBLISH_HZ 1U /* ~100 ms */
 #define BMS_PUBLISH_HZ 5U
-#define WHEEL_ENC_PUBLISH_HZ 18U /* ~55 ms */
+#define WHEEL_ENC_PUBLISH_HZ 25U /* ~55 ms */
 #define INA3221_PUBLISH_HZ 5U
 #define CONTROL_LOOP_HZ 100U
 #define ROS_SPIN_HZ 100U    /* ~6 ms */
