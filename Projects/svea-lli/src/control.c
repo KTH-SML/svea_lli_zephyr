@@ -89,7 +89,7 @@ static inline uint32_t int8_to_us(int8_t val) {
 
 static inline uint32_t int8_to_throttle_us(int8_t val) {
     // Positive values command forward, map to lower pulse widths
-    return ((int32_t)val * 500) / 127 - SERVO_NEUTRAL_US;
+    return SERVO_NEUTRAL_US + ((int32_t)val * 500) / 127;
 }
 
 // Tunables (added once near the top)
