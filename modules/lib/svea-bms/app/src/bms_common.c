@@ -52,6 +52,7 @@ static int bms_dis_switch_safe(Bms *bms, bool enable)
         (void)bq769x0_pchg_set(true);
         k_msleep(BMS_PRECHARGE_MS);
         int r = bms_dis_switch(bms, true);
+        k_msleep(5);
         (void)bq769x0_pchg_set(false);
         if (r == 0) {
             dsg_cmd_on = true;
@@ -67,7 +68,7 @@ static int bms_dis_switch_safe(Bms *bms, bool enable)
         else {
             (void)bq769x0_pchg_set(true);
             int r = bms_dis_switch(bms, false);
-            k_msleep(BMS_PRECHARGE_MS);
+            k_msleep(5);
             (void)bq769x0_pchg_set(false);
         }
         if (r == 0) {
