@@ -38,7 +38,7 @@ static const struct gpio_dt_spec alert = GPIO_DT_SPEC_GET(BQ769X0_NODE, alert_gp
 static struct gpio_callback alert_cb;
 
 /* Optional precharge control GPIO (e.g., BQ76200 PCHG) */
-static const struct gpio_dt_spec pchg = GPIO_DT_SPEC_GET_OR(BQ769X0_NODE, pchg_gpios, {0});
+static const struct gpio_dt_spec pchg = GPIO_DT_SPEC_GET_OR(BQ769X0_NODE, pchg_gpios, { 0 });
 static bool pchg_is_output;
 
 // The bq769x0 drives the ALERT pin high if the SYS_STAT register contains
@@ -128,6 +128,21 @@ static int determine_address_and_crc(void)
         return 0;
     }
 
+    /* Try same addresses without CRC */
+    i2c_address = 0x08;
+    crc_enabled = false;
+    bq769x0_write_byte(BQ769X0_CC_CFG, 0x19);
+    if (bq769x0_read_byte(BQ769X0_CC_CFG) == 0x19) {
+        return 0;
+    }
+
+    i2c_address = 0x18;
+    crc_enabled = false;
+    bq769x0_write_byte(BQ769X0_CC_CFG, 0x19);
+    if (bq769x0_read_byte(BQ769X0_CC_CFG) == 0x19) {
+        return 0;
+    }
+
     i2c_address = 0x18;
     crc_enabled = true;
     bq769x0_write_byte(BQ769X0_CC_CFG, 0x19);
@@ -160,7 +175,8 @@ int bq769x0_init()
         int r = gpio_pin_configure_dt(&pchg, GPIO_OUTPUT_INACTIVE);
         if (r == 0) {
             pchg_is_output = true;
-        } else {
+        }
+        else {
             LOG_WRN("PCHG gpio configure failed: %d", r);
         }
     }
