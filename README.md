@@ -6,7 +6,7 @@ Firmware for the SVEA low-level interface running Zephyr 4.1.0 on the MikroE Cli
 - Servo control for steering, throttle/ESC, gearbox, and both differential locks with watchdog supervision and throttle slew limiting.
 - SBUS input on USART2 with override/mute support and RC state export to ROS.
 - micro-ROS publishers for IMU, encoder odometry, INA3221 rail telemetry, battery state, and RC feedback plus subscribers for drive commands.
-- TI BQ769x0 battery management integration (alert, wake, SoC indication, peak tracking).
+- TI BQ7692003PWR battery management integration (alert, wake, SoC indication, peak tracking).
 - Devicetree overlays pin out the Clicker 4 peripherals (PWM, I²C, GPIO) used by the application.
 
 ## Repository Layout
@@ -103,3 +103,4 @@ Start the agent on the host before launching ROS nodes:
 ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyACM0 -b 115200
 ```
 Adjust `/dev/ttyACM*` if your system enumerates differently.
+
