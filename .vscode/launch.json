@@ -1,0 +1,47 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Zephyr IDE: Debug",
+      "cwd": "${workspaceFolder}",
+      "gdbPath": "${command:zephyr-ide.get-gdb-path}",
+      "executable": "${command:zephyr-ide.get-active-build-path}/zephyr/zephyr.elf",
+      "request": "launch",
+      "type": "cortex-debug",
+      "servertype": "openocd",
+      "serverpath": "/opt/homebrew/bin/openocd",
+      "openOCDLaunchCommands": [
+        "transport select swd",
+        "adapter speed 1000"
+      ],
+      "configFiles": [
+        "/opt/homebrew/share/openocd/scripts/interface/cmsis-dap.cfg",
+        "/opt/homebrew/share/openocd/scripts/target/stm32f7x.cfg"
+      ],
+      "postLaunchCommands": [
+        "monitor reset halt",
+        "monitor rtt setup 0x20010410 0x1000 \"SEGGER RTT\"",
+        "monitor rtt start",
+        "monitor rtt server start 5555 0",
+        "continue"
+      ],
+      "rtos": "Zephyr",
+      "searchDir": [],
+      "runToEntryPoint": "main",
+      "showDevDebugOutput": "raw",
+      "rttConfig": {
+        "enabled": false,
+        "address": "0x20010410",
+        "rtt_start_retry": 1000,
+        "polling_interval": 100,
+        "decoders": [
+          {
+            "label": "RTT channel 0",
+            "port": 0,
+            "type": "console"
+          }
+        ]
+      }
+    }
+  ]
+}

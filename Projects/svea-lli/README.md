@@ -2,6 +2,23 @@
 
 This project is designed to implement a control system using the Zephyr RTOS, integrating remote control inputs, servo motor control, and sensor data processing. The system is structured to ensure efficient handling of inputs and commands while maintaining responsiveness and reliability.
 
+## How to flash
+from the repo root
+`west flash -d Projects/svea-lli/build/clicker4_stm32f7 -r openocd -- \
+  --config interface/cmsis-dap.cfg --config target/stm32f7x.cfg`
+
+## How to debug and develop
+
+Use the [Zephyr IDE extension](https://marketplace.visualstudio.com/items?itemName=mylonics.zephyr-ide)
+
+Flash the debug build and run
+`west rtt -d Projects/svea-lli/build/clicker4_stm32f7_DEBUG -r openocd`
+to get logs
+
+or, while debugging with vscode extension [Cortex-Debug](https://marketplace.visualstudio.com/) run `nc 127.0.0.1 5555` in a new terminal to get logs
+
+Haven't had much luck devloping on windows (big surprise), linux or mac strongly recommended
+
 ## Directory Structure
 
 - **boards/**: Contains the Device Tree overlay file for specific board configurations.

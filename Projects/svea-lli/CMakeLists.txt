@@ -17,6 +17,7 @@ cmake_minimum_required(VERSION 3.13.1)
 list(APPEND ZEPHYR_EXTRA_MODULES ${CMAKE_CURRENT_SOURCE_DIR}/../../modules/lib/micro_ros_zephyr_module/modules/libmicroros)
 list(APPEND ZEPHYR_EXTRA_MODULES
     ${CMAKE_CURRENT_SOURCE_DIR}/../../drivers
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../external/modules/debug/segger
 )
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
