@@ -17,7 +17,13 @@
             "overlay": [],
             "extraOverlay": []
           },
-          "runnerConfigs": {}
+          "runnerConfigs": {
+            "openocd": {
+              "runner": "openocd",
+              "name": "openocd",
+              "args": "--config interface/cmsis-dap.cfg --config target/stm32f7x.cfg"
+            }
+          }
         },
         "build/clicker4_stm32f7_DEBUG": {
           "relBoardDir": "boards",
