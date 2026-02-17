@@ -1,5 +1,7 @@
 {
     "terminal.integrated.defaultProfile.linux": "Zephyr IDE Terminal",
+    "zephyr-ide.venv-folder": ".venv",
+    "python.defaultInterpreterPath": ".venv/bin/python",
     "C_Cpp.default.compileCommands": "${workspaceFolder}/.vscode/compile_commands.json",
     "cmake.configureOnOpen": false,
     "files.associations": {
