@@ -9,3 +9,4 @@ external
 drivers/st_ism330dlc/ism330dlc.txt
 **/log/
 .tmp.driveupload/452977
+.vscode/mcp.json
