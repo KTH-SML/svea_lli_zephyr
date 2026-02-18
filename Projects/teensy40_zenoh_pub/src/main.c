@@ -10,7 +10,7 @@
 #define MODE "client"
 #define KEYEXPR "demo/teensy40/heartbeat"
 #define STARTUP_DELAY_MS 2000U
-#define PUB_PERIOD_MS 1000U
+#define PUB_PERIOD_MS 1U
 
 #if !DT_NODE_EXISTS(DT_ALIAS(zenoh_uart))
 #error "Missing devicetree alias 'zenoh-uart'"

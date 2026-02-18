@@ -11,20 +11,20 @@
 
 &lpuart2 {
     status = "okay";
-    current-speed = <115200>;
+    current-speed = <460800>;
 };
 
 &lpuart3 {
     status = "okay";
-    current-speed = <115200>;
+    current-speed = <460800>;
 };
 &lpuart4 {
     status = "okay";
-    current-speed = <115200>;
+    current-speed = <460800>;
 };
 
 
 &lpuart6 {
     status = "okay";
-    current-speed = <115200>;
+    current-speed = <460800>;
 };
