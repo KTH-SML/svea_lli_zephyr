@@ -1,0 +1,15 @@
+/ {
+    aliases {
+        zenoh-uart = &uart0;
+    };
+
+    chosen {
+        zephyr,console = &usb_serial;
+        zephyr,shell-uart = &usb_serial;
+    };
+};
+
+&uart0 {
+    status = "okay";
+    current-speed = <230400>;
+};

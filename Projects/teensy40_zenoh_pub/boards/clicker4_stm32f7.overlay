@@ -1,0 +1,10 @@
+/ {
+    aliases {
+        zenoh-uart = &usart2;
+    };
+};
+
+&usart2 {
+    status = "okay";
+    current-speed = <230400>;
+};

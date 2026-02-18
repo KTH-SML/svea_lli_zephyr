@@ -2,11 +2,13 @@ manifest:
   remotes:
     - name: zephyrproject
       url-base: https://github.com/zephyrproject-rtos
+    - name: nilskiefer
+      url-base: https://github.com/nilskiefer
   projects:
     - name: zephyr
       repo-path: zephyr
       remote: zephyrproject
-      revision: v4.1.0
+      revision: v4.3.0
       clone-depth: 1
       import:
         path-prefix: external
@@ -14,9 +16,16 @@ manifest:
           - mcuboot
           - hal_st
           - hal_stm32
+          - hal_espressif
+          - hal_nxp
           - cmsis
+          - cmsis_6
           - hal_tdk
           - segger
+    - name: zenoh-pico
+      remote: nilskiefer
+      revision: c884167d434da6a56fe9f85d442d99108fbeeaf7
+      path: modules/lib/zenoh-pico
 
   self:
     path: .
