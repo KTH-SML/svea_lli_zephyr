@@ -30,6 +30,8 @@ fi
   requests \
   semver \
   tqdm \
+  jsonschema \
+  pyserial \
   catkin-pkg==1.0.0 \
   colcon-argcomplete==0.3.3 \
   colcon-bash==0.5.0 \
