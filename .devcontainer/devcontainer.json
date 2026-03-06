@@ -4,7 +4,9 @@
     "dockerfile": "Dockerfile"
   },
   "mounts": [
-    "source=${localWorkspaceFolder},target=/workdir,type=bind,consistency=cached"
+    "source=${localWorkspaceFolder},target=/workdir,type=bind,consistency=cached",
+    "source=zephyr-build-svea-custom,target=/workdir/Projects/Svea-Custom-Protocol/build,type=volume",
+    "source=zephyr-build-svea-lli,target=/workdir/Projects/svea-lli/build,type=volume"
   ],
   "runArgs": [
     "--network=host"
