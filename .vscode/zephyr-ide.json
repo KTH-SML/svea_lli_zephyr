@@ -21,7 +21,7 @@
             "openocd": {
               "runner": "openocd",
               "name": "openocd",
-              "args": "--config interface/cmsis-dap.cfg --config target/stm32f7x.cfg"
+              "args": ""
             }
           }
         },
@@ -42,7 +42,7 @@
             "openocd": {
               "runner": "openocd",
               "name": "openocd",
-              "args": "--config interface/cmsis-dap.cfg --config target/stm32f7x.cfg"
+              "args": ""
             }
           }
         }

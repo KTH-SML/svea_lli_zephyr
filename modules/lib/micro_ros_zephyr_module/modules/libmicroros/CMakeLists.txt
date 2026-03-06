@@ -2,7 +2,9 @@
 
 if(CONFIG_MICROROS)
 
-set(MICROROS_DIR ${ZEPHYR_CURRENT_MODULE_DIR})
+# Canonicalize module path so Ninja sees the same path in link deps and byproducts.
+get_filename_component(MICROROS_DIR "${ZEPHYR_CURRENT_MODULE_DIR}" REALPATH)
+set(MICROROS_LIB "${MICROROS_DIR}/libmicroros.a")
 
 if(CMAKE_GENERATOR STREQUAL "Unix Makefiles")
 set(submake "$(MAKE)")
@@ -49,10 +51,10 @@ externalproject_add(libmicroros_project
             ZEPHYR_BASE=${ZEPHYR_BASE}
             PROJECT_BINARY_DIR=${PROJECT_BINARY_DIR}
     INSTALL_COMMAND ""
-    BUILD_BYPRODUCTS ${MICROROS_DIR}/libmicroros.a
+    BUILD_BYPRODUCTS ${MICROROS_LIB}
     )
 
-zephyr_link_libraries(${MICROROS_DIR}/libmicroros.a)
+zephyr_link_libraries(${MICROROS_LIB})
 
 zephyr_interface_library_named(microros)
 add_dependencies(microros libmicroros_project)
